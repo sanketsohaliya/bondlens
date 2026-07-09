@@ -362,11 +362,12 @@ const STALE_DAYS = 3;
 const isStale = (b) => b.days_since_traded != null && b.days_since_traded >= STALE_DAYS;
 
 const ratingFlag = (b) => {
+  const from = b.rating_prev ? ` from ${fmtRating(b.rating_prev)}` : "";
   if (b.rating_change === "up") {
-    return ` <span class="text-emerald-600 dark:text-emerald-400 text-xs" data-tip="Upgraded from ${fmtRating(b.rating_prev)} on ${b.rating_changed_at}">▲</span>`;
+    return ` <span class="text-emerald-600 dark:text-emerald-400 text-xs" data-tip="Upgraded${from} on ${b.rating_changed_at}">▲</span>`;
   }
   if (b.rating_change === "down") {
-    return ` <span class="text-rose-600 dark:text-rose-400 text-xs" data-tip="Downgraded from ${fmtRating(b.rating_prev)} on ${b.rating_changed_at} — read the rationale before buying">▼</span>`;
+    return ` <span class="text-rose-600 dark:text-rose-400 text-xs" data-tip="Downgraded${from} on ${b.rating_changed_at} — read the rationale before buying">▼</span>`;
   }
   return "";
 };
@@ -386,13 +387,14 @@ const nsdlUrl = (b) =>
 const nseUrl = (b) =>
   `https://www.nseindia.com/get-quotes/bonds?symbol=${encodeURIComponent(b.symbol)}&series=${encodeURIComponent(b.series || "")}`;
 
-// Rating agencies rarely expose stable deep links per instrument, so link to a
-// targeted search for the agency's rating rationale on this ISIN.
+// NSDL publishes the agency's own press-release link; use it when present.
+// Fallback: a targeted search for the agency's rationale on this ISIN.
 const AGENCY_NAMES = {
   CRISIL: "CRISIL", ICRA: "ICRA", CARE: "CARE Ratings", BRCK: "Brickwork",
   ACUITE: "Acuite", IRRPL: "India Ratings", IVRPL: "Infomerics",
 };
 const ratingUrl = (b) => {
+  if (b.rating_url) return b.rating_url;
   const agency = (b.rating_agency || "").split(",")[0].trim();
   const name = AGENCY_NAMES[agency.toUpperCase()] || agency;
   const q = encodeURIComponent(`${name} rating rationale "${b.isin}" OR "${b.symbol}"`);
@@ -435,7 +437,7 @@ function render() {
         ${b.credit_rating
           ? `<a href="${ratingUrl(b)}" target="_blank" rel="noopener"
                class="hover:text-emerald-600 dark:hover:text-emerald-400 underline decoration-dotted decoration-zinc-300 dark:decoration-zinc-700 underline-offset-2"
-               data-tip="Find the full ${(b.rating_agency || "agency")} report on this bond">${fmtRating(b.credit_rating)}</a>`
+               data-tip="${b.rating_source === "NSDL" ? `Agency-verified via NSDL — read the ${(b.rating_agency || "agency").split(",")[0]} rationale` : `NSE data (can be stale) — find the full ${(b.rating_agency || "agency")} report`}">${fmtRating(b.credit_rating)}</a>`
           : "–"}${ratingFlag(b)}
       </td>
       <td class="px-3 py-2 text-right font-bold ${b.ytm >= 10 ? "text-emerald-600 dark:text-emerald-400" : ""}">${fmt(b.ytm)}</td>

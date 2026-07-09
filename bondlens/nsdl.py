@@ -19,6 +19,14 @@ COUPON_URL = (
     "https://www.indiabondinfo.nsdl.com/bds-service/v1/public/bdsinfo/coupondetail"
 )
 
+# Sibling endpoint (found in the CBDS Angular bundle): current + earlier
+# credit ratings per ISIN, entered and verified by the rating agencies
+# themselves (datasource "CRA") — unlike NSE's rating field, which is
+# frequently stale at-issuance data.
+RATINGS_URL = (
+    "https://www.indiabondinfo.nsdl.com/bds-service/v1/public/bdsinfo/credit-ratings"
+)
+
 HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
@@ -220,3 +228,69 @@ def fetch_schedule(isin: str, timeout: int = 30) -> Tuple[Dict, List[Dict]]:
             }
         )
     return meta, flows
+
+
+# Long registered names -> the short codes NSE uses, so both sources line up.
+_AGENCY_SHORT = [
+    ("CRISIL", "CRISIL"), ("ICRA", "ICRA"), ("CARE", "CARE"),
+    ("INDIA RATINGS", "IRRPL"), ("BRICKWORK", "BRCK"),
+    ("ACUITE", "ACUITE"), ("INFOMERICS", "IVRPL"),
+]
+
+
+def _short_agency(name: Optional[str]) -> Optional[str]:
+    if not name:
+        return None
+    upper = name.upper()
+    for key, short in _AGENCY_SHORT:
+        if key in upper:
+            return short
+    return name.split()[0].upper()
+
+
+def _clean(value) -> Optional[str]:
+    text = (value or "").strip()
+    return text if text and text != "-" else None
+
+
+def parse_ratings(payload: Dict) -> List[Dict]:
+    """Current ratings from the credit-ratings payload, one per agency.
+
+    Each entry: agency (short code), rating, outlook, action (e.g. Upgrade),
+    changed_at (ISO date), prev_rating (latest earlier rating by the same
+    agency, when published), press_release (the agency's own rationale).
+    """
+    earlier: Dict[str, List] = {}
+    for row in payload.get("earlierRatings") or []:
+        rating = _clean(row.get("currentRating"))
+        agency = row.get("creditRatingAgencyName")
+        when = parse_date(_clean(row.get("ratingChangeDate"))
+                          or _clean(row.get("creditRatingDate")) or "")
+        if rating and agency and when:
+            earlier.setdefault(agency, []).append((when, rating))
+    out = []
+    for row in payload.get("currentRatings") or []:
+        rating = _clean(row.get("currentRating"))
+        if not rating:
+            continue
+        agency_raw = row.get("creditRatingAgencyName")
+        changed = parse_date(_clean(row.get("ratingChangeDate")) or "")
+        prev_list = sorted(earlier.get(agency_raw, []), reverse=True)
+        out.append({
+            "agency": _short_agency(agency_raw),
+            "rating": rating,
+            "outlook": _clean(row.get("outlook")),
+            "action": _clean(row.get("ratingAction")),
+            "changed_at": changed.isoformat() if changed else None,
+            "prev_rating": prev_list[0][1] if prev_list else None,
+            "press_release": _clean(row.get("pressReleaseLink")),
+        })
+    return out
+
+
+def fetch_ratings(isin: str, timeout: int = 30) -> List[Dict]:
+    """Fetch current agency ratings for one ISIN. Raises on HTTP errors."""
+    resp = requests.get(RATINGS_URL, params={"isin": isin}, headers=HEADERS,
+                        timeout=timeout)
+    resp.raise_for_status()
+    return parse_ratings(resp.json())

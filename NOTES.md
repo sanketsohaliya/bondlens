@@ -20,7 +20,11 @@ Tailwind CDN + vanilla JS). Runs locally in WSL (Ubuntu-20.04):
 - `bondlens/nse.py` — NSE bond-market snapshot (prices, traded value, ratings)
 - `bondlens/nsdl.py` — exact cash-flow schedules from NSDL India Bond Info
   (public JSON API), cached permanently in SQLite; plus schedule repair
-  helpers (`fill_amounts`, `normalize_flows`, `redemption_matches_face`)
+  helpers (`fill_amounts`, `normalize_flows`, `redemption_matches_face`);
+  also current credit ratings per ISIN (`fetch_ratings`, endpoint
+  `bds-service/v1/public/bdsinfo/credit-ratings`, found in the CBDS
+  Angular bundle — agency-verified, with press-release links and earlier
+  ratings)
 - `bondlens/ytm.py` — the math: `exact_ytm` (XIRR over dated flows),
   `ytm` (quick approximation), `modified_duration`, `accrued_interest`
 - `bondlens/gsec.py` — G-Sec yield curve for spread calculation
@@ -49,6 +53,15 @@ Tailwind CDN + vanilla JS). Runs locally in WSL (Ubuntu-20.04):
   drawer; recomputed figures highlighted amber; real-price payload stays
   in `detailCache`, what-if lives in `whatifDetail` and resets on
   drawer close.
+- **NSE's credit_rating field is stale at-issuance data** — discovered
+  via 96SFIL24A (Sammaan Finserve, ex-Indiabulls): NSE showed the 2018
+  "AAA" for years; actual rating went AAA→AA (2019-20) →AA+ (Apr-May
+  2026 upgrades). Fix: NSDL's credit-ratings endpoint overrides NSE's
+  string whenever cached (`rating_source: NSDL` vs `NSE`); rating_rank,
+  filters, and up/down flags all use the override. Ratings re-fetched
+  when older than `RATINGS_MAX_AGE_DAYS` (30) during the bulk NSDL
+  fetch. Up/down markers prefer NSDL's ratingAction over NSE snapshot
+  diffing; the rating cell links straight to the agency's press release.
 - Published/advertised returns vs investor returns, record-date logic:
   flows are `future` only if due date > today AND record date (if any)
   > today — a buyer today wouldn't receive a payout whose record date

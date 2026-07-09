@@ -2,7 +2,7 @@
 import re
 import threading
 import time
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 from typing import Dict, Optional
 
@@ -54,14 +54,33 @@ RATING_FLAG_DAYS = 30  # how long an up/downgrade marker stays visible
 STALE_AFTER_DAYS = 3   # LTP considered stale after this many days without trades
 
 
-def annotate_signals(r: Dict, changes: Dict, last_traded: Dict):
-    """Attach rating-change and stale-price signals to a bond row in place."""
+def annotate_signals(r: Dict, changes: Dict, last_traded: Dict,
+                     nsdl_ratings: Optional[Dict] = None):
+    """Attach rating-change and stale-price signals to a bond row in place.
+
+    NSDL's agency-verified rating actions are preferred; snapshot diffing of
+    NSE's rating string is the fallback (NSE often never updates it).
+    """
     today = date.today()
     r["rating_change"] = None
     r["rating_prev"] = None
     r["rating_changed_at"] = None
+    nr = (nsdl_ratings or {}).get(r["isin"]) or []
+    recent = [
+        x for x in nr
+        if x["changed_at"] and x["rating_action"]
+        and (today - date.fromisoformat(x["changed_at"])).days <= RATING_FLAG_DAYS
+        and ("UPGRADE" in x["rating_action"].upper()
+             or "DOWNGRADE" in x["rating_action"].upper())
+    ]
     ch = changes.get(r["isin"])
-    if ch:
+    if recent:
+        downs = [x for x in recent if "DOWN" in x["rating_action"].upper()]
+        pick = downs[0] if downs else recent[0]
+        r["rating_change"] = "down" if downs else "up"
+        r["rating_prev"] = pick["prev_rating"]
+        r["rating_changed_at"] = pick["changed_at"]
+    elif not nr and ch:
         prev_rank = rating_rank(ch["previous"])
         cur_rank = rating_rank(r["credit_rating"])
         age = (today - date.fromisoformat(ch["changed_at"][:10])).days
@@ -78,19 +97,29 @@ def annotate_signals(r: Dict, changes: Dict, last_traded: Dict):
 
 NSDL_DELAY_SECONDS = 10
 
+# Ratings change over time (unlike payment schedules), so re-fetch them
+# once they're older than this.
+RATINGS_MAX_AGE_DAYS = 30
+
 _nsdl_state = {"running": False, "done": 0, "total": 0, "errors": 0, "current": None}
 _nsdl_lock = threading.Lock()
 
 
 def _nsdl_worker(isins):
+    complete = _nsdl_complete_isins()
     for isin in isins:
         _nsdl_state["current"] = isin
+        if isin not in complete:  # schedules are static; don't refetch good ones
+            try:
+                meta, flows = nsdl.fetch_schedule(isin)
+                db.save_nsdl(isin, "ok" if flows else "empty", meta, flows)
+            except Exception:  # noqa: BLE001 - record and continue
+                db.save_nsdl(isin, "error", {}, [])
+                _nsdl_state["errors"] += 1
         try:
-            meta, flows = nsdl.fetch_schedule(isin)
-            db.save_nsdl(isin, "ok" if flows else "empty", meta, flows)
-        except Exception:  # noqa: BLE001 - record and continue
-            db.save_nsdl(isin, "error", {}, [])
-            _nsdl_state["errors"] += 1
+            db.save_nsdl_ratings(isin, nsdl.fetch_ratings(isin))
+        except Exception:  # noqa: BLE001 - keep whatever we had
+            pass
         _nsdl_state["done"] += 1
         time.sleep(NSDL_DELAY_SECONDS)
     _nsdl_state["running"] = False
@@ -116,7 +145,25 @@ def _fetch_nsdl_async(isin: str):
         except Exception:  # noqa: BLE001 - record and move on
             if db.nsdl_fetched_isins().get(isin) != "ok":
                 db.save_nsdl(isin, "error", {}, [])
+        try:
+            db.save_nsdl_ratings(isin, nsdl.fetch_ratings(isin))
+        except Exception:  # noqa: BLE001 - keep whatever we had
+            pass
     threading.Thread(target=run, daemon=True).start()
+
+
+def _ratings_stale_isins(universe: set) -> set:
+    fetched = db.nsdl_ratings_fetched()
+    cutoff = time.time() - RATINGS_MAX_AGE_DAYS * 86400
+    stale = set()
+    for isin in universe:
+        ts = fetched.get(isin)
+        if ts is None:
+            stale.add(isin)
+            continue
+        if datetime.fromisoformat(ts).timestamp() < cutoff:
+            stale.add(isin)
+    return stale
 
 
 @app.post("/api/nsdl/fetch")
@@ -128,7 +175,9 @@ def nsdl_fetch():
             return {"started": False, "reason": "already running", **_nsdl_state}
         universe = {r["isin"] for r in db.latest_snapshot() if r["isin"]}
         universe |= {h["isin"] for h in db.holdings()}
-        pending = sorted(universe - _nsdl_complete_isins())
+        pending = sorted(
+            (universe - _nsdl_complete_isins()) | _ratings_stale_isins(universe)
+        )
         if not pending:
             return {"started": False, "reason": "nothing to fetch", **_nsdl_state}
         _nsdl_state.update(
@@ -208,9 +257,25 @@ def bonds(
     changes = db.rating_changes()
     last_traded = db.last_traded_map()
     names = db.company_names()
+    nsdl_ratings = db.nsdl_ratings_map()
     out = []
     for r in rows:
         r["company_name"] = names.get(r["symbol"])
+        # NSDL's ratings are agency-verified and current; NSE's rating field
+        # is often stale at-issuance data (e.g. AAA shown for years after a
+        # downgrade). Override whenever NSDL has the ISIN.
+        nr = nsdl_ratings.get(r["isin"])
+        if nr:
+            r["credit_rating"] = ", ".join(
+                x["rating"] + (f"/{x['outlook']}" if x["outlook"] else "")
+                for x in nr)
+            r["rating_agency"] = ", ".join(x["agency"] or "" for x in nr)
+            r["rating_source"] = "NSDL"
+            r["rating_url"] = next(
+                (x["press_release"] for x in nr if x["press_release"]), None)
+        else:
+            r["rating_source"] = "NSE"
+            r["rating_url"] = None
         maturity = parse_date(r["maturity_date"])
         r["years_to_maturity"] = (
             round(years_to_maturity(maturity), 2) if maturity else None
@@ -251,7 +316,7 @@ def bonds(
             round(r["ytm"] - gy, 2) if r["ytm"] is not None and gy is not None
             else None
         )
-        annotate_signals(r, changes, last_traded)
+        annotate_signals(r, changes, last_traded, nsdl_ratings)
         if watchlist_only and not r["in_watchlist"]:
             continue
         if min_ytm is not None and (r["ytm"] is None or r["ytm"] < min_ytm):
@@ -334,8 +399,21 @@ def bond_detail(isin: str, price: Optional[float] = Query(None, gt=0)):
         round(years_to_maturity(maturity), 2) if maturity else None
     )
     row["kite_url"] = kite.kite_url(row["symbol"], row["series"])
+    nsdl_ratings = db.nsdl_ratings_map()
+    nr = nsdl_ratings.get(isin)
+    if nr:
+        row["credit_rating"] = ", ".join(
+            x["rating"] + (f"/{x['outlook']}" if x["outlook"] else "")
+            for x in nr)
+        row["rating_agency"] = ", ".join(x["agency"] or "" for x in nr)
+        row["rating_source"] = "NSDL"
+        row["rating_url"] = next(
+            (x["press_release"] for x in nr if x["press_release"]), None)
+    else:
+        row["rating_source"] = "NSE"
+        row["rating_url"] = None
     row["rating_rank"] = rating_rank(row["credit_rating"])
-    annotate_signals(row, db.rating_changes(), db.last_traded_map())
+    annotate_signals(row, db.rating_changes(), db.last_traded_map(), nsdl_ratings)
 
     meta = db.nsdl_meta_map().get(isin)
     flows, amounts_estimated = nsdl.fill_amounts(
