@@ -19,6 +19,8 @@ class ShortAgency(unittest.TestCase):
         self.assertEqual(_short_agency("ICRA LIMITED"), "ICRA")
         self.assertEqual(_short_agency("CARE RATINGS LIMITED"), "CARE")
         self.assertEqual(_short_agency("India Ratings and Research Pvt Ltd"), "IRRPL")
+        # NSDL's actual (singular) spelling, seen live:
+        self.assertEqual(_short_agency("INDIA RATING AND RESEARCH PVT. LTD"), "IRRPL")
 
     def test_unknown_agency_first_word(self):
         self.assertEqual(_short_agency("Acme Ratings Co"), "ACME")

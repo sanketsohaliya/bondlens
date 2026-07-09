@@ -233,7 +233,7 @@ def fetch_schedule(isin: str, timeout: int = 30) -> Tuple[Dict, List[Dict]]:
 # Long registered names -> the short codes NSE uses, so both sources line up.
 _AGENCY_SHORT = [
     ("CRISIL", "CRISIL"), ("ICRA", "ICRA"), ("CARE", "CARE"),
-    ("INDIA RATINGS", "IRRPL"), ("BRICKWORK", "BRCK"),
+    ("INDIA RATING", "IRRPL"), ("BRICKWORK", "BRCK"),
     ("ACUITE", "ACUITE"), ("INFOMERICS", "IVRPL"),
 ]
 
