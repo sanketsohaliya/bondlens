@@ -30,6 +30,19 @@ def _is_principal(event: Optional[str]) -> bool:
     return any(k in ev for k in _PRINCIPAL_EVENTS)
 
 
+def _matured(cashflows: List[Dict], today: date) -> bool:
+    """True when the schedule has fully played out: every due date has
+    passed and the schedule includes the principal repayment. Unparseable
+    dates disqualify — better to say "unknown" than "closed"."""
+    if not cashflows:
+        return False
+    dues = [parse_date(f.get("due_date")) for f in cashflows]
+    if any(d is None for d in dues):
+        return False
+    return (max(dues) <= today
+            and any(_is_principal(f.get("event")) for f in cashflows))
+
+
 def received_flows(cashflows: List[Dict], buy_date: date,
                    today: Optional[date] = None) -> List[Dict]:
     """Flows the holder actually received between purchase and today.
@@ -66,10 +79,14 @@ def holding_pnl(holding: Dict, snapshot_row: Optional[Dict],
     buy_date = parse_date(holding.get("buy_date") or "")
     ltp = snapshot_row.get("ltp") if snapshot_row else None
 
+    # Matured bonds drop out of the NSE feed — that's a closed position
+    # (residual value zero, everything realized), not missing data.
+    closed = ltp is None and _matured(cashflows, today)
+
     warnings = []
-    if snapshot_row is None:
+    if snapshot_row is None and not closed:
         warnings.append("not in the latest NSE snapshot — no market price")
-    if not schedule_ok:
+    if cashflows and not schedule_ok:
         warnings.append("payment schedule doesn't match face value — income figures unreliable")
     if not cashflows:
         warnings.append("no payment schedule cached — realized income unknown")
@@ -78,6 +95,8 @@ def holding_pnl(holding: Dict, snapshot_row: Optional[Dict],
 
     invested = round(qty * buy_price, 2) if buy_price else None
     market_value = round(qty * ltp, 2) if ltp else None
+    if closed:
+        market_value = 0.0
 
     realized_interest = realized_principal = None
     received = []
@@ -108,7 +127,8 @@ def holding_pnl(holding: Dict, snapshot_row: Optional[Dict],
     )
     unrealized = (
         round(market_value - invested, 2)
-        if market_value is not None and invested is not None else None
+        if market_value is not None and invested is not None and not closed
+        else None
     )
     total = (
         round((realized or 0.0) + market_value - invested, 2)
@@ -120,7 +140,8 @@ def holding_pnl(holding: Dict, snapshot_row: Optional[Dict],
     if buy_date is not None and invested and market_value is not None:
         dated = [(buy_date, -invested)]
         dated += [(parse_date(f["due_date"]), qty * f["amount"]) for f in received]
-        dated.append((today, market_value))
+        if not closed:
+            dated.append((today, market_value))
         rate = xirr(dated)
 
     return {
@@ -133,5 +154,6 @@ def holding_pnl(holding: Dict, snapshot_row: Optional[Dict],
         "total_pnl": total,
         "xirr": rate,
         "receipts": len(received),
+        "closed": closed,
         "warnings": warnings,
     }

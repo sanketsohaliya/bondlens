@@ -81,6 +81,12 @@ Tailwind CDN + vanilla JS). Runs locally in WSL (Ubuntu-20.04):
      fetch time, so payouts due between the buy date and the earliest
      cached flow are invisible (warned when gap > 35 days). TDS not
      modelled; income is gross.
+   - Gap fixes (same day): holdings outside the NSE snapshot get their
+     NSDL schedule fetched automatically on add (`_fetch_nsdl_async`)
+     and are included in the bulk fetch universe; fully redeemed bonds
+     are **closed positions** (`closed` flag: market value 0, final
+     P&L, XIRR from actual receipts, "matured" badge) instead of
+     "no market price" warnings.
    - **Zerodha Kite Connect integration was built then removed on
      request** (user prefers manual entry). If ever revisited: holdings
      API gives qty + average_price but NO buy dates; daily token

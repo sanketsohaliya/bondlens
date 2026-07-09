@@ -97,20 +97,38 @@ def _nsdl_worker(isins):
     _nsdl_state["current"] = None
 
 
+def _nsdl_complete_isins() -> set:
+    """ISINs fetched OK with an actual schedule. Everything else (never
+    tried, errored, or schedule came back empty) is worth (re)trying."""
+    fetched = db.nsdl_fetched_isins()
+    have_flows = db.isins_with_flows()
+    return {i for i, s in fetched.items() if s == "ok" and i in have_flows}
+
+
+def _fetch_nsdl_async(isin: str):
+    """One-off background fetch for a single ISIN. Holdings outside the NSE
+    snapshot would otherwise stay uncached forever. A transient failure must
+    not clobber a previously good cache entry."""
+    def run():
+        try:
+            meta, flows = nsdl.fetch_schedule(isin)
+            db.save_nsdl(isin, "ok" if flows else "empty", meta, flows)
+        except Exception:  # noqa: BLE001 - record and move on
+            if db.nsdl_fetched_isins().get(isin) != "ok":
+                db.save_nsdl(isin, "error", {}, [])
+    threading.Thread(target=run, daemon=True).start()
+
+
 @app.post("/api/nsdl/fetch")
 def nsdl_fetch():
-    """Start background fetch of NSDL schedules for ISINs not yet cached."""
+    """Start background fetch of NSDL schedules for ISINs not yet cached.
+    Covers the NSE snapshot plus any portfolio holdings outside it."""
     with _nsdl_lock:
         if _nsdl_state["running"]:
             return {"started": False, "reason": "already running", **_nsdl_state}
-        fetched = db.nsdl_fetched_isins()
-        have_flows = db.isins_with_flows()
-        # Complete = fetched OK with an actual schedule. Everything else
-        # (never tried, errored, or schedule came back empty) is retried.
-        complete = {i for i, s in fetched.items() if s == "ok" and i in have_flows}
-        pending = sorted(
-            {r["isin"] for r in db.latest_snapshot() if r["isin"]} - complete
-        )
+        universe = {r["isin"] for r in db.latest_snapshot() if r["isin"]}
+        universe |= {h["isin"] for h in db.holdings()}
+        pending = sorted(universe - _nsdl_complete_isins())
         if not pending:
             return {"started": False, "reason": "nothing to fetch", **_nsdl_state}
         _nsdl_state.update(
@@ -478,7 +496,8 @@ def portfolio():
                 "payment amounts estimated from the coupon rate")
         lt = last_traded.get(h["isin"])
         days_since = (today - date.fromisoformat(lt[:10])).days if lt else None
-        if days_since is not None and days_since >= STALE_AFTER_DAYS:
+        if (days_since is not None and days_since >= STALE_AFTER_DAYS
+                and not figs["closed"]):
             figs["warnings"].append(
                 f"price is {days_since} days old — market value and XIRR may be off")
         buy_d = parse_date(h["buy_date"] or "")
@@ -488,7 +507,8 @@ def portfolio():
                 (parse_date(f["due_date"]), h["qty"] * f["amount"])
                 for f in pnl.received_flows(flows if nsdl_ok else [], buy_d)
             ]
-            all_flows.append((today, figs["market_value"]))
+            if not figs["closed"]:
+                all_flows.append((today, figs["market_value"]))
         else:
             xirr_complete = False
         out.append({
@@ -525,10 +545,14 @@ def portfolio():
 def add_holding(body: HoldingIn):
     if body.qty <= 0:
         raise HTTPException(status_code=422, detail="Quantity must be positive")
+    isin = body.isin.strip().upper()
     rowid = db.add_holding(
-        body.isin.strip().upper(), body.qty, body.buy_price,
-        _validated_buy_date(body.buy_date),
+        isin, body.qty, body.buy_price, _validated_buy_date(body.buy_date),
     )
+    # Holdings need their payment schedule for realized income; fetch it now
+    # if it isn't cached (the bond may not be in the NSE snapshot at all).
+    if isin not in _nsdl_complete_isins():
+        _fetch_nsdl_async(isin)
     return {"id": rowid}
 
 

@@ -125,6 +125,48 @@ class HoldingPnl(unittest.TestCase):
                            {"ltp": 1005.0}, flows, True, TODAY)
         self.assertEqual(figs["warnings"], [])
 
+    def test_matured_bond_is_closed_not_unknown(self):
+        # Fully redeemed bond drops out of the NSE feed: the position is
+        # closed, not missing data. P&L is final, XIRR uses actual receipts.
+        flows = [
+            flow("15-06-2025", 80.0),
+            flow("15-06-2026", 80.0),
+            flow("15-06-2026", 1000.0, "Full Redemption"),
+        ]
+        figs = holding_pnl(self.holding(buy_date="2025-06-01"),
+                           None, flows, True, TODAY)
+        self.assertTrue(figs["closed"])
+        self.assertEqual(figs["market_value"], 0.0)
+        self.assertEqual(figs["realized"], 11600.0)  # 2×80 + 1000, ×10 units
+        self.assertIsNone(figs["unrealized"])        # nothing left unrealized
+        self.assertEqual(figs["total_pnl"], 1800.0)  # 11600 − 9800
+        self.assertIsNotNone(figs["xirr"])
+        self.assertNotIn("not in the latest NSE snapshot — no market price",
+                         figs["warnings"])
+
+    def test_future_flows_not_closed(self):
+        # Same shape but redemption still ahead: missing price is a real
+        # data problem, not maturity.
+        flows = [
+            flow("15-06-2025", 80.0),
+            flow("15-06-2027", 80.0),
+            flow("15-06-2027", 1000.0, "Full Redemption"),
+        ]
+        figs = holding_pnl(self.holding(buy_date="2025-06-01"),
+                           None, flows, True, TODAY)
+        self.assertFalse(figs["closed"])
+        self.assertIsNone(figs["market_value"])
+        self.assertIn("not in the latest NSE snapshot — no market price",
+                      figs["warnings"])
+
+    def test_past_flows_without_redemption_not_closed(self):
+        # All cached flows past but no principal event: the schedule is
+        # incomplete, don't declare the position closed.
+        flows = [flow("15-06-2025", 80.0), flow("15-06-2026", 80.0)]
+        figs = holding_pnl(self.holding(buy_date="2025-06-01"),
+                           None, flows, True, TODAY)
+        self.assertFalse(figs["closed"])
+
     def test_amortizer_principal_not_a_loss(self):
         # A price-only P&L view: 300 principal repaid looks like a crash.
         # Here it lands in realized_principal instead.

@@ -1254,6 +1254,7 @@ async function loadPortfolio() {
     <tr class="border-b border-zinc-100 dark:border-zinc-900 hover:bg-zinc-50 dark:hover:bg-zinc-900/60">
       <td class="px-3 py-2 font-medium">
         <span class="font-semibold">${h.symbol || h.isin}</span>${pfWarn(h)}
+        ${h.closed ? '<span class="ml-1 text-[9px] font-semibold uppercase tracking-wider text-emerald-600 dark:text-emerald-400 border border-emerald-600/40 rounded px-1 py-px" data-tip="All payments received — position closed, P&L is final">matured</span>' : ""}
         <div class="text-[11px] text-zinc-500 truncate max-w-[180px]">${h.company_name || h.isin}</div>
       </td>
       <td class="px-3 py-2 text-right">
@@ -1273,7 +1274,7 @@ async function loadPortfolio() {
           ${h.buy_date ? "" : 'data-tip="Set the buy date to unlock income and XIRR"'} />
       </td>
       <td class="px-3 py-2 text-right">${fmt(h.invested, 0)}</td>
-      <td class="px-3 py-2 text-right" ${h.ltp != null ? `data-tip="${h.qty} × ₹${fmt(h.ltp)}"` : ""}>${fmt(h.market_value, 0)}</td>
+      <td class="px-3 py-2 text-right" ${h.closed ? `data-tip="Matured — principal returned, nothing left to sell"` : h.ltp != null ? `data-tip="${h.qty} × ₹${fmt(h.ltp)}"` : ""}>${fmt(h.market_value, 0)}</td>
       <td class="px-3 py-2 text-right ${pnlColor(h.realized)}"
           ${h.realized != null ? `data-tip="Interest ₹${fmt(h.realized_interest, 0)} + principal ₹${fmt(h.realized_principal, 0)} over ${h.receipts} payout${h.receipts === 1 ? "" : "s"}"` : ""}>${h.realized != null ? fmt(h.realized, 0) : "–"}</td>
       <td class="px-3 py-2 text-right ${pnlColor(h.unrealized)}">${signed(h.unrealized)}</td>
