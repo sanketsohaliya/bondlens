@@ -1,0 +1,17 @@
+# Virtual environment
+.venv/
+
+# Python artifacts
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Local data (NSE snapshots, NSDL cache, watchlist)
+bonds.db
+bonds.db-journal
+
+# Editor/OS noise
+.vscode/
+.idea/
+.DS_Store
+nohup.out

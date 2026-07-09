@@ -1,0 +1,1173 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>BondLens</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+tailwind.config = { darkMode: "class" };
+</script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+<style>
+  body { font-family: "Inter", system-ui, sans-serif; }
+  td, th { font-variant-numeric: tabular-nums; }
+  select { color-scheme: dark; }
+  select option { background: rgb(24 24 27); color: rgb(244 244 245); }
+  /* Render the native number steppers in dark, matching the theme. */
+  input[type="number"] { color-scheme: dark; }
+</style>
+</head>
+<body class="bg-white text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100 min-h-screen">
+<div class="max-w-7xl mx-auto px-6 py-8">
+  <header class="flex items-end justify-between mb-8">
+    <div>
+      <h1 class="text-3xl font-extrabold tracking-tight">Bond<span class="text-emerald-600 dark:text-emerald-400">Lens</span></h1>
+      <p class="text-sm text-zinc-500 mt-1">Retail corporate bond scanner for NSE</p>
+    </div>
+    <div class="flex items-center gap-2">
+      <div class="text-right text-xs text-zinc-500" id="nsdlStatus"></div>
+      <button id="nsdlBtn"
+        class="border border-zinc-900 dark:border-zinc-100 font-semibold px-4 py-2 rounded-md hover:bg-zinc-900 hover:text-white dark:hover:bg-zinc-100 dark:hover:text-zinc-900 transition text-sm"
+        data-tip="Downloads each bond's real payment schedule so YTM becomes precise. Runs quietly in the background.">
+        Fetch NSDL data
+      </button>
+      <button id="refreshBtn"
+        class="bg-emerald-600 hover:bg-emerald-500 text-white font-semibold px-4 py-2 rounded-md transition text-sm"
+        data-tip="Pull today's latest bond prices from NSE">
+        Refresh from NSE
+      </button>
+    </div>
+  </header>
+
+  <!-- Preset shortcuts -->
+  <section class="mb-5">
+    <p class="text-[11px] font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500 mb-2">Strategies</p>
+    <div class="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-7 gap-2" id="presets">
+      <button data-preset="ultrasafe" class="preset-chip" data-tip="The safest bonds there are — and easy to buy and sell">Ultra Safe<span>AAA ₹5L+</span></button>
+      <button data-preset="fdbeater" class="preset-chip" data-tip="Earn more than a bank FD, with strong safety ratings">FD Beater<span>≥8% AA-</span></button>
+      <button data-preset="sweet" class="preset-chip" data-tip="High returns at reasonable risk, without locking money away for years">Sweet Spot<span>≥9.5% A- ≤4y</span></button>
+      <button data-preset="parking" class="preset-chip" data-tip="For money you'll want back soon">Cash Parking<span>≤1.5y ≥7.5%</span></button>
+      <button data-preset="highyield" class="preset-chip" data-tip="Maximum returns while staying out of junk territory">High Yield<span>≥10.5% BBB-</span></button>
+      <button data-preset="lockin" class="preset-chip" data-tip="Lock in today's rates for 5+ years — smart if you expect rates to fall">Rate Lock-in<span>≥5y ≥8.5%</span></button>
+      <button data-preset="maturing" class="preset-chip" data-tip="Repays your money within a year">Maturing Soon<span>≤1y</span></button>
+      <button data-preset="monthly" class="preset-chip" data-tip="Pays you interest every month, like rent">Monthly Income<span>≥9% A-</span></button>
+      <button data-preset="value" class="preset-chip" data-tip="Best-paid credit risk on numbers you can trust: big spread over G-Sec, strong rating, exact NSDL schedule, fresh price">Value Hunter<span>≥3% AA-</span></button>
+      <button data-preset="discount" class="preset-chip" data-tip="Trading below face value — part of your return comes as a guaranteed gain at redemption">Discount Bonds<span>&lt; face</span></button>
+      <button data-preset="downgraded" class="preset-chip" data-tip="Rating cut in the last 30 days — credits to avoid, or overreactions to hunt">Downgraded<span>≤30d</span></button>
+      <button data-preset="liquid" class="preset-chip" data-tip="Where the most buying and selling is happening today">Most Traded<span>₹10L+</span></button>
+      <button data-preset="watchlist" class="preset-chip" data-tip="Your starred bonds">★ Watchlist</button>
+      <button data-preset="clear" class="preset-chip chip-clear" data-tip="Show everything">Clear</button>
+    </div>
+  </section>
+
+  <!-- Manual filters (collapsed by default) -->
+  <section class="border border-zinc-200 dark:border-zinc-800 rounded-lg mb-8">
+    <button id="filtersToggle" class="w-full flex items-center justify-between gap-4 px-4 py-2.5 text-left rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors">
+      <span class="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500 shrink-0">
+        <svg id="filtersChevron" class="transition-transform" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+        Filters <span id="filtersCount" class="normal-case font-medium text-zinc-500"></span>
+      </span>
+      <div id="activeFilters" class="min-w-0 truncate"></div>
+    </button>
+    <div id="filtersBody" class="hidden px-4 pb-4 pt-3 border-t border-zinc-200 dark:border-zinc-800">
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div>
+        <label for="fMinRating" class="block text-[10px] font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500 mb-1.5">Min rating (quality floor)</label>
+        <select id="fMinRating"
+          class="w-full bg-transparent border border-zinc-300 dark:border-zinc-700 rounded-md px-2.5 py-1.5 text-xs font-medium focus:outline-none focus:border-emerald-500">
+          <option value="">All ratings</option>
+          <option value="AAA">AAA only</option>
+          <option value="AA+">AA+ or better</option>
+          <option value="AA">AA or better</option>
+          <option value="AA-">AA- or better</option>
+          <option value="A+">A+ or better</option>
+          <option value="A">A or better</option>
+          <option value="A-">A- or better</option>
+          <option value="BBB-">Investment grade (BBB-)</option>
+        </select>
+      </div>
+      <div>
+        <label for="fMinYtm" class="block text-[10px] font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500 mb-1.5">Min YTM %</label>
+        <input id="fMinYtm" type="number" step="0.5" min="0" placeholder="No minimum"
+          class="w-full bg-transparent border border-zinc-300 dark:border-zinc-700 rounded-md px-2.5 py-1.5 text-xs font-medium focus:outline-none focus:border-emerald-500" />
+      </div>
+      <div>
+        <label for="fMinYears" class="block text-[10px] font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500 mb-1.5">Min maturity (years)</label>
+        <input id="fMinYears" type="number" step="0.5" min="0" placeholder="No minimum"
+          class="w-full bg-transparent border border-zinc-300 dark:border-zinc-700 rounded-md px-2.5 py-1.5 text-xs font-medium focus:outline-none focus:border-emerald-500" />
+      </div>
+      <div>
+        <label for="fMaxYears" class="block text-[10px] font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500 mb-1.5">Max maturity (years)</label>
+        <input id="fMaxYears" type="number" step="0.5" min="0" placeholder="No limit"
+          class="w-full bg-transparent border border-zinc-300 dark:border-zinc-700 rounded-md px-2.5 py-1.5 text-xs font-medium focus:outline-none focus:border-emerald-500" />
+      </div>
+      <div>
+        <label for="fMinSpread" class="block text-[10px] font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500 mb-1.5" data-tip="Extra yield over a government bond of the same maturity — filters by reward per unit of risk, not raw yield">Min spread %</label>
+        <input id="fMinSpread" type="number" step="0.5" min="0" placeholder="No minimum"
+          class="w-full bg-transparent border border-zinc-300 dark:border-zinc-700 rounded-md px-2.5 py-1.5 text-xs font-medium focus:outline-none focus:border-emerald-500" />
+      </div>
+      <div>
+        <label for="fMaxLtp" class="block text-[10px] font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500 mb-1.5" data-tip="Hide bonds costing more per unit than you want to put in — some trade at ₹1 lakh+ a piece">Ticket size (max ₹/unit)</label>
+        <select id="fMaxLtp"
+          class="w-full bg-transparent border border-zinc-300 dark:border-zinc-700 rounded-md px-2.5 py-1.5 text-xs font-medium focus:outline-none focus:border-emerald-500">
+          <option value="">Any price</option>
+          <option value="500">≤ ₹500</option>
+          <option value="1500">≤ ₹1,500</option>
+          <option value="12000">≤ ₹12,000</option>
+          <option value="50000">≤ ₹50,000</option>
+          <option value="120000">≤ ₹1.2 lakh</option>
+          <option value="1100000">≤ ₹11 lakh</option>
+        </select>
+      </div>
+      <div>
+        <label for="fFreq" class="block text-[10px] font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500 mb-1.5">Pays interest</label>
+        <select id="fFreq"
+          class="w-full bg-transparent border border-zinc-300 dark:border-zinc-700 rounded-md px-2.5 py-1.5 text-xs font-medium focus:outline-none focus:border-emerald-500">
+          <option value="">Any schedule</option>
+          <option value="monthly">Monthly</option>
+          <option value="quarterly">Quarterly</option>
+          <option value="semi-annual">Half-yearly</option>
+          <option value="annual">Yearly</option>
+          <option value="cumulative">At maturity</option>
+        </select>
+      </div>
+      <div>
+        <label for="fMinTrdVal" class="block text-[10px] font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500 mb-1.5">Min traded today</label>
+        <select id="fMinTrdVal"
+          class="w-full bg-transparent border border-zinc-300 dark:border-zinc-700 rounded-md px-2.5 py-1.5 text-xs font-medium focus:outline-none focus:border-emerald-500">
+          <option value="">Any amount</option>
+          <option value="10000">₹10,000+</option>
+          <option value="25000">₹25,000+</option>
+          <option value="50000">₹50,000+</option>
+          <option value="100000">₹1 lakh+</option>
+          <option value="200000">₹2 lakh+</option>
+          <option value="300000">₹3 lakh+</option>
+          <option value="500000">₹5 lakh+</option>
+          <option value="1000000">₹10 lakh+</option>
+          <option value="5000000">₹50 lakh+</option>
+          <option value="10000000">₹1 crore+</option>
+        </select>
+      </div>
+    </div>
+    </div>
+  </section>
+
+  <style>
+    .preset-chip {
+      display: inline-flex;
+      align-items: baseline;
+      gap: 0.35rem;
+      background: transparent;
+      border: 1px solid rgb(212 212 216);
+      border-radius: 0.375rem;
+      padding: 0.3rem 0.6rem;
+      font-size: 0.75rem;
+      font-weight: 600;
+      transition: all 0.15s;
+    }
+    .preset-chip span {
+      font-weight: 500;
+      font-size: 0.65rem;
+      color: rgb(161 161 170);
+      border-left: 1px solid rgb(228 228 231);
+      padding-left: 0.5rem;
+    }
+    .dark .preset-chip span { border-left-color: rgb(63 63 70); }
+    .preset-chip.active span { border-left-color: rgb(255 255 255 / 0.35); }
+    .dark .preset-chip.active span { border-left-color: rgb(9 9 11 / 0.35); }
+    .preset-chip:hover { border-color: rgb(5 150 105); color: rgb(5 150 105); }
+    .preset-chip.active { background: rgb(5 150 105); border-color: rgb(5 150 105); color: white; }
+    .preset-chip.active span { color: rgb(167 243 208); }
+    .dark .preset-chip { border-color: rgb(63 63 70); }
+    .dark .preset-chip:hover { border-color: rgb(52 211 153); color: rgb(52 211 153); }
+    .dark .preset-chip.active { background: rgb(16 185 129); border-color: rgb(16 185 129); color: rgb(9 9 11); }
+    .dark .preset-chip.active span { color: rgb(6 78 59); }
+    .chip-clear { color: rgb(220 38 38); }
+    .chip-clear:hover { border-color: rgb(220 38 38); color: rgb(220 38 38); }
+    .dark .chip-clear { color: rgb(248 113 113); }
+    .dark .chip-clear:hover { border-color: rgb(248 113 113); color: rgb(248 113 113); }
+    #tooltip {
+      position: fixed;
+      z-index: 50;
+      max-width: 280px;
+      background: rgb(24 24 27);
+      border-radius: 0.375rem;
+      padding: 0.5rem 0.75rem;
+      font-size: 0.75rem;
+      line-height: 1.45;
+      color: rgb(244 244 245);
+      box-shadow: 0 8px 24px rgb(0 0 0 / 0.25);
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.12s;
+      text-transform: none;
+      letter-spacing: normal;
+      font-weight: 450;
+      text-align: left;
+    }
+    .dark #tooltip {
+      background: rgb(244 244 245);
+      color: rgb(24 24 27);
+    }
+    .scroll-slim { scrollbar-width: thin; scrollbar-color: rgb(82 82 91) transparent; }
+    .scroll-slim::-webkit-scrollbar { width: 5px; }
+    .scroll-slim::-webkit-scrollbar-thumb { background: rgb(82 82 91); border-radius: 9999px; }
+    .scroll-slim::-webkit-scrollbar-track { background: transparent; }
+    .view-btn {
+      padding: 0.35rem 0.9rem;
+      font-size: 0.8rem;
+      font-weight: 600;
+      border: 1px solid rgb(212 212 216);
+      color: rgb(113 113 122);
+      transition: all 0.15s;
+    }
+    .view-btn:first-child { border-radius: 0.375rem 0 0 0.375rem; }
+    .view-btn:last-child { border-radius: 0 0.375rem 0.375rem 0; border-left: 0; }
+    .view-btn.active { background: rgb(5 150 105); border-color: rgb(5 150 105); color: white; }
+    .dark .view-btn { border-color: rgb(63 63 70); }
+    .dark .view-btn.active { background: rgb(16 185 129); border-color: rgb(16 185 129); color: rgb(9 9 11); }
+    #presets .preset-chip { width: 100%; justify-content: center; white-space: nowrap; }
+  </style>
+
+  <div class="relative flex items-center justify-between gap-3 mb-2" id="viewToggle">
+    <div class="relative flex-1 max-w-xs">
+      <svg class="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400 dark:text-zinc-500 pointer-events-none" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+      <input id="fSearch" type="text" placeholder="Search company, symbol, ISIN, rating…" autocomplete="off" spellcheck="false"
+        class="w-full bg-transparent border border-zinc-300 dark:border-zinc-700 rounded-md pl-9 pr-8 py-1.5 text-sm font-medium focus:outline-none focus:border-emerald-500" />
+      <button id="fSearchClear" class="hidden absolute right-2 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-200 text-sm leading-none px-1" data-tip="Clear search">×</button>
+    </div>
+    <p class="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 max-w-[45%] truncate text-center text-sm text-zinc-500 pointer-events-none" id="status">No data loaded yet.</p>
+    <div class="flex">
+      <button data-view="table" class="view-btn active">Table</button>
+      <button data-view="chart" class="view-btn" data-tip="Yield vs maturity for the filtered bonds — spot the ones paying above the curve">Chart</button>
+    </div>
+  </div>
+
+  <section id="chartWrap" class="hidden border border-zinc-200 dark:border-zinc-800 rounded-lg p-4">
+    <div class="h-[440px]"><canvas id="scatterChart"></canvas></div>
+    <div id="chartLegend" class="flex flex-wrap items-center gap-x-5 gap-y-1 mt-3 text-xs text-zinc-500"></div>
+  </section>
+
+  <div class="overflow-x-auto" id="tableWrap">
+    <table class="w-full text-sm">
+      <thead class="text-[11px] font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500 border-b-2 border-zinc-900 dark:border-zinc-100">
+        <tr>
+          <th class="px-3 py-3 text-left" data-tip="Star a bond to keep an eye on it">★</th>
+          <th class="px-3 py-3 text-left cursor-pointer" data-sort="symbol" data-tip="The bond's name on NSE — click one to see it on NSE's site">Symbol</th>
+          <th class="px-3 py-3 text-left cursor-pointer" data-sort="rating_rank" data-tip="Safety grade: AAA is safest, below BBB- is risky. Click one for the full report">Rating</th>
+          <th class="px-3 py-3 text-right cursor-pointer" data-sort="ytm" data-tip="Your real yearly return if you buy at today's price and hold to maturity — the number to compare with an FD rate">YTM %</th>
+          <th class="px-3 py-3 text-right cursor-pointer" data-sort="current_yield" data-tip="Cash interest you earn per year at today's price — ignores any gain or loss at maturity">Cur Yld %</th>
+          <th class="px-3 py-3 text-right cursor-pointer" data-sort="spread" data-tip="Extra yield over a government bond of the same maturity — your reward for taking credit risk">Spread</th>
+          <th class="px-3 py-3 text-right cursor-pointer" data-sort="duration" data-tip="Rate risk: if market yields rise 1%, the price falls about this many percent">Dur</th>
+          <th class="px-3 py-3 text-right cursor-pointer" data-sort="ltp" data-tip="Last traded price — can be days old for quiet bonds. Click a price to trade on Zerodha">LTP</th>
+          <th class="px-3 py-3 text-right cursor-pointer" data-sort="years_to_maturity" data-tip="When you get your money back">Maturity</th>
+          <th class="px-3 py-3 text-right cursor-pointer" data-sort="traded_value" data-tip="Money traded today — more means easier to buy and sell">Traded</th>
+        </tr>
+      </thead>
+      <tbody id="tbody"></tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+let bonds = [];
+let sortKey = "traded_value";
+let sortDesc = true;
+
+const fmt = (v, d = 2) => v == null ? "–" : Number(v).toLocaleString("en-IN", { maximumFractionDigits: d });
+
+// ₹1,46,32,340 -> ₹1.46 Cr, ₹14,63,234 -> ₹14.6 L
+const fmtInr = (v) => {
+  if (v == null) return "–";
+  if (v >= 1e7) return `₹${(v / 1e7).toFixed(2)} Cr`;
+  if (v >= 1e5) return `₹${(v / 1e5).toFixed(1)} L`;
+  return `₹${Number(v).toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
+};
+
+const FREQ_LABELS = {
+  monthly: "Monthly", quarterly: "Quarterly", "semi-annual": "Half-yearly",
+  annual: "Yearly", cumulative: "At maturity", other: "Varies",
+};
+
+// "03-Nov-2028" -> "Nov 2028" with relative time underneath
+const fmtMaturity = (b) => {
+  if (!b.maturity_date) return "–";
+  const parts = b.maturity_date.split("-");
+  const short = parts.length === 3 ? `${parts[1]} ${parts[2]}` : b.maturity_date;
+  const yrs = b.years_to_maturity;
+  const rel = yrs == null ? "" : yrs < 1 ? `${Math.round(yrs * 12)} mo` : `${yrs.toFixed(1)} yr`;
+  return `<div>${short}</div><div class="text-xs text-zinc-500">${rel}</div>`;
+};
+
+const STALE_DAYS = 3;
+const isStale = (b) => b.days_since_traded != null && b.days_since_traded >= STALE_DAYS;
+
+const ratingFlag = (b) => {
+  if (b.rating_change === "up") {
+    return ` <span class="text-emerald-600 dark:text-emerald-400 text-xs" data-tip="Upgraded from ${fmtRating(b.rating_prev)} on ${b.rating_changed_at}">▲</span>`;
+  }
+  if (b.rating_change === "down") {
+    return ` <span class="text-rose-600 dark:text-rose-400 text-xs" data-tip="Downgraded from ${fmtRating(b.rating_prev)} on ${b.rating_changed_at} — read the rationale before buying">▼</span>`;
+  }
+  return "";
+};
+
+// NSE's raw rating string has artifacts: trailing slashes when the outlook is
+// missing ("AAA/") and verbatim duplicates from multiple agencies
+// ("AAA/Stable, AAA/Stable"). Tidy for display only — filters use the raw value.
+const fmtRating = (raw) => {
+  if (!raw) return null;
+  const parts = raw.split(",").map(p => p.trim().replace(/\/+$/, "")).filter(Boolean);
+  return [...new Set(parts)].join(", ") || null;
+};
+
+const nsdlUrl = (b) =>
+  `https://www.indiabondinfo.nsdl.com/CBDServices/#/instrumentDetails/${b.isin}`;
+
+const nseUrl = (b) =>
+  `https://www.nseindia.com/get-quotes/bonds?symbol=${encodeURIComponent(b.symbol)}&series=${encodeURIComponent(b.series || "")}`;
+
+// Rating agencies rarely expose stable deep links per instrument, so link to a
+// targeted search for the agency's rating rationale on this ISIN.
+const AGENCY_NAMES = {
+  CRISIL: "CRISIL", ICRA: "ICRA", CARE: "CARE Ratings", BRCK: "Brickwork",
+  ACUITE: "Acuite", IRRPL: "India Ratings", IVRPL: "Infomerics",
+};
+const ratingUrl = (b) => {
+  const agency = (b.rating_agency || "").split(",")[0].trim();
+  const name = AGENCY_NAMES[agency.toUpperCase()] || agency;
+  const q = encodeURIComponent(`${name} rating rationale "${b.isin}" OR "${b.symbol}"`);
+  return `https://www.google.com/search?q=${q}`;
+};
+
+function updateSortMarkers() {
+  document.querySelectorAll("th[data-sort]").forEach(th => {
+    if (!th.dataset.label) th.dataset.label = th.textContent.trim();
+    th.innerHTML = th.dataset.sort === sortKey
+      ? `${th.dataset.label} <span class="text-emerald-600 dark:text-emerald-400">${sortDesc ? "\u25bc" : "\u25b2"}</span>`
+      : th.dataset.label;
+  });
+}
+
+function render() {
+  updateSortMarkers();
+  const rows = bonds.filter(searchMatch).sort((a, b) => {
+    const av = a[sortKey], bv = b[sortKey];
+    if (av == null) return 1;
+    if (bv == null) return -1;
+    if (typeof av === "string") return sortDesc ? bv.localeCompare(av) : av.localeCompare(bv);
+    return sortDesc ? bv - av : av - bv;
+  });
+  document.getElementById("tbody").innerHTML = rows.map(b => `
+    <tr data-isin="${b.isin || ""}" class="border-b border-zinc-100 dark:border-zinc-900 hover:bg-zinc-50 dark:hover:bg-zinc-900/60 cursor-pointer">
+      <td class="px-3 py-2 cursor-pointer select-none ${b.in_watchlist ? "text-amber-500" : "text-zinc-300 dark:text-zinc-600 hover:text-amber-500"}" onclick="toggleWatch('${b.isin}', ${b.in_watchlist})">
+        ${b.in_watchlist ? "★" : "☆"}
+      </td>
+      <td class="px-3 py-2 font-medium">
+        ${b.symbol
+          ? `<span class="inline-flex items-center gap-1.5"><a href="${nseUrl(b)}" target="_blank" rel="noopener"
+               class="font-semibold hover:text-emerald-600 dark:hover:text-emerald-400 underline decoration-zinc-300 dark:decoration-zinc-700 underline-offset-2"
+               data-tip="See this bond on NSE's website">${b.symbol}</a><button onclick="copyText(this, '${b.symbol}')" data-tip="Copy symbol"
+               class="text-zinc-400 dark:text-zinc-600 hover:text-emerald-600 dark:hover:text-emerald-400 transition">${COPY_ICON}</button></span>`
+          : "–"}
+        ${b.company_name ? `<div class="text-[11px] text-zinc-500 truncate max-w-[180px]" title="${b.company_name}">${b.company_name}</div>` : ""}
+      </td>
+      <td class="px-3 py-2">
+        ${b.credit_rating
+          ? `<a href="${ratingUrl(b)}" target="_blank" rel="noopener"
+               class="hover:text-emerald-600 dark:hover:text-emerald-400 underline decoration-dotted decoration-zinc-300 dark:decoration-zinc-700 underline-offset-2"
+               data-tip="Find the full ${(b.rating_agency || "agency")} report on this bond">${fmtRating(b.credit_rating)}</a>`
+          : "–"}${ratingFlag(b)}
+      </td>
+      <td class="px-3 py-2 text-right font-bold ${b.ytm >= 10 ? "text-emerald-600 dark:text-emerald-400" : ""}">${fmt(b.ytm)}</td>
+      <td class="px-3 py-2 text-right text-zinc-500">${fmt(b.current_yield)}</td>
+      <td class="px-3 py-2 text-right ${b.spread != null && b.spread >= 2 ? "text-emerald-600 dark:text-emerald-400" : "text-zinc-500"}">${b.spread != null ? (b.spread > 0 ? "+" : "") + fmt(b.spread) : "–"}</td>
+      <td class="px-3 py-2 text-right text-zinc-500">${fmt(b.duration, 1)}</td>
+      <td class="px-3 py-2 text-right ${isStale(b) ? "text-amber-600/80 dark:text-amber-500/80" : ""}"
+          ${isStale(b) ? `data-tip="No trades seen for ${b.days_since_traded} days — this price and its YTM may be outdated"` : ""}>
+        ${b.kite_url && b.ltp != null
+          ? `<a href="${b.kite_url}" target="_blank" rel="noopener"
+               class="hover:text-emerald-600 dark:hover:text-emerald-400 underline decoration-zinc-300 dark:decoration-zinc-700 underline-offset-2"
+               ${isStale(b) ? "" : `data-tip="Trade this bond on Zerodha Kite"`}>${fmt(b.ltp)}</a>`
+          : fmt(b.ltp)}${isStale(b) ? ' <span class="text-[10px] align-middle">⚠</span>' : ""}
+      </td>
+      <td class="px-3 py-2 text-right">
+        ${b.isin && b.maturity_date
+          ? `<a href="${nsdlUrl(b)}" target="_blank" rel="noopener"
+               class="hover:text-emerald-600 dark:hover:text-emerald-400"
+               data-tip="Redemption details on NSDL">${fmtMaturity(b)}</a>`
+          : fmtMaturity(b)}
+      </td>
+      <td class="px-3 py-2 text-right" data-tip="${b.traded_value == null ? "" : "Exactly ₹" + Number(b.traded_value).toLocaleString("en-IN", { maximumFractionDigits: 0 })}">${fmtInr(b.traded_value)}</td>
+    </tr>`).join("");
+  if (expandedIsin) {
+    const tr = document.querySelector(`tr[data-isin="${expandedIsin}"]`);
+    if (tr) mountDetail(tr, expandedIsin); else expandedIsin = null;
+  }
+  let statusMsg = `${rows.length} bonds shown${searchTerm ? ` for “${searchTerm}”` : ""}.`;
+  if (searchTerm && allBonds) {
+    const hidden = allBonds.filter(searchMatch).length - rows.length;
+    if (hidden > 0) statusMsg += ` ${hidden} more match but are hidden by your filters — hit Clear to see everything.`;
+  }
+  document.getElementById("status").textContent = statusMsg;
+  if (viewMode === "chart") renderChart();
+}
+
+// ---- Search -----------------------------------------------------------------
+let searchTerm = "";
+
+// Fuzzy: every query token must be a substring of the haystack, OR appear
+// as an in-order character subsequence of some haystack word (so "shrm"
+// finds Shriram, "aditya cap" finds Aditya Birla Capital).
+function fuzzyToken(token, haystack, words) {
+  if (haystack.includes(token)) return true;
+  return words.some(w => {
+    let i = 0;
+    for (const ch of w) if (ch === token[i] && ++i === token.length) return true;
+    return false;
+  });
+}
+
+function searchMatch(b) {
+  if (!searchTerm) return true;
+  const haystack = [b.symbol, b.company_name, b.isin, b.credit_rating, b.rating_agency]
+    .filter(Boolean).join(" ").toUpperCase();
+  const words = haystack.split(/[^A-Z0-9]+/).filter(Boolean);
+  return searchTerm.toUpperCase().split(/\s+/).filter(Boolean)
+    .every(t => fuzzyToken(t, haystack, words));
+}
+
+// Unfiltered universe, fetched lazily on first search so we can tell the
+// user when matches exist but are hidden by the active filters.
+let allBonds = null;
+async function ensureAllBonds() {
+  if (allBonds) return;
+  try { allBonds = (await (await fetch("/api/bonds")).json()).bonds; }
+  catch { allBonds = null; }
+}
+
+const searchInput = document.getElementById("fSearch");
+let searchDebounce;
+searchInput.addEventListener("input", () => {
+  clearTimeout(searchDebounce);
+  searchDebounce = setTimeout(async () => {
+    searchTerm = searchInput.value.trim();
+    document.getElementById("fSearchClear").classList.toggle("hidden", !searchTerm);
+    if (searchTerm) await ensureAllBonds();
+    render();
+  }, 150);
+});
+searchInput.addEventListener("keydown", e => {
+  if (e.key === "Escape") { searchInput.value = ""; searchInput.dispatchEvent(new Event("input")); }
+});
+document.getElementById("fSearchClear").addEventListener("click", () => {
+  searchInput.value = "";
+  searchInput.dispatchEvent(new Event("input"));
+  searchInput.focus();
+});
+document.addEventListener("keydown", e => {
+  if (e.key === "/" && document.activeElement.tagName !== "INPUT" && document.activeElement.tagName !== "SELECT") {
+    e.preventDefault();
+    searchInput.focus();
+  }
+});
+
+// ---- Chart view -------------------------------------------------------------
+let viewMode = "table";
+let chart = null;
+let gsecCurvePts = null;
+
+const BUCKETS = [
+  { name: "AAA", color: "#34d399", test: r => r === 0 },
+  { name: "AA", color: "#38bdf8", test: r => r >= 1 && r <= 3 },
+  { name: "A", color: "#fbbf24", test: r => r >= 4 && r <= 6 },
+  { name: "BBB & below", color: "#fb7185", test: r => r >= 7 },
+  { name: "Unrated", color: "#71717a", test: r => r == null },
+];
+const bucketOf = (rank) => BUCKETS.find(b => b.test(rank ?? null)) || BUCKETS[4];
+
+document.querySelectorAll("#viewToggle .view-btn").forEach(btn =>
+  btn.addEventListener("click", () => {
+    viewMode = btn.dataset.view;
+    document.querySelectorAll("#viewToggle .view-btn").forEach(b => b.classList.toggle("active", b === btn));
+    document.getElementById("tableWrap").classList.toggle("hidden", viewMode !== "table");
+    document.getElementById("chartWrap").classList.toggle("hidden", viewMode !== "chart");
+    if (viewMode === "chart") renderChart();
+  })
+);
+
+async function renderChart() {
+  if (!gsecCurvePts) {
+    try { gsecCurvePts = (await (await fetch("/api/gsec")).json()).curve; }
+    catch { gsecCurvePts = []; }
+  }
+  const pts = bonds.filter(searchMatch)
+    .filter(b => b.ytm != null && b.years_to_maturity != null && b.ytm < 30);
+  const maxTrd = Math.max(...pts.map(b => b.traded_value || 0), 1);
+  const radius = b => 3 + 7 * Math.sqrt((b.traded_value || 0) / maxTrd);
+  // Scale the chart to the bonds on screen; the G-Sec curve is context, not
+  // data — trim it to the same maturity range so it can't stretch the axes.
+  const maxX = pts.length
+    ? Math.min(Math.max(...pts.map(b => b.years_to_maturity)) * 1.15 + 0.5, 60)
+    : 10;
+  const curvePts = gsecCurvePts.filter(p => p.tenor <= maxX);
+  const nextPt = gsecCurvePts.find(p => p.tenor > maxX);
+  if (nextPt && curvePts.length) {
+    const last = curvePts[curvePts.length - 1];
+    const frac = (maxX - last.tenor) / (nextPt.tenor - last.tenor);
+    curvePts.push({ tenor: maxX,
+                    yield: +(last["yield"] + (nextPt["yield"] - last["yield"]) * frac).toFixed(2) });
+  }
+  if (chart) chart.destroy();
+  chart = new Chart(document.getElementById("scatterChart"), {
+    type: "scatter",
+    data: { datasets: [
+      {
+        data: pts.map(b => ({ x: b.years_to_maturity, y: b.ytm })),
+        pointRadius: pts.map(radius),
+        pointHoverRadius: pts.map(b => radius(b) + 2),
+        pointBackgroundColor: pts.map(b =>
+          isStale(b) ? "transparent" : bucketOf(b.rating_rank).color + "b3"),
+        pointBorderColor: pts.map(b => bucketOf(b.rating_rank).color + "80"),
+        pointBorderWidth: pts.map(b => isStale(b) ? 1.5 : 0),
+      },
+      {
+        type: "line",
+        data: curvePts.map(p => ({ x: p.tenor, y: p["yield"] })),
+        borderColor: "#71717a",
+        borderDash: [6, 4],
+        borderWidth: 1.5,
+        pointRadius: 0,
+        fill: false,
+        tension: 0.3,
+      },
+    ]},
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: false,
+      scales: {
+        x: { title: { display: true, text: "Years to maturity", color: "#71717a" },
+             min: 0, max: Math.ceil(maxX),
+             grid: { color: "rgba(113,113,122,0.15)" }, ticks: { color: "#71717a" } },
+        y: { title: { display: true, text: "YTM %", color: "#71717a" },
+             grid: { color: "rgba(113,113,122,0.15)" }, ticks: { color: "#71717a" } },
+      },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          displayColors: false,
+          callbacks: {
+            label: (ctx) => {
+              if (ctx.datasetIndex === 1) return `G-Sec ${ctx.parsed.y}% at ${ctx.parsed.x}y`;
+              const b = pts[ctx.dataIndex];
+              return [
+                `${b.symbol} — ${fmtRating(b.credit_rating) || "unrated"}`,
+                `YTM ${fmt(b.ytm)}%${b.spread != null ? ` · spread +${fmt(b.spread)}%` : ""}`,
+                isStale(b)
+                  ? `stale — no trades for ${b.days_since_traded} days`
+                  : `${fmtInr(b.traded_value)} traded today`,
+              ];
+            },
+          },
+        },
+      },
+      onClick: (evt, els) => {
+        const el = els.find(e => e.datasetIndex === 0);
+        if (!el) return;
+        const b = pts[el.index];
+        document.querySelector('#viewToggle .view-btn[data-view="table"]').click();
+        expandedIsin = null;
+        const tr = document.querySelector(`tr[data-isin="${b.isin}"]`);
+        if (tr) {
+          toggleDetail(tr, b.isin);
+          tr.scrollIntoView({ block: "center", behavior: "smooth" });
+        }
+      },
+    },
+  });
+  document.getElementById("chartLegend").innerHTML =
+    BUCKETS.map(b => `<span class="inline-flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full" style="background:${b.color}"></span>${b.name}</span>`).join("") +
+    `<span class="inline-flex items-center gap-1.5"><span class="w-6 border-t border-dashed border-zinc-500"></span>G-Sec curve</span>` +
+    `<span>dot size = today's liquidity · hollow = stale price · click a dot to open the bond</span>`;
+}
+
+// ---- Expandable detail row -------------------------------------------------
+let expandedIsin = null;
+const detailCache = {};
+const COLS = 10;
+
+function mountDetail(tr, isin) {
+  const dr = document.createElement("tr");
+  dr.id = "detailRow";
+  dr.innerHTML = detailCache[isin]
+    ? renderDetail(detailCache[isin])
+    : `<td colspan="${COLS}" class="px-4 py-5 text-sm text-zinc-500">Loading…</td>`;
+  tr.after(dr);
+  if (detailCache[isin]) updateInvest();
+}
+
+async function toggleDetail(tr, isin) {
+  const existing = document.getElementById("detailRow");
+  if (existing) existing.remove();
+  whatifDetail = null;
+  if (expandedIsin === isin) { expandedIsin = null; return; }
+  expandedIsin = isin;
+  mountDetail(tr, isin);
+  if (!detailCache[isin]) {
+    try {
+      const [dres, hres] = await Promise.all([
+        fetch(`/api/bonds/${isin}/detail`),
+        fetch(`/api/bonds/${isin}/history`),
+      ]);
+      const d = dres.ok ? await dres.json() : null;
+      if (d) d.history = hres.ok ? (await hres.json()).history : [];
+      detailCache[isin] = d;
+    } catch {
+      detailCache[isin] = null;
+    }
+    const dr = document.getElementById("detailRow");
+    if (expandedIsin === isin && dr) {
+      dr.innerHTML = detailCache[isin]
+        ? renderDetail(detailCache[isin])
+        : `<td colspan="${COLS}" class="px-4 py-5 text-sm text-rose-400">Could not load details.</td>`;
+      if (detailCache[isin]) updateInvest();
+    }
+  }
+}
+
+document.getElementById("tbody").addEventListener("click", (e) => {
+  if (e.target.closest("a, button, [onclick]")) return;
+  const tr = e.target.closest("tr[data-isin]");
+  if (tr && tr.dataset.isin) toggleDetail(tr, tr.dataset.isin);
+});
+
+let whatifDetail = null;
+
+function currentDetail() {
+  return (whatifDetail && whatifDetail.isin === expandedIsin)
+    ? whatifDetail.data : detailCache[expandedIsin];
+}
+
+async function applyWhatIf(isin) {
+  const inp = document.getElementById("whatifPrice");
+  const v = parseFloat(inp && inp.value);
+  if (!v || v <= 0 || expandedIsin !== isin) return;
+  const investVal = document.getElementById("investAmt")?.value;
+  try {
+    const res = await fetch(`/api/bonds/${isin}/detail?price=${v}`);
+    if (!res.ok) return;
+    const d = await res.json();
+    d.history = detailCache[isin]?.history || [];
+    whatifDetail = { isin, data: d };
+    const dr = document.getElementById("detailRow");
+    if (expandedIsin === isin && dr) {
+      dr.innerHTML = renderDetail(d);
+      const amt = document.getElementById("investAmt");
+      if (amt && investVal) amt.value = investVal;
+      updateInvest();
+    }
+  } catch { /* leave the drawer as-is */ }
+}
+
+function resetWhatIf(isin) {
+  whatifDetail = null;
+  const dr = document.getElementById("detailRow");
+  if (expandedIsin === isin && dr && detailCache[isin]) {
+    dr.innerHTML = renderDetail(detailCache[isin]);
+    updateInvest();
+  }
+}
+
+const figHtml = (label, value, tip) => `
+  <div ${tip ? `data-tip="${tip}"` : ""}>
+    <div class="text-[10px] font-semibold uppercase tracking-wider text-zinc-500 mb-0.5">${label}</div>
+    <div class="font-semibold">${value}</div>
+  </div>`;
+
+function renderDetail(d) {
+  const hasFlows = d.nsdl_status === "ok" && d.cashflows && d.cashflows.length;
+  const chg = d.pct_change;
+  const wi = v => d.custom_price ? `<span class="text-amber-600 dark:text-amber-500">${v}</span>` : v;
+  const figures = `
+    <div class="grid grid-cols-2 gap-x-8 gap-y-4 content-start">
+      <div class="col-span-2">
+        <div class="text-[10px] font-semibold uppercase tracking-wider text-zinc-500 mb-0.5">ISIN</div>
+        <div class="font-semibold inline-flex items-center gap-1.5">
+          <a href="${nsdlUrl(d)}" target="_blank" rel="noopener"
+             class="hover:text-emerald-600 dark:hover:text-emerald-400 underline decoration-zinc-300 dark:decoration-zinc-700 underline-offset-2"
+             data-tip="Official bond terms and payment schedule on NSDL">${d.isin}</a>
+          <button onclick="copyText(this, '${d.isin}')" data-tip="Copy ISIN"
+             class="text-zinc-400 dark:text-zinc-600 hover:text-emerald-600 dark:hover:text-emerald-400 transition">${COPY_ICON}</button>
+        </div>
+      </div>
+      ${figHtml("Exact YTM", wi(d.ytm_exact != null ? fmt(d.ytm_exact) + "%" : "–"),
+        "Your true annual return, computed from the bond's real payment schedule")}
+      ${figHtml("Quick estimate", wi(d.ytm_approx != null ? fmt(d.ytm_approx) + "%" : "–"),
+        "Rough YTM assuming one annual coupon — shown so you can see how far off it was")}
+      ${figHtml(d.custom_price ? "Your price (what-if)" : "Last price", wi("₹" + fmt(d.ltp)),
+        d.custom_price
+          ? "Hypothetical purchase price you entered — all highlighted figures are recomputed at this price"
+          : "Traded price per unit — includes interest accrued so far")}
+      ${figHtml("Face value", "₹" + fmt(d.face_value),
+        "The principal repaid per unit at maturity")}
+      ${figHtml("Coupon", d.coupon != null ? fmt(d.coupon) + "% of face" : "–",
+        "Interest rate on face value — not on the price you pay")}
+      ${figHtml("Today's change", chg != null
+        ? `<span class="${chg > 0 ? "text-emerald-600 dark:text-emerald-400" : chg < 0 ? "text-rose-600 dark:text-rose-400" : ""}">${chg > 0 ? "+" : ""}${fmt(chg)}%</span>`
+        : "–",
+        "Price move vs yesterday's close")}
+      ${figHtml("Pays", d.frequency_text || "–",
+        "Payment frequency as published by NSDL")}
+      ${figHtml("Day count", d.coupon_basis || "–",
+        "Interest type as per NSDL")}
+      ${figHtml("Next payment", d.next_payment
+        ? `₹${fmt(d.next_payment.amount)} <span class="text-zinc-500 font-normal">on ${d.next_payment.due_date}</span>`
+        : "–",
+        "What you'd receive per unit on the next payout date")}
+      ${figHtml("All future payouts / unit", hasFlows ? "₹" + fmt(d.future_total_per_unit) : "–",
+        "Every remaining interest + principal payment added up, per unit")}
+      ${figHtml("Accrued interest", d.accrued != null
+        ? `₹${fmt(d.accrued)} <span class="text-zinc-500 font-normal">included in price</span>`
+        : "–",
+        "Interest earned since the last coupon — you pay it now, get it back at the next payout")}
+      ${figHtml("Clean price", wi(d.clean_price != null ? "₹" + fmt(d.clean_price) : "–"),
+        "Price with accrued interest stripped out — fair to compare against face value")}
+      ${figHtml("Spread vs G-Sec", d.spread != null
+        ? wi(`${d.spread > 0 ? "+" : ""}${fmt(d.spread)}%`) + ` <span class="text-zinc-500 font-normal">over ${fmt(d.gsec_yield)}%</span>`
+        : "–",
+        "Extra yield vs a government bond maturing around the same time — what you're paid for the credit risk")}
+      ${figHtml("Duration", wi(d.duration != null ? fmt(d.duration, 1) + " yr" : "–"),
+        "If market yields rise 1%, this bond's price falls about this many percent — and vice versa")}
+      ${figHtml("Last traded", d.days_since_traded != null
+        ? (d.days_since_traded === 0 ? "Today"
+           : `<span class="${isStale(d) ? "text-amber-600 dark:text-amber-500" : ""}">${d.days_since_traded} day${d.days_since_traded === 1 ? "" : "s"} ago</span>`)
+        : "–",
+        "Based on your stored snapshots — stale prices make YTM unreliable")}
+      ${figHtml("Rating action", d.rating_change
+        ? `<span class="${d.rating_change === "up" ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}">${d.rating_change === "up" ? "▲ Upgraded" : "▼ Downgraded"}</span> <span class="text-zinc-500 font-normal">from ${fmtRating(d.rating_prev)} on ${d.rating_changed_at}</span>`
+        : "None seen",
+        "Compared across your stored snapshots — shown for 30 days after a change")}
+      <div class="col-span-2" data-tip="See what the YTM, spread and projection look like if you buy at a different price — e.g. the current ask instead of the last trade">
+        <div class="text-[10px] font-semibold uppercase tracking-wider text-zinc-500 mb-1">What-if price</div>
+        <div class="flex items-center gap-2">
+          <input id="whatifPrice" type="number" value="${d.ltp ?? ""}" min="0" step="1"
+            onkeydown="if(event.key==='Enter')applyWhatIf('${d.isin}')"
+            class="w-28 bg-transparent border border-zinc-300 dark:border-zinc-700 rounded-md px-2.5 py-1 text-sm font-medium focus:outline-none focus:border-amber-500" />
+          <button onclick="applyWhatIf('${d.isin}')"
+            class="text-[11px] font-semibold px-2.5 py-1 rounded border border-zinc-300 dark:border-zinc-700 text-zinc-500 hover:border-amber-500 hover:text-amber-500 transition">Apply</button>
+          ${d.custom_price ? `<button onclick="resetWhatIf('${d.isin}')"
+            class="text-[11px] font-semibold px-2.5 py-1 rounded border border-amber-500 text-amber-600 dark:text-amber-500 hover:bg-amber-500/10 transition">↺ Reset</button>` : ""}
+        </div>
+      </div>
+    </div>`;
+
+  const invest = hasFlows && d.ltp
+    ? `
+    <div>
+      <div class="text-[10px] font-semibold uppercase tracking-wider text-zinc-500 mb-2" data-tip="Assumes you buy whole units at the last traded price today and hold to maturity">If you invest</div>
+      <div class="flex items-center gap-2 mb-3 flex-wrap">
+        <input id="investAmt" type="number" value="${d.ltp > 100000 ? Math.ceil(d.ltp) : 100000}" min="0" step="10000"
+          oninput="updateInvest()"
+          class="w-36 bg-transparent border border-zinc-300 dark:border-zinc-700 rounded-md px-3 py-1.5 text-sm font-medium focus:outline-none focus:border-emerald-500" />
+        ${[50000, 100000, 500000].map(v => `
+          <button onclick="setInvest(${v})"
+            class="text-[11px] font-semibold px-2 py-1 rounded border border-zinc-300 dark:border-zinc-700 text-zinc-500 hover:border-emerald-500 hover:text-emerald-500 transition">${v >= 100000 ? "₹" + (v / 100000) + "L" : "₹" + (v / 1000) + "k"}</button>`).join("")}
+      </div>
+      ${d.schedule_mismatch ? `
+      <div class="text-[11px] text-amber-600 dark:text-amber-500 mb-2"
+        data-tip="NSDL's schedule shows future principal repayments that don't add up to the face value NSE quotes this bond against — common with amortizing bonds whose principal is repaid in instalments. The rupee figures below may overstate what you'd actually receive.">
+        ⚠ Payment schedule doesn't match face value — projection unreliable, exact YTM withheld</div>` : ""}
+      <div id="investOut"></div>
+      ${historyBlock(d)}
+    </div>`
+    : `
+    <div class="text-sm text-zinc-500">
+      ${d.nsdl_status === "empty"
+        ? `NSDL doesn't publish a payment schedule for this bond, so exact YTM,
+           duration and the investment projection aren't available. The quick
+           estimate is the best figure we have.`
+        : `No NSDL schedule cached for this bond yet — run “Fetch NSDL data” to
+           unlock the exact payment plan and investment projection.`}
+      ${historyBlock(d)}
+    </div>`;
+
+  const flows = hasFlows
+    ? `
+    <div class="flex flex-col h-full">
+      <div class="text-[10px] font-semibold uppercase tracking-wider text-zinc-500 mb-2"
+        data-tip="${d.amounts_estimated
+          ? "Dates are NSDL's official schedule, but NSDL left the amounts blank — rupee figures are computed from the coupon rate and face value (exact paise may differ slightly)"
+          : "Exact dates and amounts from NSDL — dimmed rows are already paid out"}">
+        Payment schedule (per unit)${d.amounts_estimated ? ` <span class="text-amber-600 dark:text-amber-500 normal-case">· amounts estimated</span>` : ""}${d.schedule_mismatch ? ` <span class="text-amber-600 dark:text-amber-500 normal-case">· doesn't match face value</span>` : ""}</div>
+      <div class="relative flex-1 min-h-40">
+        <div class="absolute inset-0 overflow-y-auto pr-3 scroll-slim">
+          <table class="w-full text-xs">
+            ${d.cashflows.map(f => `
+              <tr class="${f.future ? "" : "opacity-40"}">
+                <td class="py-1 pr-3 whitespace-nowrap">${f.due_date || "–"}</td>
+                <td class="py-1 pr-3 ${/redem|maturity/i.test(f.event || "") ? "text-emerald-600 dark:text-emerald-400 font-semibold" : "text-zinc-500"}">${f.event || "–"}</td>
+                <td class="py-1 text-right font-medium">₹${fmt(f.amount)}</td>
+              </tr>`).join("")}
+          </table>
+        </div>
+      </div>
+    </div>`
+    : "";
+
+  // The zero-width/min-w-full wrapper stops this wide cell from influencing
+  // the auto-layout column widths of the rows above/below it.
+  return `
+    <td colspan="${COLS}" class="p-0 bg-zinc-200/60 dark:bg-zinc-800/60 border-y border-zinc-300 dark:border-zinc-700 cursor-default">
+      <div class="w-0 min-w-full">
+        <div class="px-8 py-6 grid md:grid-cols-3 gap-y-6 text-sm md:divide-x md:divide-zinc-300/70 md:dark:divide-zinc-700/50">
+          <div class="md:pr-8">${figures}</div>
+          <div class="md:px-8">${invest}${issuerBlock(d)}</div>
+          ${flows ? `<div class="md:pl-8">${flows}</div>` : ""}
+        </div>
+      </div>
+    </td>`;
+}
+
+function issuerBlock(d) {
+  const sibs = d.issuer_bonds || [];
+  if (!sibs.length) return "";
+  const rows = sibs.map(b => `
+    <tr class="${b.in_feed ? "hover:bg-zinc-300/40 dark:hover:bg-zinc-700/40 cursor-pointer" : "opacity-50"}"
+        ${b.in_feed && b.isin ? `onclick="openSibling('${b.isin}', '${b.symbol}')"` : ""}
+        ${!b.in_feed ? `data-tip="Didn't trade on NSE today — no usable price"` : ""}>
+      <td class="py-1 pr-3 font-semibold whitespace-nowrap">${b.symbol}</td>
+      <td class="py-1 pr-3 text-right whitespace-nowrap text-zinc-500">${b.years_to_maturity != null ? fmt(b.years_to_maturity, 1) + "y" : "–"}</td>
+      <td class="py-1 text-right font-semibold">${b.in_feed && b.ytm != null ? fmt(b.ytm) + "%" : "–"}</td>
+    </tr>`).join("");
+  return `
+    <div class="mt-6 pt-5 border-t border-zinc-300/70 dark:border-zinc-700/50">
+      <div class="text-[10px] font-semibold uppercase tracking-wider text-zinc-500 mb-2"
+           data-tip="Every listed series from this issuer, by maturity — dimmed ones didn't trade today, so no price or YTM. Click a row to open that bond.">
+        Other ${d.issuer_name || "issuer"} bonds (${sibs.length})</div>
+      <div class="max-h-40 overflow-y-auto scroll-slim pr-3">
+        <table class="w-full text-xs">
+          <thead class="text-[10px] uppercase tracking-wider text-zinc-500">
+            <tr><th class="py-1 pr-3 font-semibold text-left">Symbol</th><th class="py-1 pr-3 font-semibold text-right">Mat.</th><th class="py-1 font-semibold text-right">YTM est</th></tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    </div>`;
+}
+
+function openSibling(isin, symbol) {
+  const tr = document.querySelector(`tr[data-isin="${isin}"]`);
+  if (tr) {
+    toggleDetail(tr, isin);
+    tr.scrollIntoView({ block: "center", behavior: "smooth" });
+  } else {
+    document.getElementById("status").textContent =
+      `${symbol} is hidden by your current filters — hit Clear (or search for it) to open it.`;
+  }
+}
+
+function sparkline(values, color) {
+  const w = 150, h = 34;
+  if (values.length < 2) return "";
+  const min = Math.min(...values), max = Math.max(...values), span = (max - min) || 1;
+  const step = w / (values.length - 1);
+  const pts = values.map((v, i) =>
+    `${(i * step).toFixed(1)},${(h - 3 - (v - min) / span * (h - 6)).toFixed(1)}`).join(" ");
+  return `<svg width="${w}" height="${h}" class="block"><polyline points="${pts}" fill="none" stroke="${color}" stroke-width="1.5" stroke-linejoin="round"/></svg>`;
+}
+
+function historyBlock(d) {
+  const byDay = {};
+  (d.history || []).forEach(h => { byDay[h.fetched_at.slice(0, 10)] = h; });
+  const days = Object.keys(byDay).sort();
+  if (days.length < 2) {
+    return `<div class="mt-5 text-xs text-zinc-500" data-tip="A snapshot is stored on every refresh — refresh daily and trends appear here">Price history builds as you refresh — ${days.length} day${days.length === 1 ? "" : "s"} so far.</div>`;
+  }
+  const ltp = days.map(k => byDay[k].ltp).filter(v => v != null);
+  const ytmS = days.map(k => byDay[k].ytm).filter(v => v != null);
+  return `
+    <div class="mt-5 grid grid-cols-2 gap-4" data-tip="From your stored snapshots — one point per day">
+      <div>
+        <div class="text-[10px] font-semibold uppercase tracking-wider text-zinc-500 mb-1">Price · ${days.length}d</div>
+        ${sparkline(ltp, "#38bdf8")}
+      </div>
+      <div>
+        <div class="text-[10px] font-semibold uppercase tracking-wider text-zinc-500 mb-1">YTM · ${days.length}d</div>
+        ${sparkline(ytmS, "#34d399")}
+      </div>
+    </div>`;
+}
+
+function setInvest(v) {
+  const el = document.getElementById("investAmt");
+  if (el) { el.value = v; updateInvest(); }
+}
+
+function updateInvest() {
+  const d = currentDetail();
+  const out = document.getElementById("investOut");
+  if (!d || !out) return;
+  const amount = Number(document.getElementById("investAmt").value) || 0;
+  const units = d.ltp ? Math.floor(amount / d.ltp) : 0;
+  if (!units) {
+    out.innerHTML = `<div class="text-xs text-zinc-500">Not enough for one unit (₹${fmt(d.ltp)}).</div>`;
+    return;
+  }
+  const cost = units * d.ltp;
+  const futureFlows = d.cashflows.filter(f => f.future);
+  const isRedemption = f => /redem|maturity/i.test(f.event || "");
+  const interest = units * futureFlows.filter(f => !isRedemption(f)).reduce((s, f) => s + (f.amount || 0), 0);
+  const principal = units * futureFlows.filter(isRedemption).reduce((s, f) => s + (f.amount || 0), 0);
+  const gain = interest + principal - cost;
+  const yrs = d.years_to_maturity;
+  const row = (label, val, tip) => `
+    <div class="flex justify-between gap-6" ${tip ? `data-tip="${tip}"` : ""}><span class="text-zinc-500">${label}</span><span class="font-semibold">${val}</span></div>`;
+  out.innerHTML = `
+    <div class="space-y-1 text-sm">
+      ${row("Units bought", `${units} <span class="text-zinc-500 font-normal">@ ₹${fmt(d.ltp)}</span>`)}
+      ${row("Actual cost", "₹" + fmt(cost), "Whole units only — whatever doesn't buy a full unit stays in your pocket")}
+      ${row(`Interest (${futureFlows.filter(f => !isRedemption(f)).length} payouts)`, "₹" + fmt(interest), "All remaining coupon payments added up")}
+      ${row("Principal back", "₹" + fmt(principal), "Redemption payments at/near maturity")}
+      ${yrs ? row("Avg income / year", "₹" + fmt(interest / yrs), `Interest spread over the ${fmt(yrs, 1)} years to maturity — actual payouts follow the schedule on the right`) : ""}
+      <div class="flex justify-between gap-6 border-t border-zinc-200 dark:border-zinc-800 pt-1"
+           data-tip="${d.ytm_exact != null ? `Equivalent to ${fmt(d.ytm_exact)}% a year compounded (the exact YTM)` : "Total of everything you receive minus what you pay today"}">
+        <span class="text-zinc-500">Total gain${yrs ? ` over ${fmt(yrs, 1)}y` : ""}</span>
+        <span class="font-bold ${gain >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}">₹${fmt(gain)}</span>
+      </div>
+    </div>`;
+}
+
+const PRESETS = {
+  ultrasafe:  { minRating: "AAA",  minYtm: "",     maxYears: "",    minTrd: "500000"  },
+  fdbeater:   { minRating: "AA-",  minYtm: "8",    maxYears: "",    minTrd: "100000"  },
+  sweet:      { minRating: "A-",   minYtm: "9.5",  maxYears: "4",   minTrd: "100000"  },
+  parking:    { minRating: "AA-",  minYtm: "7.5",  maxYears: "1.5", minTrd: ""        },
+  highyield:  { minRating: "BBB-", minYtm: "10.5", maxYears: "",    minTrd: ""        },
+  lockin:     { minRating: "AA-",  minYtm: "8.5",  maxYears: "",    minTrd: "",        minYears: "5" },
+  maturing:   { minRating: "AA-",  minYtm: "",     maxYears: "1",   minTrd: ""        },
+  monthly:    { minRating: "A-",   minYtm: "9",    maxYears: "",    minTrd: "",        freq: "monthly" },
+  value:      { minRating: "AA-",  minYtm: "",     maxYears: "",    minTrd: "",        minSpread: "3", fresh: true, exact: true },
+  discount:   { minRating: "",     minYtm: "",     maxYears: "",    minTrd: "",        belowPar: true },
+  downgraded: { minRating: "",     minYtm: "",     maxYears: "",    minTrd: "",        down: true },
+  liquid:     { minRating: "",     minYtm: "",     maxYears: "",    minTrd: "1000000" },
+  watchlist:  { minRating: "",     minYtm: "",     maxYears: "",    minTrd: "",        watch: true },
+  clear:      { minRating: "",     minYtm: "",     maxYears: "",    minTrd: ""        },
+};
+
+let presetWatch = false;
+let presetFresh = false;
+let presetExact = false;
+let presetBelowPar = false;
+let presetDown = false;
+
+function setFilters(f) {
+  document.getElementById("fMinRating").value = f.minRating;
+  document.getElementById("fMinYtm").value = f.minYtm;
+  document.getElementById("fMaxYears").value = f.maxYears;
+  document.getElementById("fMinYears").value = f.minYears || "";
+  document.getElementById("fMinSpread").value = f.minSpread || "";
+  document.getElementById("fMaxLtp").value = f.maxLtp || "";
+  document.getElementById("fMinTrdVal").value = f.minTrd;
+  document.getElementById("fFreq").value = f.freq || "";
+  presetWatch = !!f.watch;
+  presetFresh = !!f.fresh;
+  presetExact = !!f.exact;
+  presetBelowPar = !!f.belowPar;
+  presetDown = !!f.down;
+}
+
+function describeFilters() {
+  const parts = [];
+  const minRating = document.getElementById("fMinRating").value;
+  const minYtm = document.getElementById("fMinYtm").value;
+  const maxYears = document.getElementById("fMaxYears").value;
+  const minYears = document.getElementById("fMinYears").value;
+  const minSpread = document.getElementById("fMinSpread").value;
+  const maxLtp = document.getElementById("fMaxLtp").value;
+  const minTrd = document.getElementById("fMinTrdVal").value;
+  if (minRating) parts.push(`rating ≥ ${minRating}`);
+  if (minYtm) parts.push(`YTM ≥ ${minYtm}%`);
+  if (minYears) parts.push(`maturity ≥ ${minYears}y`);
+  if (maxYears) parts.push(`maturity ≤ ${maxYears}y`);
+  if (minSpread) parts.push(`spread ≥ ${minSpread}%`);
+  if (maxLtp) parts.push(`price ≤ ₹${Number(maxLtp).toLocaleString("en-IN")}`);
+  if (minTrd) parts.push(`traded ≥ ${fmtInr(Number(minTrd))}`);
+  if (presetWatch) parts.push("watchlist only");
+  if (presetFresh) parts.push("fresh prices");
+  if (presetExact) parts.push("exact YTM only");
+  if (presetBelowPar) parts.push("below face value");
+  if (presetDown) parts.push("recently downgraded");
+  const freq = document.getElementById("fFreq").value;
+  if (freq) parts.push(`pays ${FREQ_LABELS[freq].toLowerCase()}`);
+  const sep = `<span class="text-zinc-400 dark:text-zinc-600 mx-1.5">|</span>`;
+  document.getElementById("filtersCount").textContent =
+    parts.length ? `${parts.length} active` : "none";
+  document.getElementById("activeFilters").innerHTML = parts.length
+    ? `<span class="text-xs text-emerald-600 dark:text-emerald-400">${parts.join(sep)}</span>`
+    : `<span class="text-xs text-zinc-500">No filters — showing all bonds</span>`;
+}
+
+async function loadBonds() {
+  const p = new URLSearchParams();
+  const minRating = document.getElementById("fMinRating").value;
+  const minYtm = document.getElementById("fMinYtm").value;
+  const maxYears = document.getElementById("fMaxYears").value;
+  const minYears = document.getElementById("fMinYears").value;
+  const minSpread = document.getElementById("fMinSpread").value;
+  const maxLtp = document.getElementById("fMaxLtp").value;
+  const minTrd = document.getElementById("fMinTrdVal").value;
+  if (minRating) p.set("min_rating", minRating);
+  if (minYtm) p.set("min_ytm", minYtm);
+  if (maxYears) p.set("max_years", maxYears);
+  if (minYears) p.set("min_years", minYears);
+  if (minSpread) p.set("min_spread", minSpread);
+  if (maxLtp) p.set("max_ltp", maxLtp);
+  if (minTrd) p.set("min_traded_value", minTrd);
+  if (presetWatch) p.set("watchlist_only", "true");
+  if (presetFresh) p.set("fresh_only", "true");
+  if (presetExact) p.set("exact_only", "true");
+  if (presetBelowPar) p.set("below_par", "true");
+  if (presetDown) p.set("downgraded_only", "true");
+  const freq = document.getElementById("fFreq").value;
+  if (freq) p.set("frequency", freq);
+  describeFilters();
+  const res = await fetch(`/api/bonds?${p}`);
+  bonds = (await res.json()).bonds;
+  render();
+}
+
+const COPY_ICON = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>`;
+const CHECK_ICON = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>`;
+
+async function copyText(btn, text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    btn.innerHTML = CHECK_ICON;
+    btn.classList.add("text-emerald-500");
+    setTimeout(() => {
+      btn.innerHTML = COPY_ICON;
+      btn.classList.remove("text-emerald-500");
+    }, 1200);
+  } catch { /* clipboard unavailable (non-HTTPS remote) */ }
+}
+
+async function toggleWatch(isin, watched) {
+  await fetch(`/api/watchlist/${isin}`, { method: watched ? "DELETE" : "POST" });
+  loadBonds();
+}
+
+document.getElementById("refreshBtn").addEventListener("click", async (e) => {
+  e.target.disabled = true;
+  e.target.textContent = "Fetching…";
+  try {
+    const res = await fetch("/api/refresh", { method: "POST" });
+    if (!res.ok) throw new Error((await res.json()).detail);
+    allBonds = null;
+    await loadBonds();
+  } catch (err) {
+    document.getElementById("status").textContent = `Error: ${err.message}`;
+  } finally {
+    e.target.disabled = false;
+    e.target.textContent = "Refresh from NSE";
+  }
+});
+
+document.querySelectorAll("#presets button").forEach(btn =>
+  btn.addEventListener("click", () => {
+    document.querySelectorAll("#presets button").forEach(b => b.classList.remove("active"));
+    if (btn.dataset.preset !== "clear") btn.classList.add("active");
+    setFilters(PRESETS[btn.dataset.preset]);
+    loadBonds();
+  })
+);
+
+function clearPresetHighlight() {
+  document.querySelectorAll("#presets button").forEach(b => b.classList.remove("active"));
+}
+
+document.getElementById("filtersToggle").addEventListener("click", () => {
+  const body = document.getElementById("filtersBody");
+  const open = body.classList.toggle("hidden");
+  document.getElementById("filtersChevron").style.transform = open ? "" : "rotate(90deg)";
+});
+
+let debounce;
+["fMinYtm", "fMaxYears", "fMinYears", "fMinSpread"].forEach(id =>
+  document.getElementById(id).addEventListener("input", () => {
+    clearPresetHighlight();
+    clearTimeout(debounce);
+    debounce = setTimeout(loadBonds, 400);
+  })
+);
+["fMinRating", "fMinTrdVal", "fFreq", "fMaxLtp"].forEach(id =>
+  document.getElementById(id).addEventListener("change", () => { clearPresetHighlight(); loadBonds(); })
+);
+
+async function pollNsdlStatus() {
+  try {
+    const s = await (await fetch("/api/nsdl/status")).json();
+    const el = document.getElementById("nsdlStatus");
+    if (s.running) {
+      el.textContent = `NSDL: fetching ${s.done}/${s.total}… (${s.cached_ok} cached)`;
+      setTimeout(pollNsdlStatus, 5000);
+    } else if (s.missing > 0) {
+      el.textContent = `NSDL: ${s.cached_ok}/${s.snapshot_isins} cached, ${s.missing} missing`;
+    } else if (s.snapshot_isins > 0) {
+      el.textContent = `NSDL: all ${s.cached_ok} schedules cached ✓`;
+    }
+  } catch { /* server restarting; ignore */ }
+}
+
+document.getElementById("nsdlBtn").addEventListener("click", async () => {
+  const res = await (await fetch("/api/nsdl/fetch", { method: "POST" })).json();
+  if (!res.started && res.reason) {
+    document.getElementById("nsdlStatus").textContent = `NSDL: ${res.reason}`;
+  }
+  pollNsdlStatus();
+});
+
+document.querySelectorAll("th[data-sort]").forEach(th =>
+  th.addEventListener("click", () => {
+    const key = th.dataset.sort;
+    // Rating sorts by rank where lower = safer, so default to best-first.
+    sortDesc = sortKey === key ? !sortDesc : key !== "rating_rank";
+    sortKey = key;
+    render();
+  })
+);
+
+// Custom tooltip: styled popup for any element with a data-tip attribute.
+const tipEl = document.createElement("div");
+tipEl.id = "tooltip";
+document.body.appendChild(tipEl);
+
+document.addEventListener("mouseover", (e) => {
+  const target = e.target.closest("[data-tip]");
+  if (!target || !target.dataset.tip) { tipEl.style.opacity = "0"; return; }
+  tipEl.textContent = target.dataset.tip;
+  tipEl.style.opacity = "1";
+});
+
+document.addEventListener("mousemove", (e) => {
+  if (tipEl.style.opacity !== "1") return;
+  const pad = 14;
+  let x = e.clientX + pad, y = e.clientY + pad;
+  const r = tipEl.getBoundingClientRect();
+  if (x + r.width > window.innerWidth - 8) x = e.clientX - r.width - pad;
+  if (y + r.height > window.innerHeight - 8) y = e.clientY - r.height - pad;
+  tipEl.style.left = `${x}px`;
+  tipEl.style.top = `${y}px`;
+});
+
+// Sensible default view: liquid, quality bonds beating FD rates.
+setFilters(PRESETS.fdbeater);
+document.querySelector('#presets button[data-preset="fdbeater"]').classList.add("active");
+loadBonds();
+pollNsdlStatus();
+</script>
+</body>
+</html>
