@@ -70,6 +70,16 @@ CREATE TABLE IF NOT EXISTS gsec_curve (
     symbol TEXT,
     traded_value REAL
 );
+
+CREATE TABLE IF NOT EXISTS holdings (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    isin TEXT NOT NULL,
+    qty REAL NOT NULL,
+    buy_price REAL,
+    buy_date TEXT,
+    created_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_holdings_isin ON holdings (isin);
 """
 
 COLUMNS = [
@@ -284,6 +294,51 @@ def latest_gsec_curve() -> List[Dict]:
     ).fetchall()
     conn.close()
     return [dict(r) for r in rows]
+
+
+def holdings() -> List[Dict]:
+    conn = connect()
+    rows = conn.execute("SELECT * FROM holdings ORDER BY id").fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def add_holding(isin: str, qty: float, buy_price=None, buy_date=None) -> int:
+    conn = connect()
+    with conn:
+        cur = conn.execute(
+            "INSERT INTO holdings (isin, qty, buy_price, buy_date, created_at) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (isin, qty, buy_price, buy_date,
+             datetime.now(timezone.utc).isoformat()),
+        )
+        rowid = cur.lastrowid
+    conn.close()
+    return rowid
+
+
+def update_holding(holding_id: int, fields: Dict) -> bool:
+    allowed = {"qty", "buy_price", "buy_date"}
+    updates = {k: v for k, v in fields.items() if k in allowed}
+    if not updates:
+        return False
+    conn = connect()
+    with conn:
+        cur = conn.execute(
+            f"UPDATE holdings SET {', '.join(f'{k} = ?' for k in updates)} "
+            "WHERE id = ?",
+            list(updates.values()) + [holding_id],
+        )
+    conn.close()
+    return cur.rowcount > 0
+
+
+def delete_holding(holding_id: int) -> bool:
+    conn = connect()
+    with conn:
+        cur = conn.execute("DELETE FROM holdings WHERE id = ?", (holding_id,))
+    conn.close()
+    return cur.rowcount > 0
 
 
 def nsdl_all_cashflows() -> Dict[str, List[Dict]]:

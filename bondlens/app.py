@@ -9,10 +9,11 @@ from typing import Dict, Optional
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
 
-from . import db, gsec, kite, nsdl, nse
+from . import db, gsec, kite, nsdl, nse, pnl
 from .ytm import (accrued_interest, exact_ytm, modified_duration, parse_date,
-                  years_to_maturity, ytm)
+                  xirr, years_to_maturity, ytm)
 
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 
@@ -412,6 +413,148 @@ def bond_detail(isin: str, price: Optional[float] = Query(None, gt=0)):
         "issuer_name": issuer,
         "issuer_bonds": issuer_bonds,
     }
+
+
+# ---- Portfolio P&L ---------------------------------------------------------
+
+class HoldingIn(BaseModel):
+    isin: str
+    qty: float
+    buy_price: Optional[float] = None
+    buy_date: Optional[str] = None  # YYYY-MM-DD or DD-Mon-YYYY
+
+
+class HoldingPatch(BaseModel):
+    qty: Optional[float] = None
+    buy_price: Optional[float] = None
+    buy_date: Optional[str] = None
+
+
+def _validated_buy_date(value: Optional[str]) -> Optional[str]:
+    if value in (None, ""):
+        return None
+    d = parse_date(value)
+    if d is None:
+        raise HTTPException(status_code=422, detail=f"Unparseable date: {value}")
+    if d > date.today():
+        raise HTTPException(status_code=422, detail="Buy date is in the future")
+    return d.isoformat()
+
+
+@app.get("/api/portfolio")
+def portfolio():
+    """All holdings with per-holding and aggregate P&L.
+
+    Accuracy caveats ride along as `warnings` per holding: schedule quality,
+    stale prices, estimated amounts, missing buy dates. TDS (~10% on
+    interest) is NOT modelled — realized income is gross.
+    """
+    snap = {r["isin"]: r for r in db.latest_snapshot() if r["isin"]}
+    meta_map = db.nsdl_meta_map()
+    flows_map = db.nsdl_all_cashflows()
+    last_traded = db.last_traded_map()
+    names = db.company_names()
+    today = date.today()
+    out = []
+    all_flows = []          # combined dated flows for portfolio XIRR
+    xirr_complete = True    # only meaningful if every holding contributed
+    for h in db.holdings():
+        r = snap.get(h["isin"])
+        meta = meta_map.get(h["isin"])
+        coupon = face = None
+        if r:
+            coupon = r["coupon"] or coupon_from_symbol(r["symbol"])
+            face = r["face_value"]
+        flows, amounts_estimated = nsdl.fill_amounts(
+            flows_map.get(h["isin"], []), coupon, face,
+            nsdl.classify_frequency(meta["frequency_text"]) if meta else None,
+        )
+        flows = nsdl.normalize_flows(flows, face)
+        nsdl_ok = bool(meta and meta["status"] == "ok" and flows)
+        schedule_ok = nsdl_ok and nsdl.redemption_matches_face(flows, face)
+        figs = pnl.holding_pnl(h, r, flows if nsdl_ok else [], schedule_ok)
+        if amounts_estimated and nsdl_ok:
+            figs["warnings"].append(
+                "payment amounts estimated from the coupon rate")
+        lt = last_traded.get(h["isin"])
+        days_since = (today - date.fromisoformat(lt[:10])).days if lt else None
+        if days_since is not None and days_since >= STALE_AFTER_DAYS:
+            figs["warnings"].append(
+                f"price is {days_since} days old — market value and XIRR may be off")
+        buy_d = parse_date(h["buy_date"] or "")
+        if buy_d and figs["invested"] and figs["market_value"] is not None:
+            all_flows.append((buy_d, -figs["invested"]))
+            all_flows += [
+                (parse_date(f["due_date"]), h["qty"] * f["amount"])
+                for f in pnl.received_flows(flows if nsdl_ok else [], buy_d)
+            ]
+            all_flows.append((today, figs["market_value"]))
+        else:
+            xirr_complete = False
+        out.append({
+            **h,
+            **figs,
+            "symbol": r["symbol"] if r else None,
+            "company_name": names.get(r["symbol"]) if r else None,
+            "ltp": r["ltp"] if r else None,
+            "face_value": face,
+            "maturity_date": r["maturity_date"] if r else None,
+            "days_since_traded": days_since,
+            "in_feed": r is not None,
+        })
+
+    def total(key):
+        vals = [x[key] for x in out if x[key] is not None]
+        return round(sum(vals), 2) if vals else None
+
+    return {
+        "holdings": out,
+        "totals": {
+            "invested": total("invested"),
+            "market_value": total("market_value"),
+            "realized": total("realized"),
+            "unrealized": total("unrealized"),
+            "total_pnl": total("total_pnl"),
+            "xirr": xirr(all_flows) if all_flows and xirr_complete else None,
+            "xirr_complete": xirr_complete,
+        },
+    }
+
+
+@app.post("/api/portfolio/holdings")
+def add_holding(body: HoldingIn):
+    if body.qty <= 0:
+        raise HTTPException(status_code=422, detail="Quantity must be positive")
+    rowid = db.add_holding(
+        body.isin.strip().upper(), body.qty, body.buy_price,
+        _validated_buy_date(body.buy_date),
+    )
+    return {"id": rowid}
+
+
+@app.patch("/api/portfolio/holdings/{holding_id}")
+def edit_holding(holding_id: int, body: HoldingPatch):
+    fields = {}
+    if body.qty is not None:
+        if body.qty <= 0:
+            raise HTTPException(status_code=422, detail="Quantity must be positive")
+        fields["qty"] = body.qty
+    if body.buy_price is not None:
+        fields["buy_price"] = body.buy_price
+    if body.buy_date is not None:
+        fields["buy_date"] = _validated_buy_date(body.buy_date)
+    if not fields:
+        raise HTTPException(status_code=422, detail="Nothing to update")
+    if not db.update_holding(holding_id, fields):
+        raise HTTPException(status_code=404, detail="Holding not found")
+    return {"id": holding_id, "updated": sorted(fields)}
+
+
+@app.delete("/api/portfolio/holdings/{holding_id}")
+def remove_holding(holding_id: int):
+    if not db.delete_holding(holding_id):
+        raise HTTPException(status_code=404, detail="Holding not found")
+    return {"id": holding_id, "deleted": True}
 
 
 @app.get("/api/gsec")
