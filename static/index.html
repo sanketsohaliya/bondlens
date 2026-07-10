@@ -432,10 +432,18 @@ function showRatingHistory(ev, isin, agency) {
       <td class="py-0.5 pr-3 font-semibold whitespace-nowrap">${h.rating}${h.outlook ? "/" + h.outlook : ""}</td>
       <td class="py-0.5 whitespace-nowrap">${actionHtml(h.action)}</td>
     </tr>`).join("");
+  const current = `${x.rating.replace(/\/+$/, "")}`;
   histPop.innerHTML = `
-    <div class="flex items-center justify-between gap-4 mb-1.5">
-      <span class="font-semibold">${agency} — rating history</span>
+    <div class="flex items-center justify-between gap-4 mb-1">
+      <span class="font-semibold">${agency}</span>
       <button onclick="hideRatingHistory()" class="text-zinc-400 hover:text-rose-500 font-bold px-1">✕</button>
+    </div>
+    <div class="mb-1.5 pb-1.5 border-b border-zinc-200 dark:border-zinc-700">
+      <span class="text-zinc-500">Current:</span>
+      ${x.press_release
+        ? `<a href="${x.press_release}" target="_blank" rel="noopener" class="font-bold ${RATING_LINK_CLASS}">${current}</a>
+           <span class="text-zinc-500">— opens the latest rationale</span>`
+        : `<span class="font-bold">${current}</span>`}
     </div>
     ${rows
       ? `<div class="max-h-52 overflow-y-auto scroll-slim"><table>${rows}</table></div>
@@ -456,17 +464,15 @@ document.addEventListener("click", (e) => {
   if (!histPop.contains(e.target)) hideRatingHistory();
 });
 document.addEventListener("keydown", (e) => { if (e.key === "Escape") hideRatingHistory(); });
-// Multiple agencies can rate one bond: one row per agency, each linking to
-// that agency's own press release.
+// Multiple agencies can rate one bond: one row per agency; clicking any of
+// them opens the pinned popover (current rating + full history + reports).
 const ratingHtml = (b) => {
   if (b.ratings && b.ratings.length) {
     return b.ratings.map(x => `
       <div class="whitespace-nowrap">
         <button onclick="showRatingHistory(event, '${b.isin}', '${x.agency || ""}')"
-           data-tip="${x.agency || "Agency"}'s rating history — with a report link per date"
-           class="text-[10px] font-semibold uppercase tracking-wider text-zinc-500 mr-1 hover:text-emerald-600 dark:hover:text-emerald-400 cursor-pointer">${x.agency || "?"}</button><a href="${x.press_release || agencySearchUrl(x.agency, b)}" target="_blank" rel="noopener"
-           data-tip="Agency-verified via NSDL — read the latest ${x.agency || "agency"} rationale"
-           class="${RATING_LINK_CLASS}">${x.rating.replace(/\/+$/, "")}</a>
+           data-tip="Agency-verified via NSDL — click for ${x.agency || "the agency"}'s rating history and reports"
+           class="cursor-pointer"><span class="text-[10px] font-semibold uppercase tracking-wider text-zinc-500 mr-1">${x.agency || "?"}</span><span class="${RATING_LINK_CLASS}">${x.rating.replace(/\/+$/, "")}</span></button>
       </div>`).join("");
   }
   if (!b.credit_rating) return "–";
