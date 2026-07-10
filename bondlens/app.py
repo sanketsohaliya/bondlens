@@ -11,7 +11,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import db, gsec, kite, nsdl, nse, pnl
+from . import bse, db, gsec, kite, nsdl, nse, pnl
 from .ytm import (accrued_interest, exact_ytm, modified_duration, parse_date,
                   xirr, years_to_maturity, ytm)
 
@@ -86,6 +86,44 @@ def apply_nsdl_rating(r: Dict, nr: Optional[List[Dict]],
 
 
 RATING_FLAG_DAYS = 30  # how long an up/downgrade marker stays visible
+
+
+def apply_bse_quote(r: Dict, bq: Optional[Dict], nse_last_traded: Optional[str]):
+    """Attach BSE quote fields and, when BSE traded more recently than NSE,
+    use its price as the bond's LTP (recomputing the approx YTM to match).
+
+    BSE data is end-of-day, so on a trading day NSE's live feed wins whenever
+    the bond traded there today; BSE only fills staleness gaps.
+    """
+    r["bse_ltp"] = r["bse_trade_date"] = r["bse_traded_value"] = None
+    r["price_source"] = "NSE" if r.get("ltp") else None
+    if not bq:
+        return
+    bse_price = bq["ltp"] or bq["close"]
+    if not bse_price:
+        return
+    r["bse_ltp"] = bse_price
+    r["bse_trade_date"] = bq["trade_date"]
+    r["bse_traded_value"] = bq["traded_value"]
+    nse_traded_today = (r.get("traded_value") or 0) > 0
+    nse_date = (nse_last_traded or "")[:10]
+    if nse_traded_today or (nse_date and nse_date >= bq["trade_date"]):
+        return
+    r["ltp"] = bse_price
+    r["price_source"] = "BSE"
+    r["ytm"] = ytm(bse_price, r.get("coupon") or coupon_from_symbol(r.get("symbol")),
+                   r.get("face_value"), r.get("maturity_date"))
+
+
+def merge_bse_freshness(r: Dict):
+    """Fold the BSE trade date into days_since_traded (after annotate_signals)."""
+    if not r.get("bse_trade_date"):
+        return
+    bse_days = (date.today() - date.fromisoformat(r["bse_trade_date"])).days
+    if r.get("days_since_traded") is None or bse_days < r["days_since_traded"]:
+        r["days_since_traded"] = bse_days
+
+
 STALE_AFTER_DAYS = 3   # LTP considered stale after this many days without trades
 
 
@@ -280,7 +318,19 @@ def refresh():
             gsec_points = len(curve)
     except Exception:  # noqa: BLE001
         pass
-    return {"fetched_at": ts, "count": len(records), "gsec_points": gsec_points}
+    bse_count = 0
+    try:
+        universe = {r["isin"] for r in records if r.get("isin")}
+        universe |= {h["isin"] for h in db.holdings()}
+        _, quotes = bse.fetch_bhavcopy()
+        quotes = [q for q in quotes if q["isin"] in universe]
+        if quotes:
+            db.save_bse_quotes(quotes)
+            bse_count = len(quotes)
+    except Exception:  # noqa: BLE001 - BSE is best-effort enrichment
+        pass
+    return {"fetched_at": ts, "count": len(records),
+            "gsec_points": gsec_points, "bse_quotes": bse_count}
 
 
 @app.get("/api/bonds")
@@ -311,11 +361,13 @@ def bonds(
     names = db.company_names()
     nsdl_ratings = db.nsdl_ratings_map()
     rating_history = db.nsdl_rating_history_map()
+    bse_quotes = db.bse_quote_map()
     out = []
     for r in rows:
         r["company_name"] = names.get(r["symbol"])
         apply_nsdl_rating(r, nsdl_ratings.get(r["isin"]),
                           rating_history.get(r["isin"]))
+        apply_bse_quote(r, bse_quotes.get(r["isin"]), last_traded.get(r["isin"]))
         maturity = parse_date(r["maturity_date"])
         r["years_to_maturity"] = (
             round(years_to_maturity(maturity), 2) if maturity else None
@@ -357,6 +409,7 @@ def bonds(
             else None
         )
         annotate_signals(r, changes, last_traded, nsdl_ratings)
+        merge_bse_freshness(r)
         if watchlist_only and not r["in_watchlist"]:
             continue
         if min_ytm is not None and (r["ytm"] is None or r["ytm"] < min_ytm):
@@ -426,8 +479,11 @@ def bond_detail(isin: str, price: Optional[float] = Query(None, gt=0)):
     if row is None:
         raise HTTPException(status_code=404, detail="ISIN not in latest snapshot")
     custom_price = price is not None
+    apply_bse_quote(row, db.bse_quote_map().get(isin),
+                    db.last_traded_map().get(isin))
     if custom_price:
         row["ltp"] = price
+        row["price_source"] = None
         row["ytm"] = ytm(
             price,
             row["coupon"] or coupon_from_symbol(row["symbol"]),
@@ -443,6 +499,7 @@ def bond_detail(isin: str, price: Optional[float] = Query(None, gt=0)):
     apply_nsdl_rating(row, nsdl_ratings.get(isin), db.nsdl_rating_history(isin))
     row["rating_rank"] = rating_rank(row["credit_rating"])
     annotate_signals(row, db.rating_changes(), db.last_traded_map(), nsdl_ratings)
+    merge_bse_freshness(row)
 
     meta = db.nsdl_meta_map().get(isin)
     flows, amounts_estimated = nsdl.fill_amounts(

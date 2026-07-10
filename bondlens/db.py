@@ -125,6 +125,27 @@ CREATE TABLE IF NOT EXISTS nsdl_ratings_meta (
     fetched_at TEXT
 );
 
+-- BSE end-of-day quotes from the daily bhavcopy, one row per ISIN per
+-- trading day (append-only — doubles as BSE price history). Corporate
+-- bonds often trade on BSE when they don't on NSE, so this fills gaps.
+CREATE TABLE IF NOT EXISTS bse_quotes (
+    isin TEXT NOT NULL,
+    trade_date TEXT NOT NULL,
+    symbol TEXT,
+    series TEXT,
+    ltp DOUBLE PRECISION,
+    close DOUBLE PRECISION,
+    open DOUBLE PRECISION,
+    high DOUBLE PRECISION,
+    low DOUBLE PRECISION,
+    qty DOUBLE PRECISION,
+    traded_value DOUBLE PRECISION,
+    num_trades DOUBLE PRECISION,
+    fetched_at TEXT,
+    PRIMARY KEY (isin, trade_date)
+);
+CREATE INDEX IF NOT EXISTS idx_bse_quotes_isin ON bse_quotes (isin);
+
 CREATE TABLE IF NOT EXISTS holdings (
     id BIGSERIAL PRIMARY KEY,
     isin TEXT NOT NULL,
@@ -186,6 +207,35 @@ def latest_snapshot() -> List[Dict]:
             "SELECT * FROM snapshots WHERE fetched_at = %s", (row["ts"],)
         ).fetchall()
     return rows
+
+
+def save_bse_quotes(quotes: List[Dict]):
+    """Upsert one trading day's BSE quotes (idempotent per isin+date)."""
+    ts = datetime.now(timezone.utc).isoformat()
+    with _conn() as conn:
+        conn.cursor().executemany(
+            "INSERT INTO bse_quotes "
+            "(isin, trade_date, symbol, series, ltp, close, open, high, low, "
+            " qty, traded_value, num_trades, fetched_at) "
+            "VALUES (%(isin)s, %(trade_date)s, %(symbol)s, %(series)s, "
+            "        %(ltp)s, %(close)s, %(open)s, %(high)s, %(low)s, "
+            "        %(qty)s, %(traded_value)s, %(num_trades)s, %(ts)s) "
+            "ON CONFLICT (isin, trade_date) DO UPDATE SET "
+            "ltp = EXCLUDED.ltp, close = EXCLUDED.close, qty = EXCLUDED.qty, "
+            "traded_value = EXCLUDED.traded_value, "
+            "num_trades = EXCLUDED.num_trades, fetched_at = EXCLUDED.fetched_at",
+            [{**q, "ts": ts} for q in quotes],
+        )
+
+
+def bse_quote_map() -> Dict[str, Dict]:
+    """Latest BSE quote per ISIN (most recent trade_date wins)."""
+    with _conn() as conn:
+        rows = conn.execute(
+            "SELECT DISTINCT ON (isin) * FROM bse_quotes "
+            "ORDER BY isin, trade_date DESC"
+        ).fetchall()
+    return {r["isin"]: r for r in rows}
 
 
 def save_debt_master(records: List[Dict]):
