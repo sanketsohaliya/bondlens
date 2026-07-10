@@ -393,12 +393,30 @@ const AGENCY_NAMES = {
   CRISIL: "CRISIL", ICRA: "ICRA", CARE: "CARE Ratings", BRCK: "Brickwork",
   ACUITE: "Acuite", IRRPL: "India Ratings", IVRPL: "Infomerics",
 };
-const ratingUrl = (b) => {
-  if (b.rating_url) return b.rating_url;
-  const agency = (b.rating_agency || "").split(",")[0].trim();
-  const name = AGENCY_NAMES[agency.toUpperCase()] || agency;
+const agencySearchUrl = (agency, b) => {
+  const name = AGENCY_NAMES[(agency || "").toUpperCase()] || agency || "";
   const q = encodeURIComponent(`${name} rating rationale "${b.isin}" OR "${b.symbol}"`);
   return `https://www.google.com/search?q=${q}`;
+};
+const ratingUrl = (b) => {
+  if (b.rating_url) return b.rating_url;
+  return agencySearchUrl((b.rating_agency || "").split(",")[0].trim(), b);
+};
+const RATING_LINK_CLASS = "hover:text-emerald-600 dark:hover:text-emerald-400 underline decoration-dotted decoration-zinc-300 dark:decoration-zinc-700 underline-offset-2";
+// Multiple agencies can rate one bond; link each rating to its own agency's
+// press release rather than collapsing everything into a single link.
+const ratingHtml = (b) => {
+  if (b.ratings && b.ratings.length) {
+    return b.ratings.map(x =>
+      `<a href="${x.press_release || agencySearchUrl(x.agency, b)}" target="_blank" rel="noopener"
+         class="${RATING_LINK_CLASS}"
+         data-tip="Agency-verified via NSDL — read the ${x.agency || "agency"} rationale">${x.rating.replace(/\/+$/, "")}</a>`
+    ).join(", ");
+  }
+  if (!b.credit_rating) return "–";
+  return `<a href="${ratingUrl(b)}" target="_blank" rel="noopener"
+       class="${RATING_LINK_CLASS}"
+       data-tip="NSE data (can be stale) — find the full ${(b.rating_agency || "agency")} report">${fmtRating(b.credit_rating)}</a>`;
 };
 
 function updateSortMarkers() {
@@ -434,11 +452,7 @@ function render() {
         ${b.company_name ? `<div class="text-[11px] text-zinc-500 truncate max-w-[180px]" title="${b.company_name}">${b.company_name}</div>` : ""}
       </td>
       <td class="px-3 py-2">
-        ${b.credit_rating
-          ? `<a href="${ratingUrl(b)}" target="_blank" rel="noopener"
-               class="hover:text-emerald-600 dark:hover:text-emerald-400 underline decoration-dotted decoration-zinc-300 dark:decoration-zinc-700 underline-offset-2"
-               data-tip="${b.rating_source === "NSDL" ? `Agency-verified via NSDL — read the ${(b.rating_agency || "agency").split(",")[0]} rationale` : `NSE data (can be stale) — find the full ${(b.rating_agency || "agency")} report`}">${fmtRating(b.credit_rating)}</a>`
-          : "–"}${ratingFlag(b)}
+        ${ratingHtml(b)}${ratingFlag(b)}
       </td>
       <td class="px-3 py-2 text-right font-bold ${b.ytm >= 10 ? "text-emerald-600 dark:text-emerald-400" : ""}">${fmt(b.ytm)}</td>
       <td class="px-3 py-2 text-right text-zinc-500">${fmt(b.current_yield)}</td>

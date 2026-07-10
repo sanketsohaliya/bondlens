@@ -4,7 +4,7 @@ import threading
 import time
 from datetime import date, datetime
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse
@@ -48,6 +48,33 @@ def coupon_from_symbol(symbol: Optional[str]) -> Optional[float]:
     digits = m.group(1)
     value = int(digits) / (10 ** (len(digits) - 1))
     return value if 0 < value < 20 else None
+
+
+def apply_nsdl_rating(r: Dict, nr: Optional[List[Dict]]):
+    """Override NSE's rating fields with NSDL's agency-verified data in place.
+
+    NSDL's ratings are current; NSE's rating field is often stale at-issuance
+    data (e.g. AAA shown for years after a downgrade). Also exposes `ratings`,
+    one entry per agency, so the UI can link each agency's own press release
+    instead of collapsing multiple ratings into a single link.
+    """
+    if nr:
+        r["credit_rating"] = ", ".join(
+            x["rating"] + (f"/{x['outlook']}" if x["outlook"] else "")
+            for x in nr)
+        r["rating_agency"] = ", ".join(x["agency"] or "" for x in nr)
+        r["rating_source"] = "NSDL"
+        r["rating_url"] = next(
+            (x["press_release"] for x in nr if x["press_release"]), None)
+        r["ratings"] = [
+            {"agency": x["agency"],
+             "rating": x["rating"] + (f"/{x['outlook']}" if x["outlook"] else ""),
+             "press_release": x["press_release"]}
+            for x in nr]
+    else:
+        r["rating_source"] = "NSE"
+        r["rating_url"] = None
+        r["ratings"] = None
 
 
 RATING_FLAG_DAYS = 30  # how long an up/downgrade marker stays visible
@@ -261,21 +288,7 @@ def bonds(
     out = []
     for r in rows:
         r["company_name"] = names.get(r["symbol"])
-        # NSDL's ratings are agency-verified and current; NSE's rating field
-        # is often stale at-issuance data (e.g. AAA shown for years after a
-        # downgrade). Override whenever NSDL has the ISIN.
-        nr = nsdl_ratings.get(r["isin"])
-        if nr:
-            r["credit_rating"] = ", ".join(
-                x["rating"] + (f"/{x['outlook']}" if x["outlook"] else "")
-                for x in nr)
-            r["rating_agency"] = ", ".join(x["agency"] or "" for x in nr)
-            r["rating_source"] = "NSDL"
-            r["rating_url"] = next(
-                (x["press_release"] for x in nr if x["press_release"]), None)
-        else:
-            r["rating_source"] = "NSE"
-            r["rating_url"] = None
+        apply_nsdl_rating(r, nsdl_ratings.get(r["isin"]))
         maturity = parse_date(r["maturity_date"])
         r["years_to_maturity"] = (
             round(years_to_maturity(maturity), 2) if maturity else None
@@ -400,18 +413,7 @@ def bond_detail(isin: str, price: Optional[float] = Query(None, gt=0)):
     )
     row["kite_url"] = kite.kite_url(row["symbol"], row["series"])
     nsdl_ratings = db.nsdl_ratings_map()
-    nr = nsdl_ratings.get(isin)
-    if nr:
-        row["credit_rating"] = ", ".join(
-            x["rating"] + (f"/{x['outlook']}" if x["outlook"] else "")
-            for x in nr)
-        row["rating_agency"] = ", ".join(x["agency"] or "" for x in nr)
-        row["rating_source"] = "NSDL"
-        row["rating_url"] = next(
-            (x["press_release"] for x in nr if x["press_release"]), None)
-    else:
-        row["rating_source"] = "NSE"
-        row["rating_url"] = None
+    apply_nsdl_rating(row, nsdl_ratings.get(isin))
     row["rating_rank"] = rating_rank(row["credit_rating"])
     annotate_signals(row, db.rating_changes(), db.last_traded_map(), nsdl_ratings)
 
