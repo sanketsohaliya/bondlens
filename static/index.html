@@ -442,11 +442,7 @@ function showRatingHistory(ev, isin, agency) {
   };
   const rows = (x.history || []).map(h => `
     <tr>
-      <td class="py-0.5 pr-3 whitespace-nowrap">
-        ${h.press_release
-          ? `<a href="${h.press_release}" target="_blank" rel="noopener" class="${RATING_LINK_CLASS} text-zinc-500">${h.changed_at || "undated"}</a>`
-          : `<a href="${searchFallback(h)}" target="_blank" rel="noopener" class="${RATING_LINK_CLASS} text-zinc-500 italic">${h.changed_at || "undated"}</a>`}
-      </td>
+      <td class="py-0.5 pr-3 whitespace-nowrap text-zinc-500">${h.changed_at || "undated"}</td>
       <td class="py-0.5 pr-3 font-semibold whitespace-nowrap">
         <a href="${h.press_release || searchFallback(h)}" target="_blank" rel="noopener"
            class="${RATING_LINK_CLASS}">${h.rating}${h.outlook ? "/" + h.outlook : ""}</a>
@@ -491,11 +487,11 @@ const ratingHtml = (b) => {
   if (b.ratings && b.ratings.length) {
     return b.ratings.map(x => `
       <div class="whitespace-nowrap">
-        <a onmouseenter="showRatingHistory(event, '${b.isin}', '${x.agency || ""}')"
-           onmouseleave="scheduleHideRatingHistory()"
-           href="${x.press_release || agencySearchUrl(x.agency, b)}" target="_blank" rel="noopener"><span
-           class="${RATING_LINK_CLASS}">${x.rating.replace(/\/+$/, "")}</span><span
-           class="text-[10px] font-semibold uppercase tracking-wider text-zinc-500 ml-1 hover:text-emerald-600 dark:hover:text-emerald-400">${x.agency || "?"}</span></a>
+        <span onmouseenter="showRatingHistory(event, '${b.isin}', '${x.agency || ""}')"
+           onmouseleave="scheduleHideRatingHistory()"><a
+           href="${x.press_release || agencySearchUrl(x.agency, b)}" target="_blank" rel="noopener"
+           class="${RATING_LINK_CLASS}">${x.rating.replace(/\/+$/, "")}</a><span
+           class="text-[10px] font-semibold uppercase tracking-wider text-zinc-500 ml-1">${x.agency || "?"}</span></span>
       </div>`).join("");
   }
   if (!b.credit_rating) return "–";
