@@ -71,7 +71,8 @@ def apply_nsdl_rating(r: Dict, nr: Optional[List[Dict]],
         for h in history or []:
             by_agency.setdefault(h["agency"], []).append(
                 {"rating": h["rating"], "outlook": h["outlook"],
-                 "action": h["rating_action"], "changed_at": h["changed_at"]})
+                 "action": h["rating_action"], "changed_at": h["changed_at"],
+                 "press_release": h["press_release"]})
         r["ratings"] = [
             {"agency": x["agency"],
              "rating": x["rating"] + (f"/{x['outlook']}" if x["outlook"] else ""),

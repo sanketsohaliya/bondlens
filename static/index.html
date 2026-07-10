@@ -419,15 +419,69 @@ const ratingTipHtml = (x) => {
   return `<div style="font-weight:600;margin-bottom:3px">${x.agency || "Agency"} — rating history</div>`
     + (rows ? `<table style="font-size:11px">${rows}</table>`
             : `<div style="opacity:.65">No archived events yet</div>`)
-    + `<div style="opacity:.65;margin-top:3px">Agency-verified via NSDL — click to read the latest rationale</div>`;
+    + `<div style="opacity:.65;margin-top:3px">Rating opens the latest rationale · click the agency name to pin this list with a report link per date</div>`;
 };
+
+// Pinned popover: unlike the hover tooltip, it stays put and its per-event
+// report links are clickable. One global element, repositioned per click.
+const histPop = document.createElement("div");
+histPop.id = "histpop";
+histPop.className = "hidden fixed z-[60] max-w-xs rounded-md border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 shadow-xl p-3 text-xs";
+document.addEventListener("DOMContentLoaded", () => document.body.appendChild(histPop));
+
+function showRatingHistory(ev, isin, agency) {
+  ev.stopPropagation();
+  const b = bonds.find(r => r.isin === isin) || (allBonds || []).find(r => r.isin === isin);
+  const x = ((b && b.ratings) || []).find(r => r.agency === agency);
+  if (!x) return;
+  const actionHtml = (a) => {
+    const u = (a || "").toUpperCase();
+    if (u.includes("UPGRADE")) return `<span class="text-emerald-600 dark:text-emerald-400 font-semibold">▲ ${a}</span>`;
+    if (u.includes("DOWNGRADE")) return `<span class="text-rose-600 dark:text-rose-400 font-semibold">▼ ${a}</span>`;
+    return `<span class="text-zinc-500">${a || "–"}</span>`;
+  };
+  const rows = (x.history || []).map(h => `
+    <tr>
+      <td class="py-0.5 pr-3 whitespace-nowrap">
+        ${h.press_release
+          ? `<a href="${h.press_release}" target="_blank" rel="noopener" class="${RATING_LINK_CLASS} text-zinc-500">${h.changed_at || "undated"}</a>`
+          : `<span class="text-zinc-500" data-tip="No report link published for this event">${h.changed_at || "undated"}</span>`}
+      </td>
+      <td class="py-0.5 pr-3 font-semibold whitespace-nowrap">${h.rating}${h.outlook ? "/" + h.outlook : ""}</td>
+      <td class="py-0.5 whitespace-nowrap">${actionHtml(h.action)}</td>
+    </tr>`).join("");
+  histPop.innerHTML = `
+    <div class="flex items-center justify-between gap-4 mb-1.5">
+      <span class="font-semibold">${agency} — rating history</span>
+      <button onclick="hideRatingHistory()" class="text-zinc-400 hover:text-rose-500 font-bold px-1">✕</button>
+    </div>
+    ${rows
+      ? `<div class="max-h-52 overflow-y-auto scroll-slim"><table>${rows}</table></div>
+         <div class="text-zinc-500 mt-1.5">Each date links to the rationale ${agency} published then</div>`
+      : `<div class="text-zinc-500">No archived events yet — they accumulate with every ratings refresh</div>`}`;
+  histPop.classList.remove("hidden");
+  tipEl.style.opacity = "0";
+  const pad = 10;
+  let px = ev.clientX + pad, py = ev.clientY + pad;
+  const r = histPop.getBoundingClientRect();
+  if (px + r.width > window.innerWidth - 8) px = ev.clientX - r.width - pad;
+  if (py + r.height > window.innerHeight - 8) py = Math.max(8, ev.clientY - r.height - pad);
+  histPop.style.left = `${px}px`;
+  histPop.style.top = `${py}px`;
+}
+function hideRatingHistory() { histPop.classList.add("hidden"); }
+document.addEventListener("click", (e) => {
+  if (!histPop.contains(e.target)) hideRatingHistory();
+});
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") hideRatingHistory(); });
 // Multiple agencies can rate one bond: one row per agency, each linking to
 // that agency's own press release.
 const ratingHtml = (b) => {
   if (b.ratings && b.ratings.length) {
     return b.ratings.map(x => `
       <div class="whitespace-nowrap" data-tip-html="${escAttr(ratingTipHtml(x))}">
-        <span class="text-[10px] font-semibold uppercase tracking-wider text-zinc-500 mr-1">${x.agency || "?"}</span><a href="${x.press_release || agencySearchUrl(x.agency, b)}" target="_blank" rel="noopener"
+        <button onclick="showRatingHistory(event, '${b.isin}', '${x.agency || ""}')"
+           class="text-[10px] font-semibold uppercase tracking-wider text-zinc-500 mr-1 hover:text-emerald-600 dark:hover:text-emerald-400 cursor-pointer">${x.agency || "?"}</button><a href="${x.press_release || agencySearchUrl(x.agency, b)}" target="_blank" rel="noopener"
            class="${RATING_LINK_CLASS}">${x.rating.replace(/\/+$/, "")}</a>
       </div>`).join("");
   }
