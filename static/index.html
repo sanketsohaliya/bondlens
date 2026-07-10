@@ -488,9 +488,11 @@ const ratingHtml = (b) => {
   if (b.ratings && b.ratings.length) {
     return b.ratings.map(x => `
       <div class="whitespace-nowrap">
-        <span onmouseenter="showRatingHistory(event, '${b.isin}', '${x.agency || ""}')"
-           onmouseleave="scheduleHideRatingHistory()"><span class="text-[10px] font-semibold uppercase tracking-wider text-zinc-500 mr-1">${x.agency || "?"}</span><a href="${x.press_release || agencySearchUrl(x.agency, b)}" target="_blank" rel="noopener"
-           class="${RATING_LINK_CLASS}">${x.rating.replace(/\/+$/, "")}</a></span>
+        <a onmouseenter="showRatingHistory(event, '${b.isin}', '${x.agency || ""}')"
+           onmouseleave="scheduleHideRatingHistory()"
+           href="${x.press_release || agencySearchUrl(x.agency, b)}" target="_blank" rel="noopener"><span
+           class="text-[10px] font-semibold uppercase tracking-wider text-zinc-500 mr-1 hover:text-emerald-600 dark:hover:text-emerald-400">${x.agency || "?"}</span><span
+           class="${RATING_LINK_CLASS}">${x.rating.replace(/\/+$/, "")}</span></a>
       </div>`).join("");
   }
   if (!b.credit_rating) return "–";
