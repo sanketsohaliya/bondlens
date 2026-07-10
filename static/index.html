@@ -447,7 +447,10 @@ function showRatingHistory(ev, isin, agency) {
           ? `<a href="${h.press_release}" target="_blank" rel="noopener" class="${RATING_LINK_CLASS} text-zinc-500">${h.changed_at || "undated"}</a>`
           : `<a href="${searchFallback(h)}" target="_blank" rel="noopener" class="${RATING_LINK_CLASS} text-zinc-500 italic">${h.changed_at || "undated"}</a>`}
       </td>
-      <td class="py-0.5 pr-3 font-semibold whitespace-nowrap">${h.rating}${h.outlook ? "/" + h.outlook : ""}</td>
+      <td class="py-0.5 pr-3 font-semibold whitespace-nowrap">
+        <a href="${h.press_release || searchFallback(h)}" target="_blank" rel="noopener"
+           class="${RATING_LINK_CLASS}">${h.rating}${h.outlook ? "/" + h.outlook : ""}</a>
+      </td>
       <td class="py-0.5 whitespace-nowrap">${actionHtml(h.action)}</td>
     </tr>`).join("");
   const current = `${x.rating.replace(/\/+$/, "")}`;
@@ -491,8 +494,8 @@ const ratingHtml = (b) => {
         <a onmouseenter="showRatingHistory(event, '${b.isin}', '${x.agency || ""}')"
            onmouseleave="scheduleHideRatingHistory()"
            href="${x.press_release || agencySearchUrl(x.agency, b)}" target="_blank" rel="noopener"><span
-           class="text-[10px] font-semibold uppercase tracking-wider text-zinc-500 mr-1 hover:text-emerald-600 dark:hover:text-emerald-400">${x.agency || "?"}</span><span
-           class="${RATING_LINK_CLASS}">${x.rating.replace(/\/+$/, "")}</span></a>
+           class="${RATING_LINK_CLASS}">${x.rating.replace(/\/+$/, "")}</span><span
+           class="text-[10px] font-semibold uppercase tracking-wider text-zinc-500 ml-1 hover:text-emerald-600 dark:hover:text-emerald-400">${x.agency || "?"}</span></a>
       </div>`).join("");
   }
   if (!b.credit_rating) return "–";
