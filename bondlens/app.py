@@ -50,13 +50,14 @@ def coupon_from_symbol(symbol: Optional[str]) -> Optional[float]:
     return value if 0 < value < 20 else None
 
 
-def apply_nsdl_rating(r: Dict, nr: Optional[List[Dict]]):
+def apply_nsdl_rating(r: Dict, nr: Optional[List[Dict]],
+                      history: Optional[List[Dict]] = None):
     """Override NSE's rating fields with NSDL's agency-verified data in place.
 
     NSDL's ratings are current; NSE's rating field is often stale at-issuance
     data (e.g. AAA shown for years after a downgrade). Also exposes `ratings`,
-    one entry per agency, so the UI can link each agency's own press release
-    instead of collapsing multiple ratings into a single link.
+    one entry per agency — each with that agency's own press release and its
+    archived rating trail — so the UI can show per-agency links and history.
     """
     if nr:
         r["credit_rating"] = ", ".join(
@@ -66,10 +67,16 @@ def apply_nsdl_rating(r: Dict, nr: Optional[List[Dict]]):
         r["rating_source"] = "NSDL"
         r["rating_url"] = next(
             (x["press_release"] for x in nr if x["press_release"]), None)
+        by_agency: Dict[str, List[Dict]] = {}
+        for h in history or []:
+            by_agency.setdefault(h["agency"], []).append(
+                {"rating": h["rating"], "outlook": h["outlook"],
+                 "action": h["rating_action"], "changed_at": h["changed_at"]})
         r["ratings"] = [
             {"agency": x["agency"],
              "rating": x["rating"] + (f"/{x['outlook']}" if x["outlook"] else ""),
-             "press_release": x["press_release"]}
+             "press_release": x["press_release"],
+             "history": by_agency.get(x["agency"], [])}
             for x in nr]
     else:
         r["rating_source"] = "NSE"
@@ -289,10 +296,12 @@ def bonds(
     last_traded = db.last_traded_map()
     names = db.company_names()
     nsdl_ratings = db.nsdl_ratings_map()
+    rating_history = db.nsdl_rating_history_map()
     out = []
     for r in rows:
         r["company_name"] = names.get(r["symbol"])
-        apply_nsdl_rating(r, nsdl_ratings.get(r["isin"]))
+        apply_nsdl_rating(r, nsdl_ratings.get(r["isin"]),
+                          rating_history.get(r["isin"]))
         maturity = parse_date(r["maturity_date"])
         r["years_to_maturity"] = (
             round(years_to_maturity(maturity), 2) if maturity else None
@@ -417,7 +426,7 @@ def bond_detail(isin: str, price: Optional[float] = Query(None, gt=0)):
     )
     row["kite_url"] = kite.kite_url(row["symbol"], row["series"])
     nsdl_ratings = db.nsdl_ratings_map()
-    apply_nsdl_rating(row, nsdl_ratings.get(isin))
+    apply_nsdl_rating(row, nsdl_ratings.get(isin), db.nsdl_rating_history(isin))
     row["rating_rank"] = rating_rank(row["credit_rating"])
     annotate_signals(row, db.rating_changes(), db.last_traded_map(), nsdl_ratings)
 
@@ -514,7 +523,6 @@ def bond_detail(isin: str, price: Optional[float] = Query(None, gt=0)):
         "next_payment": next_payment,
         "issuer_name": issuer,
         "issuer_bonds": issuer_bonds,
-        "rating_history": db.nsdl_rating_history(isin),
     }
 
 

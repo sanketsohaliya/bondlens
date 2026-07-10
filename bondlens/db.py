@@ -435,6 +435,20 @@ def save_nsdl_rating_history(isin: str, events: List[Dict]):
         )
 
 
+def nsdl_rating_history_map() -> Dict[str, List[Dict]]:
+    """All archived rating events keyed by ISIN, newest first per ISIN."""
+    with _conn() as conn:
+        rows = conn.execute(
+            "SELECT isin, agency, rating, outlook, rating_action, changed_at, "
+            "       press_release FROM nsdl_rating_history "
+            "ORDER BY isin, changed_at DESC NULLS LAST, agency"
+        ).fetchall()
+    out: Dict[str, List[Dict]] = {}
+    for r in rows:
+        out.setdefault(r["isin"], []).append(r)
+    return out
+
+
 def nsdl_rating_history(isin: str) -> List[Dict]:
     """Archived rating events for one ISIN, newest first (undated last)."""
     with _conn() as conn:

@@ -403,15 +403,33 @@ const ratingUrl = (b) => {
   return agencySearchUrl((b.rating_agency || "").split(",")[0].trim(), b);
 };
 const RATING_LINK_CLASS = "hover:text-emerald-600 dark:hover:text-emerald-400 underline decoration-dotted decoration-zinc-300 dark:decoration-zinc-700 underline-offset-2";
-// Multiple agencies can rate one bond; link each rating to its own agency's
-// press release rather than collapsing everything into a single link.
+const escAttr = (s) => String(s).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
+// Hovering an agency's rating shows that agency's archived trail; the link
+// still opens the latest rationale.
+const ratingTipHtml = (x) => {
+  const actionCls = (a) => {
+    const u = (a || "").toUpperCase();
+    return u.includes("UPGRADE") ? "color:rgb(5 150 105)"
+         : u.includes("DOWNGRADE") ? "color:rgb(225 29 72)" : "opacity:.65";
+  };
+  const rows = (x.history || []).map(h => `
+    <tr><td style="padding:1px 10px 1px 0;white-space:nowrap;opacity:.65">${h.changed_at || "–"}</td>
+        <td style="padding:1px 10px 1px 0;white-space:nowrap;font-weight:600">${h.rating}${h.outlook ? "/" + h.outlook : ""}</td>
+        <td style="padding:1px 0;white-space:nowrap;${actionCls(h.action)}">${h.action || "–"}</td></tr>`).join("");
+  return `<div style="font-weight:600;margin-bottom:3px">${x.agency || "Agency"} — rating history</div>`
+    + (rows ? `<table style="font-size:11px">${rows}</table>`
+            : `<div style="opacity:.65">No archived events yet</div>`)
+    + `<div style="opacity:.65;margin-top:3px">Agency-verified via NSDL — click to read the latest rationale</div>`;
+};
+// Multiple agencies can rate one bond: one row per agency, each linking to
+// that agency's own press release.
 const ratingHtml = (b) => {
   if (b.ratings && b.ratings.length) {
-    return b.ratings.map(x =>
-      `<a href="${x.press_release || agencySearchUrl(x.agency, b)}" target="_blank" rel="noopener"
-         class="${RATING_LINK_CLASS}"
-         data-tip="Agency-verified via NSDL — read the ${x.agency || "agency"} rationale">${x.rating.replace(/\/+$/, "")}</a>`
-    ).join(", ");
+    return b.ratings.map(x => `
+      <div class="whitespace-nowrap" data-tip-html="${escAttr(ratingTipHtml(x))}">
+        <span class="text-[10px] font-semibold uppercase tracking-wider text-zinc-500 mr-1">${x.agency || "?"}</span><a href="${x.press_release || agencySearchUrl(x.agency, b)}" target="_blank" rel="noopener"
+           class="${RATING_LINK_CLASS}">${x.rating.replace(/\/+$/, "")}</a>
+      </div>`).join("");
   }
   if (!b.credit_rating) return "–";
   return `<a href="${ratingUrl(b)}" target="_blank" rel="noopener"
@@ -899,48 +917,11 @@ function renderDetail(d) {
       <div class="w-0 min-w-full">
         <div class="px-8 py-6 grid md:grid-cols-3 gap-y-6 text-sm md:divide-x md:divide-zinc-300/70 md:dark:divide-zinc-700/50">
           <div class="md:pr-8">${figures}</div>
-          <div class="md:px-8">${invest}${ratingHistoryBlock(d)}${issuerBlock(d)}</div>
+          <div class="md:px-8">${invest}${issuerBlock(d)}</div>
           ${flows ? `<div class="md:pl-8">${flows}</div>` : ""}
         </div>
       </div>
     </td>`;
-}
-
-function ratingHistoryBlock(d) {
-  const hist = d.rating_history || [];
-  if (!hist.length) return "";
-  const actionHtml = (a) => {
-    const u = (a || "").toUpperCase();
-    if (u.includes("UPGRADE")) return `<span class="text-emerald-600 dark:text-emerald-400 font-semibold">▲ ${a}</span>`;
-    if (u.includes("DOWNGRADE")) return `<span class="text-rose-600 dark:text-rose-400 font-semibold">▼ ${a}</span>`;
-    return `<span class="text-zinc-500">${a || "–"}</span>`;
-  };
-  const rows = hist.map(h => `
-    <tr>
-      <td class="py-1 pr-3 whitespace-nowrap text-zinc-500">${h.changed_at || "–"}</td>
-      <td class="py-1 pr-3 whitespace-nowrap">${h.agency || "–"}</td>
-      <td class="py-1 pr-3 font-semibold whitespace-nowrap">
-        ${h.press_release
-          ? `<a href="${h.press_release}" target="_blank" rel="noopener" class="${RATING_LINK_CLASS}"
-               data-tip="Read the ${h.agency || "agency"} rationale from this date">${h.rating}${h.outlook ? "/" + h.outlook : ""}</a>`
-          : `${h.rating}${h.outlook ? "/" + h.outlook : ""}`}
-      </td>
-      <td class="py-1 text-right whitespace-nowrap">${actionHtml(h.rating_action)}</td>
-    </tr>`).join("");
-  return `
-    <div class="mt-6 pt-5 border-t border-zinc-300/70 dark:border-zinc-700/50">
-      <div class="text-[10px] font-semibold uppercase tracking-wider text-zinc-500 mb-2"
-           data-tip="Every rating event the agencies published on NSDL, archived locally forever — click a rating to read that period's rationale">
-        Rating history (${hist.length})</div>
-      <div class="max-h-40 overflow-y-auto scroll-slim pr-3">
-        <table class="w-full text-xs">
-          <thead class="text-[10px] uppercase tracking-wider text-zinc-500">
-            <tr><th class="py-1 pr-3 font-semibold text-left">Date</th><th class="py-1 pr-3 font-semibold text-left">Agency</th><th class="py-1 pr-3 font-semibold text-left">Rating</th><th class="py-1 font-semibold text-right">Action</th></tr>
-          </thead>
-          <tbody>${rows}</tbody>
-        </table>
-      </div>
-    </div>`;
 }
 
 function issuerBlock(d) {
@@ -1257,9 +1238,10 @@ tipEl.id = "tooltip";
 document.body.appendChild(tipEl);
 
 document.addEventListener("mouseover", (e) => {
-  const target = e.target.closest("[data-tip]");
-  if (!target || !target.dataset.tip) { tipEl.style.opacity = "0"; return; }
-  tipEl.textContent = target.dataset.tip;
+  const target = e.target.closest("[data-tip], [data-tip-html]");
+  if (!target || !(target.dataset.tip || target.dataset.tipHtml)) { tipEl.style.opacity = "0"; return; }
+  if (target.dataset.tipHtml) tipEl.innerHTML = target.dataset.tipHtml;
+  else tipEl.textContent = target.dataset.tip;
   tipEl.style.opacity = "1";
 });
 
