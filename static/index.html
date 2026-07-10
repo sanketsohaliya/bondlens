@@ -461,7 +461,7 @@ function showRatingHistory(ev, isin, agency) {
     </div>
     ${rows
       ? `<div class="max-h-52 overflow-y-auto scroll-slim"><table>${rows}</table></div>
-         <div class="text-zinc-500 mt-1.5">Each date links to the rationale ${agency} published then</div>`
+         <div class="text-zinc-500 mt-1.5">Each rating links to the rationale ${agency} published then</div>`
       : `<div class="text-zinc-500">No archived events yet — they accumulate with every ratings refresh</div>`}`;
   histPop.classList.remove("hidden");
   tipEl.style.opacity = "0";
