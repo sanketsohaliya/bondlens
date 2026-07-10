@@ -288,9 +288,41 @@ def parse_ratings(payload: Dict) -> List[Dict]:
     return out
 
 
+def parse_rating_history(payload: Dict) -> List[Dict]:
+    """Every dated rating event (current + earlier) from the credit-ratings
+    payload, newest first. NSDL keeps the full per-agency trail (rating,
+    outlook and action changes), each with its own press release — persisted
+    locally so the history survives even if NSDL ever truncates it.
+    """
+    out = []
+    for key in ("currentRatings", "earlierRatings"):
+        for row in payload.get(key) or []:
+            rating = _clean(row.get("currentRating"))
+            if not rating:
+                continue
+            changed = parse_date(_clean(row.get("ratingChangeDate"))
+                                 or _clean(row.get("creditRatingDate")) or "")
+            out.append({
+                "agency": _short_agency(row.get("creditRatingAgencyName")),
+                "rating": rating,
+                "outlook": _clean(row.get("outlook")),
+                "action": _clean(row.get("ratingAction")),
+                "changed_at": changed.isoformat() if changed else None,
+                "press_release": _clean(row.get("pressReleaseLink")),
+            })
+    out.sort(key=lambda x: x["changed_at"] or "", reverse=True)
+    return out
+
+
 def fetch_ratings(isin: str, timeout: int = 30) -> List[Dict]:
     """Fetch current agency ratings for one ISIN. Raises on HTTP errors."""
+    return fetch_rating_data(isin, timeout)[0]
+
+
+def fetch_rating_data(isin: str, timeout: int = 30) -> Tuple[List[Dict], List[Dict]]:
+    """Fetch (current ratings, full rating history) for one ISIN in one call."""
     resp = requests.get(RATINGS_URL, params={"isin": isin}, headers=HEADERS,
                         timeout=timeout)
     resp.raise_for_status()
-    return parse_ratings(resp.json())
+    payload = resp.json()
+    return parse_ratings(payload), parse_rating_history(payload)

@@ -68,7 +68,15 @@ Tailwind CDN + vanilla JS). Runs locally in WSL (Ubuntu-20.04):
   filters, and up/down flags all use the override. Ratings re-fetched
   when older than `RATINGS_MAX_AGE_DAYS` (30) during the bulk NSDL
   fetch. Up/down markers prefer NSDL's ratingAction over NSE snapshot
-  diffing; the rating cell links straight to the agency's press release.
+  diffing; the rating cell links straight to the agency's press release —
+  one link per agency when several rate the same bond (`ratings` list in
+  the API). Full rating history (NSDL's currentRatings + earlierRatings,
+  each event with its own press release) is archived append-only in
+  `nsdl_rating_history` on every ratings fetch — never deleted, so the
+  local trail survives even if NSDL truncates theirs. Shown as a "Rating
+  history" timeline in the detail drawer (`rating_history` in the detail
+  API). Note: history backfills as ratings refresh (30-day cycle); only
+  ISINs fetched after 2026-07-10 have it.
 - Published/advertised returns vs investor returns, record-date logic:
   flows are `future` only if due date > today AND record date (if any)
   > today — a buyer today wouldn't receive a payout whose record date

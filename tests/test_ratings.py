@@ -1,7 +1,7 @@
 """Tests for parsing NSDL's credit-ratings payload (bondlens.nsdl.parse_ratings)."""
 import unittest
 
-from bondlens.nsdl import parse_ratings, _short_agency
+from bondlens.nsdl import parse_rating_history, parse_ratings, _short_agency
 
 
 def cr(agency, rating, outlook="Stable", action="Upgrade",
@@ -25,6 +25,64 @@ class ShortAgency(unittest.TestCase):
     def test_unknown_agency_first_word(self):
         self.assertEqual(_short_agency("Acme Ratings Co"), "ACME")
         self.assertIsNone(_short_agency(None))
+
+
+class ParseRatingHistory(unittest.TestCase):
+    def test_current_and_earlier_merged_newest_first(self):
+        # Shape observed live for INE530B07310 (IIFL Finance): both agencies'
+        # current ratings plus the dated earlier trail, each with its own
+        # press release.
+        payload = {
+            "currentRatings": [
+                cr("ICRA LIMITED", "AA", outlook="Negative",
+                   action="Reaffirm", changed="11-02-2026"),
+            ],
+            "earlierRatings": [
+                cr("ICRA LIMITED", "AA", outlook="Stable",
+                   action="Reaffirm", changed="25-09-2024",
+                   link="https://example.com/old.html"),
+                cr("CRISIL RATINGS LIMITED", "AA", outlook="Positive",
+                   action="Reaffirm", changed="20-11-2023"),
+            ],
+        }
+        out = parse_rating_history(payload)
+        self.assertEqual([x["changed_at"] for x in out],
+                         ["2026-02-11", "2024-09-25", "2023-11-20"])
+        self.assertEqual(out[1]["press_release"], "https://example.com/old.html")
+        self.assertEqual(out[2]["agency"], "CRISIL")
+
+    def test_undated_events_kept_last(self):
+        payload = {
+            "earlierRatings": [
+                {"creditRatingAgencyName": "CRISIL RATINGS LIMITED",
+                 "currentRating": "AA", "outlook": "Stable",
+                 "ratingAction": "New", "ratingChangeDate": "-",
+                 "creditRatingDate": "-", "pressReleaseLink": "-"},
+                cr("ICRA LIMITED", "AA", changed="01-08-2023"),
+            ],
+        }
+        out = parse_rating_history(payload)
+        self.assertEqual(len(out), 2)
+        self.assertEqual(out[0]["changed_at"], "2023-08-01")
+        self.assertIsNone(out[1]["changed_at"])
+        self.assertEqual(out[1]["action"], "New")
+
+    def test_falls_back_to_credit_rating_date(self):
+        payload = {
+            "earlierRatings": [
+                {"creditRatingAgencyName": "ICRA LIMITED",
+                 "currentRating": "AA", "outlook": "Stable",
+                 "ratingAction": "Reaffirm", "ratingChangeDate": "-",
+                 "creditRatingDate": "23-12-2022", "pressReleaseLink": "-"},
+            ],
+        }
+        out = parse_rating_history(payload)
+        self.assertEqual(out[0]["changed_at"], "2022-12-23")
+
+    def test_blank_ratings_skipped_and_empty_payload(self):
+        payload = {"currentRatings": [cr("ICRA LIMITED", "-")]}
+        self.assertEqual(parse_rating_history(payload), [])
+        self.assertEqual(parse_rating_history({}), [])
 
 
 class ParseRatings(unittest.TestCase):

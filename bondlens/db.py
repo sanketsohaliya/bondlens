@@ -94,6 +94,27 @@ CREATE TABLE IF NOT EXISTS nsdl_ratings (
 );
 CREATE INDEX IF NOT EXISTS idx_nsdl_ratings_isin ON nsdl_ratings (isin);
 
+-- Append-only archive of every rating event NSDL has published for an ISIN
+-- (current + earlier, per agency). Never deleted: builds a permanent local
+-- rating history even if NSDL truncates theirs. COALESCE in the unique index
+-- because Postgres treats NULLs as distinct in plain UNIQUE constraints.
+CREATE TABLE IF NOT EXISTS nsdl_rating_history (
+    isin TEXT NOT NULL,
+    agency TEXT,
+    rating TEXT,
+    outlook TEXT,
+    rating_action TEXT,
+    changed_at TEXT,
+    press_release TEXT,
+    first_seen_at TEXT NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_nsdl_rating_history_uni
+    ON nsdl_rating_history (isin, COALESCE(agency, ''), COALESCE(rating, ''),
+                            COALESCE(outlook, ''), COALESCE(rating_action, ''),
+                            COALESCE(changed_at, ''));
+CREATE INDEX IF NOT EXISTS idx_nsdl_rating_history_isin
+    ON nsdl_rating_history (isin);
+
 -- Fetch log, separate from the rows: an ISIN with no current ratings still
 -- counts as fetched (so staleness checks don't retry it forever).
 CREATE TABLE IF NOT EXISTS nsdl_ratings_meta (
@@ -392,6 +413,37 @@ def nsdl_ratings_map() -> Dict[str, List[Dict]]:
     for r in rows:
         out.setdefault(r["isin"], []).append(r)
     return out
+
+
+def save_nsdl_rating_history(isin: str, events: List[Dict]):
+    """Append rating events, skipping ones already archived (append-only)."""
+    if not events:
+        return
+    now = datetime.now(timezone.utc).isoformat()
+    with _conn() as conn:
+        conn.cursor().executemany(
+            "INSERT INTO nsdl_rating_history "
+            "(isin, agency, rating, outlook, rating_action, changed_at, "
+            " press_release, first_seen_at) "
+            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s) "
+            "ON CONFLICT (isin, COALESCE(agency, ''), COALESCE(rating, ''), "
+            "             COALESCE(outlook, ''), COALESCE(rating_action, ''), "
+            "             COALESCE(changed_at, '')) DO NOTHING",
+            [(isin, x["agency"], x["rating"], x["outlook"], x["action"],
+              x["changed_at"], x["press_release"], now)
+             for x in events],
+        )
+
+
+def nsdl_rating_history(isin: str) -> List[Dict]:
+    """Archived rating events for one ISIN, newest first (undated last)."""
+    with _conn() as conn:
+        return conn.execute(
+            "SELECT agency, rating, outlook, rating_action, changed_at, "
+            "       press_release FROM nsdl_rating_history WHERE isin = %s "
+            "ORDER BY changed_at DESC NULLS LAST, agency",
+            (isin,),
+        ).fetchall()
 
 
 def nsdl_ratings_fetched() -> Dict[str, str]:

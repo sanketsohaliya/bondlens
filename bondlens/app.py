@@ -144,7 +144,9 @@ def _nsdl_worker(isins):
                 db.save_nsdl(isin, "error", {}, [])
                 _nsdl_state["errors"] += 1
         try:
-            db.save_nsdl_ratings(isin, nsdl.fetch_ratings(isin))
+            current, history = nsdl.fetch_rating_data(isin)
+            db.save_nsdl_ratings(isin, current)
+            db.save_nsdl_rating_history(isin, history)
         except Exception:  # noqa: BLE001 - keep whatever we had
             pass
         _nsdl_state["done"] += 1
@@ -173,7 +175,9 @@ def _fetch_nsdl_async(isin: str):
             if db.nsdl_fetched_isins().get(isin) != "ok":
                 db.save_nsdl(isin, "error", {}, [])
         try:
-            db.save_nsdl_ratings(isin, nsdl.fetch_ratings(isin))
+            current, history = nsdl.fetch_rating_data(isin)
+            db.save_nsdl_ratings(isin, current)
+            db.save_nsdl_rating_history(isin, history)
         except Exception:  # noqa: BLE001 - keep whatever we had
             pass
     threading.Thread(target=run, daemon=True).start()
@@ -510,6 +514,7 @@ def bond_detail(isin: str, price: Optional[float] = Query(None, gt=0)):
         "next_payment": next_payment,
         "issuer_name": issuer,
         "issuer_bonds": issuer_bonds,
+        "rating_history": db.nsdl_rating_history(isin),
     }
 
 
