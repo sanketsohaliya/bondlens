@@ -441,8 +441,7 @@ function showRatingHistory(ev, isin, agency) {
       <td class="py-0.5 pr-3 whitespace-nowrap">
         ${h.press_release
           ? `<a href="${h.press_release}" target="_blank" rel="noopener" class="${RATING_LINK_CLASS} text-zinc-500">${h.changed_at || "undated"}</a>`
-          : `<a href="${searchFallback(h)}" target="_blank" rel="noopener" class="${RATING_LINK_CLASS} text-zinc-500 italic"
-               data-tip="NSDL has no report link for this event (common for older entries) — opens a search for it instead">${h.changed_at || "undated"}</a>`}
+          : `<a href="${searchFallback(h)}" target="_blank" rel="noopener" class="${RATING_LINK_CLASS} text-zinc-500 italic">${h.changed_at || "undated"}</a>`}
       </td>
       <td class="py-0.5 pr-3 font-semibold whitespace-nowrap">${h.rating}${h.outlook ? "/" + h.outlook : ""}</td>
       <td class="py-0.5 whitespace-nowrap">${actionHtml(h.action)}</td>
