@@ -27,6 +27,12 @@ RATINGS_URL = (
     "https://www.indiabondinfo.nsdl.com/bds-service/v1/public/bdsinfo/credit-ratings"
 )
 
+# Sibling endpoint (same Angular bundle): listing details per ISIN, incl.
+# allotmentDate (the issue date) and listingDate per exchange.
+LISTINGS_URL = (
+    "https://www.indiabondinfo.nsdl.com/bds-service/v1/public/bdsinfo/listings"
+)
+
 HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
@@ -380,3 +386,26 @@ def fetch_rating_data(isin: str, timeout: int = 30) -> Tuple[List[Dict], List[Di
     resp.raise_for_status()
     payload = resp.json()
     return parse_ratings(payload), parse_rating_history(payload)
+
+
+def parse_listing(payload: Dict) -> Dict:
+    """Allotment (issue) and listing dates from the listings payload.
+    Prefers the NSE entry when a bond is listed on multiple exchanges."""
+    details = payload.get("listingDetails") or []
+    row = next((d for d in details if (d.get("exchangeName") or "") == "NSE"),
+               details[0] if details else {})
+    allotment = parse_date(_clean(row.get("allotmentDate")) or "")
+    listing = parse_date(_clean(row.get("listingDate")) or "")
+    return {
+        "allotment_date": allotment.isoformat() if allotment else None,
+        "listing_date": listing.isoformat() if listing else None,
+        "issue_type": _clean(row.get("issueType")),
+    }
+
+
+def fetch_listing(isin: str, timeout: int = 30) -> Dict:
+    """Fetch allotment/listing dates for one ISIN. Raises on HTTP errors."""
+    resp = requests.get(LISTINGS_URL, params={"isin": isin}, headers=HEADERS,
+                        timeout=timeout)
+    resp.raise_for_status()
+    return parse_listing(resp.json())

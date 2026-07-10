@@ -142,6 +142,8 @@ _nsdl_lock = threading.Lock()
 
 def _nsdl_worker(isins):
     complete = _nsdl_complete_isins()
+    missing_listing = set(db.isins_missing_listing())
+    have_meta = set(db.nsdl_fetched_isins())
     for isin in isins:
         _nsdl_state["current"] = isin
         if isin not in complete:  # schedules are static; don't refetch good ones
@@ -151,6 +153,11 @@ def _nsdl_worker(isins):
             except Exception:  # noqa: BLE001 - record and continue
                 db.save_nsdl(isin, "error", {}, [])
                 _nsdl_state["errors"] += 1
+        if isin in missing_listing or isin not in have_meta:
+            try:  # allotment/listing dates are static; fetch once
+                db.save_nsdl_listing(isin, nsdl.fetch_listing(isin))
+            except Exception:  # noqa: BLE001 - retried on the next run
+                pass
         try:
             current, history = nsdl.fetch_rating_data(isin)
             db.save_nsdl_ratings(isin, current)
@@ -182,6 +189,10 @@ def _fetch_nsdl_async(isin: str):
         except Exception:  # noqa: BLE001 - record and move on
             if db.nsdl_fetched_isins().get(isin) != "ok":
                 db.save_nsdl(isin, "error", {}, [])
+        try:
+            db.save_nsdl_listing(isin, nsdl.fetch_listing(isin))
+        except Exception:  # noqa: BLE001 - retried on the next run
+            pass
         try:
             current, history = nsdl.fetch_rating_data(isin)
             db.save_nsdl_ratings(isin, current)
@@ -215,7 +226,9 @@ def nsdl_fetch():
         universe = {r["isin"] for r in db.latest_snapshot() if r["isin"]}
         universe |= {h["isin"] for h in db.holdings()}
         pending = sorted(
-            (universe - _nsdl_complete_isins()) | _ratings_stale_isins(universe)
+            (universe - _nsdl_complete_isins())
+            | _ratings_stale_isins(universe)
+            | (universe & set(db.isins_missing_listing()))
         )
         if not pending:
             return {"started": False, "reason": "nothing to fetch", **_nsdl_state}
@@ -502,6 +515,9 @@ def bond_detail(isin: str, price: Optional[float] = Query(None, gt=0)):
         "frequency": nsdl.classify_frequency(meta["frequency_text"]) if meta else None,
         "frequency_text": meta["frequency_text"] if meta else None,
         "coupon_basis": meta["coupon_basis"] if meta else None,
+        "allotment_date": meta["allotment_date"] if meta else None,
+        "listing_date": meta["listing_date"] if meta else None,
+        "issue_type": meta["issue_type"] if meta else None,
         "nsdl_status": meta["status"] if meta else None,
         "ytm_exact": exact,
         "ytm_approx": row["ytm"],

@@ -3,8 +3,27 @@ import unittest
 
 from datetime import date
 
-from bondlens.nsdl import (parse_rating_history, parse_ratings, _short_agency,
-                           _suspect_press_release)
+from bondlens.nsdl import (parse_listing, parse_rating_history, parse_ratings,
+                           _short_agency, _suspect_press_release)
+
+
+class ParseListing(unittest.TestCase):
+    def test_prefers_nse_entry_and_parses_dates(self):
+        payload = {"listingDetails": [
+            {"exchangeName": "BSE", "allotmentDate": "15-01-2026",
+             "listingDate": "19-01-2026", "issueType": "First Issue"},
+            {"exchangeName": "NSE", "allotmentDate": "16-01-2026",
+             "listingDate": "20-01-2026", "issueType": "First Issue"},
+        ]}
+        out = parse_listing(payload)
+        self.assertEqual(out["allotment_date"], "2026-01-16")
+        self.assertEqual(out["listing_date"], "2026-01-20")
+        self.assertEqual(out["issue_type"], "First Issue")
+
+    def test_empty_payload(self):
+        out = parse_listing({})
+        self.assertIsNone(out["allotment_date"])
+        self.assertIsNone(out["listing_date"])
 
 
 class SuspectPressRelease(unittest.TestCase):

@@ -875,6 +875,10 @@ function renderDetail(d) {
         ? `<span class="${chg > 0 ? "text-emerald-600 dark:text-emerald-400" : chg < 0 ? "text-rose-600 dark:text-rose-400" : ""}">${chg > 0 ? "+" : ""}${fmt(chg)}%</span>`
         : "–",
         "Price move vs yesterday's close")}
+      ${figHtml("Issued", d.allotment_date
+        ? `${d.allotment_date}${d.issue_type ? ` <span class="text-zinc-500 font-normal">${d.issue_type}</span>` : ""}`
+        : "–",
+        "Allotment date per NSDL — when the bond was issued to investors" + (d.listing_date ? `; listed on NSE ${d.listing_date}` : ""))}
       ${figHtml("Pays", d.frequency_text || "–",
         "Payment frequency as published by NSDL")}
       ${figHtml("Day count", d.coupon_basis || "–",

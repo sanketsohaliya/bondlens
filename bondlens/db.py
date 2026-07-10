@@ -55,6 +55,9 @@ CREATE TABLE IF NOT EXISTS nsdl_meta (
     frequency_text TEXT,
     coupon_basis TEXT
 );
+ALTER TABLE nsdl_meta ADD COLUMN IF NOT EXISTS allotment_date TEXT;
+ALTER TABLE nsdl_meta ADD COLUMN IF NOT EXISTS listing_date TEXT;
+ALTER TABLE nsdl_meta ADD COLUMN IF NOT EXISTS issue_type TEXT;
 
 CREATE TABLE IF NOT EXISTS nsdl_cashflows (
     isin TEXT,
@@ -280,10 +283,36 @@ def isins_with_flows() -> set:
 def nsdl_meta_map() -> Dict[str, Dict]:
     with _conn() as conn:
         rows = conn.execute(
-            "SELECT isin, status, frequency, frequency_text, coupon_basis "
+            "SELECT isin, status, frequency, frequency_text, coupon_basis, "
+            "       allotment_date, listing_date, issue_type "
             "FROM nsdl_meta"
         ).fetchall()
     return {r["isin"]: r for r in rows}
+
+
+def save_nsdl_listing(isin: str, listing: Dict):
+    """Merge allotment/listing dates into nsdl_meta (row may not exist yet
+    when the schedule fetch failed — keep the dates anyway)."""
+    with _conn() as conn:
+        conn.execute(
+            "INSERT INTO nsdl_meta (isin, allotment_date, listing_date, issue_type) "
+            "VALUES (%s, %s, %s, %s) "
+            "ON CONFLICT (isin) DO UPDATE SET "
+            "allotment_date = EXCLUDED.allotment_date, "
+            "listing_date = EXCLUDED.listing_date, "
+            "issue_type = EXCLUDED.issue_type",
+            (isin, listing.get("allotment_date"), listing.get("listing_date"),
+             listing.get("issue_type")),
+        )
+
+
+def isins_missing_listing() -> List[str]:
+    """Cached ISINs that don't have an allotment date yet (for backfill)."""
+    with _conn() as conn:
+        rows = conn.execute(
+            "SELECT isin FROM nsdl_meta WHERE allotment_date IS NULL"
+        ).fetchall()
+    return [r["isin"] for r in rows]
 
 
 def rating_changes() -> Dict[str, Dict]:
