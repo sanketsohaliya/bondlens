@@ -476,9 +476,9 @@ const ratingHtml = (b) => {
   if (b.ratings && b.ratings.length) {
     return b.ratings.map(x => `
       <div class="whitespace-nowrap">
-        <button onmouseenter="showRatingHistory(event, '${b.isin}', '${x.agency || ""}')"
-           onmouseleave="scheduleHideRatingHistory()"
-           class="cursor-default"><span class="text-[10px] font-semibold uppercase tracking-wider text-zinc-500 mr-1">${x.agency || "?"}</span><span class="${RATING_LINK_CLASS}">${x.rating.replace(/\/+$/, "")}</span></button>
+        <span onmouseenter="showRatingHistory(event, '${b.isin}', '${x.agency || ""}')"
+           onmouseleave="scheduleHideRatingHistory()"><span class="text-[10px] font-semibold uppercase tracking-wider text-zinc-500 mr-1">${x.agency || "?"}</span><a href="${x.press_release || agencySearchUrl(x.agency, b)}" target="_blank" rel="noopener"
+           class="${RATING_LINK_CLASS}">${x.rating.replace(/\/+$/, "")}</a></span>
       </div>`).join("");
   }
   if (!b.credit_rating) return "–";
