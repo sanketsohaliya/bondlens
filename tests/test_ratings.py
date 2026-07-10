@@ -1,7 +1,56 @@
 """Tests for parsing NSDL's credit-ratings payload (bondlens.nsdl.parse_ratings)."""
 import unittest
 
-from bondlens.nsdl import parse_rating_history, parse_ratings, _short_agency
+from datetime import date
+
+from bondlens.nsdl import (parse_rating_history, parse_ratings, _short_agency,
+                           _suspect_press_release)
+
+
+class SuspectPressRelease(unittest.TestCase):
+    CRISIL = ("https://www.crisilratings.com/mnt/winshare/Ratings/RatingList/"
+              "RatingDocs/{}_RR_371016.html")
+
+    def test_wrong_company_and_date_dropped(self):
+        # Seen live: Sammaan Capital's 2025-05-30 "New" event linking a
+        # Bharti Telecom report dated 2025-07-17.
+        link = self.CRISIL.format("BhartiTelecomLimited_July%2017_%202025")
+        self.assertTrue(_suspect_press_release(
+            link, "SAMMAAN CAPITAL LIMITED", date(2025, 5, 30)))
+
+    def test_matching_company_kept(self):
+        link = self.CRISIL.format("SammaanCapitalLimited_April%209_%202026")
+        self.assertFalse(_suspect_press_release(
+            link, "SAMMAAN CAPITAL LIMITED", date(2020, 1, 1)))
+
+    def test_renamed_issuer_kept_when_report_precedes_event(self):
+        # Seen live for INE148I07TX1: the "New" event (2024-07-09) links a
+        # report named for the pre-rename company, published before the
+        # event — legitimate, must be kept.
+        link = self.CRISIL.format("IndiabullsHousingFinanceLimited_May%2031_%202024")
+        self.assertFalse(_suspect_press_release(
+            link, "SAMMAAN CAPITAL LIMITED", date(2024, 7, 9)))
+
+    def test_mismatched_name_report_after_event_dropped(self):
+        link = self.CRISIL.format("IndiabullsHousingFinanceLimited_May%2031_%202024")
+        self.assertTrue(_suspect_press_release(
+            link, "SOME OTHER COMPANY LIMITED", date(2024, 3, 1)))
+
+    def test_opaque_urls_never_suspect(self):
+        self.assertFalse(_suspect_press_release(
+            "https://www.icra.in/Rationale/ShowRationaleReport?Id=140856",
+            "SAMMAAN CAPITAL LIMITED", date(2025, 5, 30)))
+
+    def test_no_issuer_no_date_kept(self):
+        link = self.CRISIL.format("BhartiTelecomLimited_July%2017_%202025")
+        self.assertFalse(_suspect_press_release(link, None, None))
+
+    def test_parse_drops_suspect_link(self):
+        row = cr("CRISIL RATINGS LIMITED", "AA", changed="30-05-2025",
+                 link=self.CRISIL.format("BhartiTelecomLimited_July%2017_%202025"))
+        row["issuerName"] = "SAMMAAN CAPITAL LIMITED"
+        out = parse_rating_history({"earlierRatings": [row]})
+        self.assertIsNone(out[0]["press_release"])
 
 
 def cr(agency, rating, outlook="Stable", action="Upgrade",

@@ -86,6 +86,13 @@ Tailwind CDN + vanilla JS). Runs locally in WSL (Ubuntu-20.04):
 
 - NSDL schedules can be wrong for amortizing bonds (see above), blank
   (`amounts_estimated`), or absent (`nsdl_status` = "empty"/uncached).
+- Agencies sometimes attach the wrong press release to NSDL's ratings
+  feed (seen live: Sammaan Capital's 2025 "New" rating linking a Bharti
+  Telecom report). `_suspect_press_release` in nsdl.py drops provably
+  wrong CRISIL-style links (name+date embedded in URL); issuer renames
+  (Sammaan ex-Indiabulls) mean mismatched names are kept when the report
+  predates the event. Pre-~2023 events often have no link at all — the
+  UI falls back to a targeted search.
 - LTP can be stale for illiquid bonds (`days_since_traded` tracked;
   UI flags stale). Thin trades distort YTM — check traded value.
 - Approx YTM (`ytm_method: "approx"`) assumes annual coupons — off by

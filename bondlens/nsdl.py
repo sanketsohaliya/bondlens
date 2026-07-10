@@ -8,7 +8,7 @@ cash-flow schedule (interest + redemption) with exact rupee amounts per
 unit of face value. Schedules are static, so they are cached permanently.
 """
 import re
-from datetime import date
+from datetime import date, timedelta
 from typing import Dict, List, Optional, Tuple
 
 import requests
@@ -253,6 +253,59 @@ def _clean(value) -> Optional[str]:
     return text if text and text != "-" else None
 
 
+# CRISIL RatingDocs URLs embed company name and publish date, e.g.
+# .../RatingDocs/SammaanCapitalLimited_April%209_%202026_RR_....html
+_CRISIL_DOC_RE = re.compile(
+    r"RatingDocs/([A-Za-z]+)_([A-Za-z]+)(?:%20|\s)(\d{1,2})_(?:%20|\s)(\d{4})")
+_MONTHS = {m.lower(): i for i, m in enumerate(
+    ["January", "February", "March", "April", "May", "June", "July",
+     "August", "September", "October", "November", "December"], 1)}
+
+
+def _condense(text: Optional[str]) -> str:
+    return re.sub(r"[^a-z]", "", (text or "").lower())
+
+
+def _suspect_press_release(link: str, issuer_name: Optional[str],
+                           event_date: Optional[date]) -> bool:
+    """True when a link provably belongs to another company's report.
+
+    Agencies sometimes attach the wrong press release to NSDL's feed (seen
+    live: Sammaan Capital's 2025 "New" rating linking a Bharti Telecom
+    report published 48 days later). Only CRISIL-style URLs are checkable.
+    Keep the link if the embedded company slug matches the issuer. Renames
+    make slug-only checks unsafe (Sammaan was Indiabulls, so old reports
+    legitimately carry the old name) — for mismatched slugs, keep only
+    reports published on/before the event: a rationale always exists before
+    the rating is entered, while wrongly attached links are later documents.
+    """
+    m = _CRISIL_DOC_RE.search(link or "")
+    if not m:
+        return False  # opaque URL (e.g. ICRA report IDs) — can't validate
+    slug, month_name, day, year = m.groups()
+    slug_c, issuer_c = _condense(slug), _condense(issuer_name)
+    if issuer_c and (slug_c[:8] in issuer_c or issuer_c[:8] in slug_c):
+        return False
+    month = _MONTHS.get(month_name.lower())
+    if month and event_date:
+        try:
+            url_date = date(int(year), month, int(day))
+        except ValueError:
+            return bool(issuer_c)
+        if url_date <= event_date + timedelta(days=7):
+            return False
+    elif not issuer_c:
+        return False  # nothing to validate against — keep
+    return True
+
+
+def _press_release(row: Dict, when: Optional[date]) -> Optional[str]:
+    link = _clean(row.get("pressReleaseLink"))
+    if link and _suspect_press_release(link, row.get("issuerName"), when):
+        return None
+    return link
+
+
 def parse_ratings(payload: Dict) -> List[Dict]:
     """Current ratings from the credit-ratings payload, one per agency.
 
@@ -275,6 +328,7 @@ def parse_ratings(payload: Dict) -> List[Dict]:
             continue
         agency_raw = row.get("creditRatingAgencyName")
         changed = parse_date(_clean(row.get("ratingChangeDate")) or "")
+        event = changed or parse_date(_clean(row.get("creditRatingDate")) or "")
         prev_list = sorted(earlier.get(agency_raw, []), reverse=True)
         out.append({
             "agency": _short_agency(agency_raw),
@@ -283,7 +337,7 @@ def parse_ratings(payload: Dict) -> List[Dict]:
             "action": _clean(row.get("ratingAction")),
             "changed_at": changed.isoformat() if changed else None,
             "prev_rating": prev_list[0][1] if prev_list else None,
-            "press_release": _clean(row.get("pressReleaseLink")),
+            "press_release": _press_release(row, event),
         })
     return out
 
@@ -308,7 +362,7 @@ def parse_rating_history(payload: Dict) -> List[Dict]:
                 "outlook": _clean(row.get("outlook")),
                 "action": _clean(row.get("ratingAction")),
                 "changed_at": changed.isoformat() if changed else None,
-                "press_release": _clean(row.get("pressReleaseLink")),
+                "press_release": _press_release(row, changed),
             })
     out.sort(key=lambda x: x["changed_at"] or "", reverse=True)
     return out
