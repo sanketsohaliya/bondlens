@@ -428,12 +428,21 @@ function showRatingHistory(ev, isin, agency) {
     if (u.includes("DOWNGRADE")) return `<span class="text-rose-600 dark:text-rose-400 font-semibold">▼ ${a}</span>`;
     return `<span class="text-zinc-500">${a || "–"}</span>`;
   };
+  // Old events (mostly pre-2023, incl. the initial "New" rating) often have
+  // no press release in NSDL's feed — fall back to a targeted search.
+  const searchFallback = (h) => {
+    const name = AGENCY_NAMES[(agency || "").toUpperCase()] || agency || "";
+    const yr = (h.changed_at || "").slice(0, 4);
+    return `https://www.google.com/search?q=${encodeURIComponent(
+      `${name} rating rationale "${isin}" OR "${b.symbol}" ${yr}`)}`;
+  };
   const rows = (x.history || []).map(h => `
     <tr>
       <td class="py-0.5 pr-3 whitespace-nowrap">
         ${h.press_release
           ? `<a href="${h.press_release}" target="_blank" rel="noopener" class="${RATING_LINK_CLASS} text-zinc-500">${h.changed_at || "undated"}</a>`
-          : `<span class="text-zinc-500" data-tip="No report link published for this event">${h.changed_at || "undated"}</span>`}
+          : `<a href="${searchFallback(h)}" target="_blank" rel="noopener" class="${RATING_LINK_CLASS} text-zinc-500 italic"
+               data-tip="NSDL has no report link for this event (common for older entries) — opens a search for it instead">${h.changed_at || "undated"}</a>`}
       </td>
       <td class="py-0.5 pr-3 font-semibold whitespace-nowrap">${h.rating}${h.outlook ? "/" + h.outlook : ""}</td>
       <td class="py-0.5 whitespace-nowrap">${actionHtml(h.action)}</td>
