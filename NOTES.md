@@ -28,8 +28,15 @@ Tailwind CDN + vanilla JS). Runs locally in WSL (Ubuntu-20.04):
 - `bondlens/ytm.py` — the math: `exact_ytm` (XIRR over dated flows),
   `ytm` (quick approximation), `modified_duration`, `accrued_interest`
 - `bondlens/gsec.py` — G-Sec yield curve for spread calculation
-- `bondlens/db.py` — SQLite storage: snapshots, NSDL cache, watchlist,
-  rating-change history
+- `bondlens/db.py` — PostgreSQL storage (psycopg3 + connection pool,
+  `DATABASE_URL` env var, default
+  `postgresql://bondlens:bondlens@localhost:5432/bondlens`): snapshots,
+  NSDL cache, ratings, watchlist, holdings. Snapshots and gsec_curve are
+  append-only — **full history is kept forever by design** (needed for
+  portfolio tracking and price history once multi-user). Migrated from
+  SQLite on 2026-07-10 (`scripts/migrate_sqlite_to_pg.py`; old `bonds.db`
+  kept as archive). Postgres 12 via apt in WSL; it does NOT auto-start:
+  `sudo service postgresql start` after a WSL restart (restart.sh warns).
 - `bondlens/app.py` — API endpoints + screening filters/presets
 - `tests/test_math.py` — unit tests for all the math (run:
   `python3 -m unittest discover tests`)
@@ -105,6 +112,14 @@ Tailwind CDN + vanilla JS). Runs locally in WSL (Ubuntu-20.04):
      API gives qty + average_price but NO buy dates; daily token
      refresh; redirect URL must be registered. Zerodha Console
      tradebook CSV import remains a possible later addition.
+
+## Roadmap (agreed 2026-07-10)
+
+- Deploy on a server, open to other users; portfolio tracking per user.
+  PostgreSQL migration was step one. Still to do: user accounts/auth,
+  per-user holdings/watchlist (add user_id columns), scheduled NSE
+  refresh (cron) so history accumulates without manual clicks,
+  deployment packaging.
 
 ## Operational notes (WSL quirks)
 

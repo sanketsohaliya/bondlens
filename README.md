@@ -6,7 +6,7 @@ Personal analytics dashboard for screening corporate bonds traded on NSE.
 
 - Fetches live bond data (price, coupon, rating, volume) from NSE's website API
 - Computes YTM (annual-coupon approximation, actual/365)
-- Stores daily snapshots in SQLite (`bonds.db`) for price history
+- Stores daily snapshots in PostgreSQL (append-only, full history kept) for price history — set `DATABASE_URL`, default `postgresql://bondlens:bondlens@localhost:5432/bondlens`
 - Web dashboard: filter by rating / YTM / maturity / traded value, sortable columns, watchlist
 
 ## Setup
