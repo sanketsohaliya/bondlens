@@ -403,16 +403,22 @@ const ratingUrl = (b) => {
   return agencySearchUrl((b.rating_agency || "").split(",")[0].trim(), b);
 };
 const RATING_LINK_CLASS = "hover:text-emerald-600 dark:hover:text-emerald-400 underline decoration-dotted decoration-zinc-300 dark:decoration-zinc-700 underline-offset-2";
-// Rating-history popover: opens on clicking the agency chip; each event
-// links to the rationale that agency published at the time. One global
-// element, repositioned per click.
+// Rating-history popover: opens on hovering the agency chip and stays open
+// while the pointer is over the chip or the popover itself, so the per-event
+// report links stay clickable. Each event links to the rationale that agency
+// published at the time. One global element, repositioned per hover.
 const histPop = document.createElement("div");
 histPop.id = "histpop";
 histPop.className = "hidden fixed z-[60] max-w-xs rounded-md border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 shadow-xl p-3 text-xs";
-document.addEventListener("DOMContentLoaded", () => document.body.appendChild(histPop));
+let histPopHideTimer = null;
+document.addEventListener("DOMContentLoaded", () => {
+  document.body.appendChild(histPop);
+  histPop.addEventListener("mouseenter", () => clearTimeout(histPopHideTimer));
+  histPop.addEventListener("mouseleave", scheduleHideRatingHistory);
+});
 
 function showRatingHistory(ev, isin, agency) {
-  ev.stopPropagation();
+  clearTimeout(histPopHideTimer);
   const b = bonds.find(r => r.isin === isin) || (allBonds || []).find(r => r.isin === isin);
   const x = ((b && b.ratings) || []).find(r => r.agency === agency);
   if (!x) return;
@@ -434,10 +440,7 @@ function showRatingHistory(ev, isin, agency) {
     </tr>`).join("");
   const current = `${x.rating.replace(/\/+$/, "")}`;
   histPop.innerHTML = `
-    <div class="flex items-center justify-between gap-4 mb-1">
-      <span class="font-semibold">${agency}</span>
-      <button onclick="hideRatingHistory()" class="text-zinc-400 hover:text-rose-500 font-bold px-1">✕</button>
-    </div>
+    <div class="font-semibold mb-1">${agency}</div>
     <div class="mb-1.5 pb-1.5 border-b border-zinc-200 dark:border-zinc-700">
       <span class="text-zinc-500">Current:</span>
       ${x.press_release
@@ -451,28 +454,31 @@ function showRatingHistory(ev, isin, agency) {
       : `<div class="text-zinc-500">No archived events yet — they accumulate with every ratings refresh</div>`}`;
   histPop.classList.remove("hidden");
   tipEl.style.opacity = "0";
-  const pad = 10;
-  let px = ev.clientX + pad, py = ev.clientY + pad;
+  // Anchor to the chip (not the cursor) with a tiny gap the grace timer can
+  // bridge, so the pointer can travel into the popover without closing it.
+  const a = ev.currentTarget.getBoundingClientRect();
   const r = histPop.getBoundingClientRect();
-  if (px + r.width > window.innerWidth - 8) px = ev.clientX - r.width - pad;
-  if (py + r.height > window.innerHeight - 8) py = Math.max(8, ev.clientY - r.height - pad);
+  let px = a.left, py = a.bottom + 4;
+  if (px + r.width > window.innerWidth - 8) px = window.innerWidth - r.width - 8;
+  if (py + r.height > window.innerHeight - 8) py = Math.max(8, a.top - r.height - 4);
   histPop.style.left = `${px}px`;
   histPop.style.top = `${py}px`;
 }
 function hideRatingHistory() { histPop.classList.add("hidden"); }
-document.addEventListener("click", (e) => {
-  if (!histPop.contains(e.target)) hideRatingHistory();
-});
+function scheduleHideRatingHistory() {
+  clearTimeout(histPopHideTimer);
+  histPopHideTimer = setTimeout(hideRatingHistory, 150);
+}
 document.addEventListener("keydown", (e) => { if (e.key === "Escape") hideRatingHistory(); });
-// Multiple agencies can rate one bond: one row per agency; clicking any of
-// them opens the pinned popover (current rating + full history + reports).
+// Multiple agencies can rate one bond: one row per agency; hovering any of
+// them opens the popover (current rating + full history + reports).
 const ratingHtml = (b) => {
   if (b.ratings && b.ratings.length) {
     return b.ratings.map(x => `
       <div class="whitespace-nowrap">
-        <button onclick="showRatingHistory(event, '${b.isin}', '${x.agency || ""}')"
-           data-tip="Agency-verified via NSDL — click for ${x.agency || "the agency"}'s rating history and reports"
-           class="cursor-pointer"><span class="text-[10px] font-semibold uppercase tracking-wider text-zinc-500 mr-1">${x.agency || "?"}</span><span class="${RATING_LINK_CLASS}">${x.rating.replace(/\/+$/, "")}</span></button>
+        <button onmouseenter="showRatingHistory(event, '${b.isin}', '${x.agency || ""}')"
+           onmouseleave="scheduleHideRatingHistory()"
+           class="cursor-default"><span class="text-[10px] font-semibold uppercase tracking-wider text-zinc-500 mr-1">${x.agency || "?"}</span><span class="${RATING_LINK_CLASS}">${x.rating.replace(/\/+$/, "")}</span></button>
       </div>`).join("");
   }
   if (!b.credit_rating) return "–";
