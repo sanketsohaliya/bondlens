@@ -2,17 +2,18 @@
 import re
 import threading
 import time
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 from typing import Dict, Optional
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
 
-from . import db, gsec, kite, nsdl, nse
+from . import db, gsec, kite, nsdl, nse, pnl
 from .ytm import (accrued_interest, exact_ytm, modified_duration, parse_date,
-                  years_to_maturity, ytm)
+                  xirr, years_to_maturity, ytm)
 
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 
@@ -53,14 +54,33 @@ RATING_FLAG_DAYS = 30  # how long an up/downgrade marker stays visible
 STALE_AFTER_DAYS = 3   # LTP considered stale after this many days without trades
 
 
-def annotate_signals(r: Dict, changes: Dict, last_traded: Dict):
-    """Attach rating-change and stale-price signals to a bond row in place."""
+def annotate_signals(r: Dict, changes: Dict, last_traded: Dict,
+                     nsdl_ratings: Optional[Dict] = None):
+    """Attach rating-change and stale-price signals to a bond row in place.
+
+    NSDL's agency-verified rating actions are preferred; snapshot diffing of
+    NSE's rating string is the fallback (NSE often never updates it).
+    """
     today = date.today()
     r["rating_change"] = None
     r["rating_prev"] = None
     r["rating_changed_at"] = None
+    nr = (nsdl_ratings or {}).get(r["isin"]) or []
+    recent = [
+        x for x in nr
+        if x["changed_at"] and x["rating_action"]
+        and (today - date.fromisoformat(x["changed_at"])).days <= RATING_FLAG_DAYS
+        and ("UPGRADE" in x["rating_action"].upper()
+             or "DOWNGRADE" in x["rating_action"].upper())
+    ]
     ch = changes.get(r["isin"])
-    if ch:
+    if recent:
+        downs = [x for x in recent if "DOWN" in x["rating_action"].upper()]
+        pick = downs[0] if downs else recent[0]
+        r["rating_change"] = "down" if downs else "up"
+        r["rating_prev"] = pick["prev_rating"]
+        r["rating_changed_at"] = pick["changed_at"]
+    elif not nr and ch:
         prev_rank = rating_rank(ch["previous"])
         cur_rank = rating_rank(r["credit_rating"])
         age = (today - date.fromisoformat(ch["changed_at"][:10])).days
@@ -77,38 +97,86 @@ def annotate_signals(r: Dict, changes: Dict, last_traded: Dict):
 
 NSDL_DELAY_SECONDS = 10
 
+# Ratings change over time (unlike payment schedules), so re-fetch them
+# once they're older than this.
+RATINGS_MAX_AGE_DAYS = 30
+
 _nsdl_state = {"running": False, "done": 0, "total": 0, "errors": 0, "current": None}
 _nsdl_lock = threading.Lock()
 
 
 def _nsdl_worker(isins):
+    complete = _nsdl_complete_isins()
     for isin in isins:
         _nsdl_state["current"] = isin
+        if isin not in complete:  # schedules are static; don't refetch good ones
+            try:
+                meta, flows = nsdl.fetch_schedule(isin)
+                db.save_nsdl(isin, "ok" if flows else "empty", meta, flows)
+            except Exception:  # noqa: BLE001 - record and continue
+                db.save_nsdl(isin, "error", {}, [])
+                _nsdl_state["errors"] += 1
         try:
-            meta, flows = nsdl.fetch_schedule(isin)
-            db.save_nsdl(isin, "ok" if flows else "empty", meta, flows)
-        except Exception:  # noqa: BLE001 - record and continue
-            db.save_nsdl(isin, "error", {}, [])
-            _nsdl_state["errors"] += 1
+            db.save_nsdl_ratings(isin, nsdl.fetch_ratings(isin))
+        except Exception:  # noqa: BLE001 - keep whatever we had
+            pass
         _nsdl_state["done"] += 1
         time.sleep(NSDL_DELAY_SECONDS)
     _nsdl_state["running"] = False
     _nsdl_state["current"] = None
 
 
+def _nsdl_complete_isins() -> set:
+    """ISINs fetched OK with an actual schedule. Everything else (never
+    tried, errored, or schedule came back empty) is worth (re)trying."""
+    fetched = db.nsdl_fetched_isins()
+    have_flows = db.isins_with_flows()
+    return {i for i, s in fetched.items() if s == "ok" and i in have_flows}
+
+
+def _fetch_nsdl_async(isin: str):
+    """One-off background fetch for a single ISIN. Holdings outside the NSE
+    snapshot would otherwise stay uncached forever. A transient failure must
+    not clobber a previously good cache entry."""
+    def run():
+        try:
+            meta, flows = nsdl.fetch_schedule(isin)
+            db.save_nsdl(isin, "ok" if flows else "empty", meta, flows)
+        except Exception:  # noqa: BLE001 - record and move on
+            if db.nsdl_fetched_isins().get(isin) != "ok":
+                db.save_nsdl(isin, "error", {}, [])
+        try:
+            db.save_nsdl_ratings(isin, nsdl.fetch_ratings(isin))
+        except Exception:  # noqa: BLE001 - keep whatever we had
+            pass
+    threading.Thread(target=run, daemon=True).start()
+
+
+def _ratings_stale_isins(universe: set) -> set:
+    fetched = db.nsdl_ratings_fetched()
+    cutoff = time.time() - RATINGS_MAX_AGE_DAYS * 86400
+    stale = set()
+    for isin in universe:
+        ts = fetched.get(isin)
+        if ts is None:
+            stale.add(isin)
+            continue
+        if datetime.fromisoformat(ts).timestamp() < cutoff:
+            stale.add(isin)
+    return stale
+
+
 @app.post("/api/nsdl/fetch")
 def nsdl_fetch():
-    """Start background fetch of NSDL schedules for ISINs not yet cached."""
+    """Start background fetch of NSDL schedules for ISINs not yet cached.
+    Covers the NSE snapshot plus any portfolio holdings outside it."""
     with _nsdl_lock:
         if _nsdl_state["running"]:
             return {"started": False, "reason": "already running", **_nsdl_state}
-        fetched = db.nsdl_fetched_isins()
-        have_flows = db.isins_with_flows()
-        # Complete = fetched OK with an actual schedule. Everything else
-        # (never tried, errored, or schedule came back empty) is retried.
-        complete = {i for i, s in fetched.items() if s == "ok" and i in have_flows}
+        universe = {r["isin"] for r in db.latest_snapshot() if r["isin"]}
+        universe |= {h["isin"] for h in db.holdings()}
         pending = sorted(
-            {r["isin"] for r in db.latest_snapshot() if r["isin"]} - complete
+            (universe - _nsdl_complete_isins()) | _ratings_stale_isins(universe)
         )
         if not pending:
             return {"started": False, "reason": "nothing to fetch", **_nsdl_state}
@@ -189,9 +257,25 @@ def bonds(
     changes = db.rating_changes()
     last_traded = db.last_traded_map()
     names = db.company_names()
+    nsdl_ratings = db.nsdl_ratings_map()
     out = []
     for r in rows:
         r["company_name"] = names.get(r["symbol"])
+        # NSDL's ratings are agency-verified and current; NSE's rating field
+        # is often stale at-issuance data (e.g. AAA shown for years after a
+        # downgrade). Override whenever NSDL has the ISIN.
+        nr = nsdl_ratings.get(r["isin"])
+        if nr:
+            r["credit_rating"] = ", ".join(
+                x["rating"] + (f"/{x['outlook']}" if x["outlook"] else "")
+                for x in nr)
+            r["rating_agency"] = ", ".join(x["agency"] or "" for x in nr)
+            r["rating_source"] = "NSDL"
+            r["rating_url"] = next(
+                (x["press_release"] for x in nr if x["press_release"]), None)
+        else:
+            r["rating_source"] = "NSE"
+            r["rating_url"] = None
         maturity = parse_date(r["maturity_date"])
         r["years_to_maturity"] = (
             round(years_to_maturity(maturity), 2) if maturity else None
@@ -232,7 +316,7 @@ def bonds(
             round(r["ytm"] - gy, 2) if r["ytm"] is not None and gy is not None
             else None
         )
-        annotate_signals(r, changes, last_traded)
+        annotate_signals(r, changes, last_traded, nsdl_ratings)
         if watchlist_only and not r["in_watchlist"]:
             continue
         if min_ytm is not None and (r["ytm"] is None or r["ytm"] < min_ytm):
@@ -315,8 +399,21 @@ def bond_detail(isin: str, price: Optional[float] = Query(None, gt=0)):
         round(years_to_maturity(maturity), 2) if maturity else None
     )
     row["kite_url"] = kite.kite_url(row["symbol"], row["series"])
+    nsdl_ratings = db.nsdl_ratings_map()
+    nr = nsdl_ratings.get(isin)
+    if nr:
+        row["credit_rating"] = ", ".join(
+            x["rating"] + (f"/{x['outlook']}" if x["outlook"] else "")
+            for x in nr)
+        row["rating_agency"] = ", ".join(x["agency"] or "" for x in nr)
+        row["rating_source"] = "NSDL"
+        row["rating_url"] = next(
+            (x["press_release"] for x in nr if x["press_release"]), None)
+    else:
+        row["rating_source"] = "NSE"
+        row["rating_url"] = None
     row["rating_rank"] = rating_rank(row["credit_rating"])
-    annotate_signals(row, db.rating_changes(), db.last_traded_map())
+    annotate_signals(row, db.rating_changes(), db.last_traded_map(), nsdl_ratings)
 
     meta = db.nsdl_meta_map().get(isin)
     flows, amounts_estimated = nsdl.fill_amounts(
@@ -412,6 +509,154 @@ def bond_detail(isin: str, price: Optional[float] = Query(None, gt=0)):
         "issuer_name": issuer,
         "issuer_bonds": issuer_bonds,
     }
+
+
+# ---- Portfolio P&L ---------------------------------------------------------
+
+class HoldingIn(BaseModel):
+    isin: str
+    qty: float
+    buy_price: Optional[float] = None
+    buy_date: Optional[str] = None  # YYYY-MM-DD or DD-Mon-YYYY
+
+
+class HoldingPatch(BaseModel):
+    qty: Optional[float] = None
+    buy_price: Optional[float] = None
+    buy_date: Optional[str] = None
+
+
+def _validated_buy_date(value: Optional[str]) -> Optional[str]:
+    if value in (None, ""):
+        return None
+    d = parse_date(value)
+    if d is None:
+        raise HTTPException(status_code=422, detail=f"Unparseable date: {value}")
+    if d > date.today():
+        raise HTTPException(status_code=422, detail="Buy date is in the future")
+    return d.isoformat()
+
+
+@app.get("/api/portfolio")
+def portfolio():
+    """All holdings with per-holding and aggregate P&L.
+
+    Accuracy caveats ride along as `warnings` per holding: schedule quality,
+    stale prices, estimated amounts, missing buy dates. TDS (~10% on
+    interest) is NOT modelled — realized income is gross.
+    """
+    snap = {r["isin"]: r for r in db.latest_snapshot() if r["isin"]}
+    meta_map = db.nsdl_meta_map()
+    flows_map = db.nsdl_all_cashflows()
+    last_traded = db.last_traded_map()
+    names = db.company_names()
+    today = date.today()
+    out = []
+    all_flows = []          # combined dated flows for portfolio XIRR
+    xirr_complete = True    # only meaningful if every holding contributed
+    for h in db.holdings():
+        r = snap.get(h["isin"])
+        meta = meta_map.get(h["isin"])
+        coupon = face = None
+        if r:
+            coupon = r["coupon"] or coupon_from_symbol(r["symbol"])
+            face = r["face_value"]
+        flows, amounts_estimated = nsdl.fill_amounts(
+            flows_map.get(h["isin"], []), coupon, face,
+            nsdl.classify_frequency(meta["frequency_text"]) if meta else None,
+        )
+        flows = nsdl.normalize_flows(flows, face)
+        nsdl_ok = bool(meta and meta["status"] == "ok" and flows)
+        schedule_ok = nsdl_ok and nsdl.redemption_matches_face(flows, face)
+        figs = pnl.holding_pnl(h, r, flows if nsdl_ok else [], schedule_ok)
+        if amounts_estimated and nsdl_ok:
+            figs["warnings"].append(
+                "payment amounts estimated from the coupon rate")
+        lt = last_traded.get(h["isin"])
+        days_since = (today - date.fromisoformat(lt[:10])).days if lt else None
+        if (days_since is not None and days_since >= STALE_AFTER_DAYS
+                and not figs["closed"]):
+            figs["warnings"].append(
+                f"price is {days_since} days old — market value and XIRR may be off")
+        buy_d = parse_date(h["buy_date"] or "")
+        if buy_d and figs["invested"] and figs["market_value"] is not None:
+            all_flows.append((buy_d, -figs["invested"]))
+            all_flows += [
+                (parse_date(f["due_date"]), h["qty"] * f["amount"])
+                for f in pnl.received_flows(flows if nsdl_ok else [], buy_d)
+            ]
+            if not figs["closed"]:
+                all_flows.append((today, figs["market_value"]))
+        else:
+            xirr_complete = False
+        out.append({
+            **h,
+            **figs,
+            "symbol": r["symbol"] if r else None,
+            "company_name": names.get(r["symbol"]) if r else None,
+            "ltp": r["ltp"] if r else None,
+            "face_value": face,
+            "maturity_date": r["maturity_date"] if r else None,
+            "days_since_traded": days_since,
+            "in_feed": r is not None,
+        })
+
+    def total(key):
+        vals = [x[key] for x in out if x[key] is not None]
+        return round(sum(vals), 2) if vals else None
+
+    return {
+        "holdings": out,
+        "totals": {
+            "invested": total("invested"),
+            "market_value": total("market_value"),
+            "realized": total("realized"),
+            "unrealized": total("unrealized"),
+            "total_pnl": total("total_pnl"),
+            "xirr": xirr(all_flows) if all_flows and xirr_complete else None,
+            "xirr_complete": xirr_complete,
+        },
+    }
+
+
+@app.post("/api/portfolio/holdings")
+def add_holding(body: HoldingIn):
+    if body.qty <= 0:
+        raise HTTPException(status_code=422, detail="Quantity must be positive")
+    isin = body.isin.strip().upper()
+    rowid = db.add_holding(
+        isin, body.qty, body.buy_price, _validated_buy_date(body.buy_date),
+    )
+    # Holdings need their payment schedule for realized income; fetch it now
+    # if it isn't cached (the bond may not be in the NSE snapshot at all).
+    if isin not in _nsdl_complete_isins():
+        _fetch_nsdl_async(isin)
+    return {"id": rowid}
+
+
+@app.patch("/api/portfolio/holdings/{holding_id}")
+def edit_holding(holding_id: int, body: HoldingPatch):
+    fields = {}
+    if body.qty is not None:
+        if body.qty <= 0:
+            raise HTTPException(status_code=422, detail="Quantity must be positive")
+        fields["qty"] = body.qty
+    if body.buy_price is not None:
+        fields["buy_price"] = body.buy_price
+    if body.buy_date is not None:
+        fields["buy_date"] = _validated_buy_date(body.buy_date)
+    if not fields:
+        raise HTTPException(status_code=422, detail="Nothing to update")
+    if not db.update_holding(holding_id, fields):
+        raise HTTPException(status_code=404, detail="Holding not found")
+    return {"id": holding_id, "updated": sorted(fields)}
+
+
+@app.delete("/api/portfolio/holdings/{holding_id}")
+def remove_holding(holding_id: int):
+    if not db.delete_holding(holding_id):
+        raise HTTPException(status_code=404, detail="Holding not found")
+    return {"id": holding_id, "deleted": True}
 
 
 @app.get("/api/gsec")

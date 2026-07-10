@@ -156,6 +156,38 @@ def exact_ytm(price: float, cashflows: list, today: Optional[date] = None) -> Op
     return _plausible(round((lo + hi) / 2 * 100, 2))
 
 
+def xirr(dated_flows: list) -> Optional[float]:
+    """Annualized IRR (in %) over signed, dated flows: [(date, amount), ...].
+
+    Outflows (purchases) are negative, inflows (coupons, redemptions, current
+    market value) positive. Times are measured in years from the earliest
+    flow. Solved by bisection over the same plausibility band as YTM; None
+    when the input has no sign change or no root in the band.
+    """
+    flows = [(d, a) for d, a in dated_flows if d is not None and a]
+    if len(flows) < 2:
+        return None
+    if not (any(a < 0 for _, a in flows) and any(a > 0 for _, a in flows)):
+        return None
+    t0 = min(d for d, _ in flows)
+
+    def npv(rate: float) -> float:
+        return sum(a / (1 + rate) ** ((d - t0).days / 365.0) for d, a in flows)
+
+    lo, hi = -0.50, 2.00
+    v_lo, v_hi = npv(lo), npv(hi)
+    if v_lo * v_hi > 0:
+        return None
+    # npv is decreasing in rate when net investment precedes net receipts
+    for _ in range(100):
+        mid = (lo + hi) / 2
+        if (npv(mid) > 0) == (v_lo > 0):
+            lo = mid
+        else:
+            hi = mid
+    return _plausible(round((lo + hi) / 2 * 100, 2))
+
+
 def ytm(price: float, coupon_pct: Optional[float], face_value: float, maturity_str: str,
         today: Optional[date] = None) -> Optional[float]:
     """Solve annual YTM (in %) by bisection. Returns None if inputs are unusable."""

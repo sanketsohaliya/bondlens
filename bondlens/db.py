@@ -70,6 +70,35 @@ CREATE TABLE IF NOT EXISTS gsec_curve (
     symbol TEXT,
     traded_value REAL
 );
+
+CREATE TABLE IF NOT EXISTS nsdl_ratings (
+    isin TEXT NOT NULL,
+    agency TEXT,
+    rating TEXT,
+    outlook TEXT,
+    rating_action TEXT,
+    changed_at TEXT,
+    prev_rating TEXT,
+    press_release TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_nsdl_ratings_isin ON nsdl_ratings (isin);
+
+-- Fetch log, separate from the rows: an ISIN with no current ratings still
+-- counts as fetched (so staleness checks don't retry it forever).
+CREATE TABLE IF NOT EXISTS nsdl_ratings_meta (
+    isin TEXT PRIMARY KEY,
+    fetched_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS holdings (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    isin TEXT NOT NULL,
+    qty REAL NOT NULL,
+    buy_price REAL,
+    buy_date TEXT,
+    created_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_holdings_isin ON holdings (isin);
 """
 
 COLUMNS = [
@@ -284,6 +313,89 @@ def latest_gsec_curve() -> List[Dict]:
     ).fetchall()
     conn.close()
     return [dict(r) for r in rows]
+
+
+def holdings() -> List[Dict]:
+    conn = connect()
+    rows = conn.execute("SELECT * FROM holdings ORDER BY id").fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def add_holding(isin: str, qty: float, buy_price=None, buy_date=None) -> int:
+    conn = connect()
+    with conn:
+        cur = conn.execute(
+            "INSERT INTO holdings (isin, qty, buy_price, buy_date, created_at) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (isin, qty, buy_price, buy_date,
+             datetime.now(timezone.utc).isoformat()),
+        )
+        rowid = cur.lastrowid
+    conn.close()
+    return rowid
+
+
+def update_holding(holding_id: int, fields: Dict) -> bool:
+    allowed = {"qty", "buy_price", "buy_date"}
+    updates = {k: v for k, v in fields.items() if k in allowed}
+    if not updates:
+        return False
+    conn = connect()
+    with conn:
+        cur = conn.execute(
+            f"UPDATE holdings SET {', '.join(f'{k} = ?' for k in updates)} "
+            "WHERE id = ?",
+            list(updates.values()) + [holding_id],
+        )
+    conn.close()
+    return cur.rowcount > 0
+
+
+def delete_holding(holding_id: int) -> bool:
+    conn = connect()
+    with conn:
+        cur = conn.execute("DELETE FROM holdings WHERE id = ?", (holding_id,))
+    conn.close()
+    return cur.rowcount > 0
+
+
+def save_nsdl_ratings(isin: str, ratings: List[Dict]):
+    conn = connect()
+    with conn:
+        conn.execute("DELETE FROM nsdl_ratings WHERE isin = ?", (isin,))
+        conn.executemany(
+            "INSERT INTO nsdl_ratings "
+            "(isin, agency, rating, outlook, rating_action, changed_at, "
+            " prev_rating, press_release) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            [(isin, x["agency"], x["rating"], x["outlook"], x["action"],
+              x["changed_at"], x["prev_rating"], x["press_release"])
+             for x in ratings],
+        )
+        conn.execute(
+            "INSERT OR REPLACE INTO nsdl_ratings_meta (isin, fetched_at) "
+            "VALUES (?, ?)",
+            (isin, datetime.now(timezone.utc).isoformat()),
+        )
+    conn.close()
+
+
+def nsdl_ratings_map() -> Dict[str, List[Dict]]:
+    conn = connect()
+    rows = conn.execute("SELECT * FROM nsdl_ratings ORDER BY isin, agency").fetchall()
+    conn.close()
+    out: Dict[str, List[Dict]] = {}
+    for r in rows:
+        out.setdefault(r["isin"], []).append(dict(r))
+    return out
+
+
+def nsdl_ratings_fetched() -> Dict[str, str]:
+    """Map of isin -> fetched_at ISO timestamp for staleness checks."""
+    conn = connect()
+    rows = conn.execute("SELECT isin, fetched_at FROM nsdl_ratings_meta").fetchall()
+    conn.close()
+    return {r["isin"]: r["fetched_at"] for r in rows}
 
 
 def nsdl_all_cashflows() -> Dict[str, List[Dict]]:

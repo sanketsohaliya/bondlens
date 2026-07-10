@@ -243,12 +243,68 @@ tailwind.config = { darkMode: "class" };
     <div class="flex">
       <button data-view="table" class="view-btn active">Table</button>
       <button data-view="chart" class="view-btn" data-tip="Yield vs maturity for the filtered bonds — spot the ones paying above the curve">Chart</button>
+      <button data-view="portfolio" class="view-btn" data-tip="Your bond holdings: coupons received, mark-to-market, and your true annualized return">Portfolio</button>
     </div>
   </div>
 
   <section id="chartWrap" class="hidden border border-zinc-200 dark:border-zinc-800 rounded-lg p-4">
     <div class="h-[440px]"><canvas id="scatterChart"></canvas></div>
     <div id="chartLegend" class="flex flex-wrap items-center gap-x-5 gap-y-1 mt-3 text-xs text-zinc-500"></div>
+  </section>
+
+  <section id="portfolioWrap" class="hidden">
+    <div id="portfolioTotals" class="hidden grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-4 mb-5 p-4 border border-zinc-200 dark:border-zinc-800 rounded-lg"></div>
+
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead class="text-[11px] font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500 border-b-2 border-zinc-900 dark:border-zinc-100">
+          <tr>
+            <th class="px-3 py-3 text-left">Bond</th>
+            <th class="px-3 py-3 text-right">Qty</th>
+            <th class="px-3 py-3 text-right" data-tip="Price paid per unit — use your average price for multiple lots">Buy ₹</th>
+            <th class="px-3 py-3 text-left" data-tip="Needed for income and XIRR — use the earliest lot's date for multiple lots">Buy date</th>
+            <th class="px-3 py-3 text-right" data-tip="Quantity × buy price">Invested</th>
+            <th class="px-3 py-3 text-right" data-tip="Quantity × last traded price">Value now</th>
+            <th class="px-3 py-3 text-right" data-tip="Coupons and principal instalments actually received since you bought — the money broker P&L views forget">Income</th>
+            <th class="px-3 py-3 text-right" data-tip="Value now minus invested (price move only)">Unrealized</th>
+            <th class="px-3 py-3 text-right" data-tip="Income + value now − invested: every rupee accounted for">Total P&L</th>
+            <th class="px-3 py-3 text-right" data-tip="Your true annualized return on this holding, coupons included">XIRR %</th>
+            <th class="px-3 py-3"></th>
+          </tr>
+        </thead>
+        <tbody id="pfBody"></tbody>
+      </table>
+    </div>
+
+    <form id="pfAddForm" class="flex flex-wrap items-end gap-3 mt-5 p-4 border border-zinc-200 dark:border-zinc-800 rounded-lg">
+      <p class="basis-full text-[11px] font-semibold uppercase tracking-wider text-zinc-500">Add holding manually</p>
+      <div>
+        <label class="block text-[10px] font-semibold uppercase tracking-wider text-zinc-500 mb-1.5">ISIN</label>
+        <input id="pfIsin" type="text" required placeholder="INE..." autocomplete="off" spellcheck="false"
+          class="w-40 bg-transparent border border-zinc-300 dark:border-zinc-700 rounded-md px-2.5 py-1.5 text-xs font-medium focus:outline-none focus:border-emerald-500" />
+      </div>
+      <div>
+        <label class="block text-[10px] font-semibold uppercase tracking-wider text-zinc-500 mb-1.5">Qty</label>
+        <input id="pfQty" type="number" required min="1" step="1" placeholder="10"
+          class="w-20 bg-transparent border border-zinc-300 dark:border-zinc-700 rounded-md px-2.5 py-1.5 text-xs font-medium focus:outline-none focus:border-emerald-500" />
+      </div>
+      <div>
+        <label class="block text-[10px] font-semibold uppercase tracking-wider text-zinc-500 mb-1.5">Buy price / unit</label>
+        <input id="pfPrice" type="number" min="0" step="0.01" placeholder="1000.00"
+          class="w-28 bg-transparent border border-zinc-300 dark:border-zinc-700 rounded-md px-2.5 py-1.5 text-xs font-medium focus:outline-none focus:border-emerald-500" />
+      </div>
+      <div>
+        <label class="block text-[10px] font-semibold uppercase tracking-wider text-zinc-500 mb-1.5">Buy date</label>
+        <input id="pfDate" type="date"
+          class="w-36 bg-transparent border border-zinc-300 dark:border-zinc-700 rounded-md px-2.5 py-1.5 text-xs font-medium focus:outline-none focus:border-emerald-500" />
+      </div>
+      <button type="submit"
+        class="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold px-3 py-1.5 rounded-md transition">Add</button>
+      <span id="pfAddMsg" class="text-xs text-rose-500"></span>
+    </form>
+
+    <p class="mt-4 text-[11px] text-zinc-500">Income figures are gross — TDS (~10% on interest) is not modelled.
+      Payment schedules come from NSDL and can be wrong for amortizing bonds; distrust rows flagged ⚠.</p>
   </section>
 
   <div class="overflow-x-auto" id="tableWrap">
@@ -306,11 +362,12 @@ const STALE_DAYS = 3;
 const isStale = (b) => b.days_since_traded != null && b.days_since_traded >= STALE_DAYS;
 
 const ratingFlag = (b) => {
+  const from = b.rating_prev ? ` from ${fmtRating(b.rating_prev)}` : "";
   if (b.rating_change === "up") {
-    return ` <span class="text-emerald-600 dark:text-emerald-400 text-xs" data-tip="Upgraded from ${fmtRating(b.rating_prev)} on ${b.rating_changed_at}">▲</span>`;
+    return ` <span class="text-emerald-600 dark:text-emerald-400 text-xs" data-tip="Upgraded${from} on ${b.rating_changed_at}">▲</span>`;
   }
   if (b.rating_change === "down") {
-    return ` <span class="text-rose-600 dark:text-rose-400 text-xs" data-tip="Downgraded from ${fmtRating(b.rating_prev)} on ${b.rating_changed_at} — read the rationale before buying">▼</span>`;
+    return ` <span class="text-rose-600 dark:text-rose-400 text-xs" data-tip="Downgraded${from} on ${b.rating_changed_at} — read the rationale before buying">▼</span>`;
   }
   return "";
 };
@@ -330,13 +387,14 @@ const nsdlUrl = (b) =>
 const nseUrl = (b) =>
   `https://www.nseindia.com/get-quotes/bonds?symbol=${encodeURIComponent(b.symbol)}&series=${encodeURIComponent(b.series || "")}`;
 
-// Rating agencies rarely expose stable deep links per instrument, so link to a
-// targeted search for the agency's rating rationale on this ISIN.
+// NSDL publishes the agency's own press-release link; use it when present.
+// Fallback: a targeted search for the agency's rationale on this ISIN.
 const AGENCY_NAMES = {
   CRISIL: "CRISIL", ICRA: "ICRA", CARE: "CARE Ratings", BRCK: "Brickwork",
   ACUITE: "Acuite", IRRPL: "India Ratings", IVRPL: "Infomerics",
 };
 const ratingUrl = (b) => {
+  if (b.rating_url) return b.rating_url;
   const agency = (b.rating_agency || "").split(",")[0].trim();
   const name = AGENCY_NAMES[agency.toUpperCase()] || agency;
   const q = encodeURIComponent(`${name} rating rationale "${b.isin}" OR "${b.symbol}"`);
@@ -379,7 +437,7 @@ function render() {
         ${b.credit_rating
           ? `<a href="${ratingUrl(b)}" target="_blank" rel="noopener"
                class="hover:text-emerald-600 dark:hover:text-emerald-400 underline decoration-dotted decoration-zinc-300 dark:decoration-zinc-700 underline-offset-2"
-               data-tip="Find the full ${(b.rating_agency || "agency")} report on this bond">${fmtRating(b.credit_rating)}</a>`
+               data-tip="${b.rating_source === "NSDL" ? `Agency-verified via NSDL — read the ${(b.rating_agency || "agency").split(",")[0]} rationale` : `NSE data (can be stale) — find the full ${(b.rating_agency || "agency")} report`}">${fmtRating(b.credit_rating)}</a>`
           : "–"}${ratingFlag(b)}
       </td>
       <td class="px-3 py-2 text-right font-bold ${b.ytm >= 10 ? "text-emerald-600 dark:text-emerald-400" : ""}">${fmt(b.ytm)}</td>
@@ -495,7 +553,9 @@ document.querySelectorAll("#viewToggle .view-btn").forEach(btn =>
     document.querySelectorAll("#viewToggle .view-btn").forEach(b => b.classList.toggle("active", b === btn));
     document.getElementById("tableWrap").classList.toggle("hidden", viewMode !== "table");
     document.getElementById("chartWrap").classList.toggle("hidden", viewMode !== "chart");
+    document.getElementById("portfolioWrap").classList.toggle("hidden", viewMode !== "portfolio");
     if (viewMode === "chart") renderChart();
+    if (viewMode === "portfolio") loadPortfolio();
   })
 );
 
@@ -1161,6 +1221,109 @@ document.addEventListener("mousemove", (e) => {
   if (y + r.height > window.innerHeight - 8) y = e.clientY - r.height - pad;
   tipEl.style.left = `${x}px`;
   tipEl.style.top = `${y}px`;
+});
+
+// ---- Portfolio ---------------------------------------------------------------
+const pnlColor = (v) => v == null ? "" : v >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400";
+const signed = (v, d = 0) => v == null ? "–" : (v > 0 ? "+" : "") + fmt(v, d);
+
+function pfWarn(h) {
+  if (!h.warnings.length) return "";
+  return ` <span class="text-amber-600 dark:text-amber-500 text-xs cursor-help" data-tip="${h.warnings.join(" · ")}">⚠</span>`;
+}
+
+async function loadPortfolio() {
+  const data = await (await fetch("/api/portfolio")).json();
+  const t = data.totals;
+  const totalsEl = document.getElementById("portfolioTotals");
+  totalsEl.classList.toggle("hidden", !data.holdings.length);
+  const cell = (label, val, cls = "", tip = "") => `
+    <div ${tip ? `data-tip="${tip}"` : ""}>
+      <div class="text-[10px] font-semibold uppercase tracking-wider text-zinc-500 mb-0.5">${label}</div>
+      <div class="font-bold ${cls}">${val}</div>
+    </div>`;
+  totalsEl.innerHTML =
+    cell("Invested", fmtInr(t.invested)) +
+    cell("Value now", fmtInr(t.market_value)) +
+    cell("Income received", t.realized != null ? fmtInr(t.realized) : "–", pnlColor(t.realized),
+         "Coupons + principal instalments received across all holdings") +
+    cell("Unrealized", signed(t.unrealized), pnlColor(t.unrealized)) +
+    cell("Total P&L", signed(t.total_pnl), pnlColor(t.total_pnl)) +
+    cell("Portfolio XIRR", t.xirr != null ? fmt(t.xirr) + "%" : "–", pnlColor(t.xirr),
+         t.xirr_complete ? "Annualized return across every holding, coupons included"
+                         : "Needs a buy date and price on every holding");
+  document.getElementById("pfBody").innerHTML = data.holdings.map(h => `
+    <tr class="border-b border-zinc-100 dark:border-zinc-900 hover:bg-zinc-50 dark:hover:bg-zinc-900/60">
+      <td class="px-3 py-2 font-medium">
+        <span class="font-semibold">${h.symbol || h.isin}</span>${pfWarn(h)}
+        ${h.closed ? '<span class="ml-1 text-[9px] font-semibold uppercase tracking-wider text-emerald-600 dark:text-emerald-400 border border-emerald-600/40 rounded px-1 py-px" data-tip="All payments received — position closed, P&L is final">matured</span>' : ""}
+        <div class="text-[11px] text-zinc-500 truncate max-w-[180px]">${h.company_name || h.isin}</div>
+      </td>
+      <td class="px-3 py-2 text-right">
+        <input type="number" min="1" step="1" value="${h.qty}"
+          onchange="patchHolding(${h.id}, {qty: +this.value})"
+          class="w-16 bg-transparent border border-zinc-200 dark:border-zinc-800 rounded px-1.5 py-0.5 text-right text-sm focus:outline-none focus:border-emerald-500" />
+      </td>
+      <td class="px-3 py-2 text-right">
+        <input type="number" min="0" step="0.01" value="${h.buy_price ?? ""}" placeholder="–"
+          onchange="patchHolding(${h.id}, {buy_price: +this.value || null})"
+          class="w-24 bg-transparent border border-zinc-200 dark:border-zinc-800 rounded px-1.5 py-0.5 text-right text-sm focus:outline-none focus:border-emerald-500" />
+      </td>
+      <td class="px-3 py-2">
+        <input type="date" value="${h.buy_date || ""}"
+          onchange="patchHolding(${h.id}, {buy_date: this.value})"
+          class="bg-transparent border ${h.buy_date ? "border-zinc-200 dark:border-zinc-800" : "border-amber-500/60"} rounded px-1.5 py-0.5 text-sm focus:outline-none focus:border-emerald-500"
+          ${h.buy_date ? "" : 'data-tip="Set the buy date to unlock income and XIRR"'} />
+      </td>
+      <td class="px-3 py-2 text-right">${fmt(h.invested, 0)}</td>
+      <td class="px-3 py-2 text-right" ${h.closed ? `data-tip="Matured — principal returned, nothing left to sell"` : h.ltp != null ? `data-tip="${h.qty} × ₹${fmt(h.ltp)}"` : ""}>${fmt(h.market_value, 0)}</td>
+      <td class="px-3 py-2 text-right ${pnlColor(h.realized)}"
+          ${h.realized != null ? `data-tip="Interest ₹${fmt(h.realized_interest, 0)} + principal ₹${fmt(h.realized_principal, 0)} over ${h.receipts} payout${h.receipts === 1 ? "" : "s"}"` : ""}>${h.realized != null ? fmt(h.realized, 0) : "–"}</td>
+      <td class="px-3 py-2 text-right ${pnlColor(h.unrealized)}">${signed(h.unrealized)}</td>
+      <td class="px-3 py-2 text-right font-bold ${pnlColor(h.total_pnl)}">${signed(h.total_pnl)}</td>
+      <td class="px-3 py-2 text-right font-bold ${pnlColor(h.xirr)}">${h.xirr != null ? fmt(h.xirr) : "–"}</td>
+      <td class="px-3 py-2 text-right">
+        <button onclick="deleteHolding(${h.id})" data-tip="Remove this holding"
+          class="text-zinc-400 dark:text-zinc-600 hover:text-rose-500 transition text-sm">✕</button>
+      </td>
+    </tr>`).join("") || `<tr><td colspan="11" class="px-3 py-8 text-center text-sm text-zinc-500">No holdings yet — add your bonds below.</td></tr>`;
+}
+
+async function patchHolding(id, fields) {
+  const res = await fetch(`/api/portfolio/holdings/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(fields),
+  });
+  if (!res.ok) alert((await res.json()).detail);
+  loadPortfolio();
+}
+
+async function deleteHolding(id) {
+  await fetch(`/api/portfolio/holdings/${id}`, { method: "DELETE" });
+  loadPortfolio();
+}
+
+document.getElementById("pfAddForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const msg = document.getElementById("pfAddMsg");
+  msg.textContent = "";
+  const res = await fetch("/api/portfolio/holdings", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      isin: document.getElementById("pfIsin").value.trim(),
+      qty: +document.getElementById("pfQty").value,
+      buy_price: +document.getElementById("pfPrice").value || null,
+      buy_date: document.getElementById("pfDate").value || null,
+    }),
+  });
+  if (!res.ok) {
+    msg.textContent = (await res.json()).detail;
+    return;
+  }
+  e.target.reset();
+  loadPortfolio();
 });
 
 // Sensible default view: liquid, quality bonds beating FD rates.
