@@ -403,27 +403,9 @@ const ratingUrl = (b) => {
   return agencySearchUrl((b.rating_agency || "").split(",")[0].trim(), b);
 };
 const RATING_LINK_CLASS = "hover:text-emerald-600 dark:hover:text-emerald-400 underline decoration-dotted decoration-zinc-300 dark:decoration-zinc-700 underline-offset-2";
-const escAttr = (s) => String(s).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
-// Hovering an agency's rating shows that agency's archived trail; the link
-// still opens the latest rationale.
-const ratingTipHtml = (x) => {
-  const actionCls = (a) => {
-    const u = (a || "").toUpperCase();
-    return u.includes("UPGRADE") ? "color:rgb(5 150 105)"
-         : u.includes("DOWNGRADE") ? "color:rgb(225 29 72)" : "opacity:.65";
-  };
-  const rows = (x.history || []).map(h => `
-    <tr><td style="padding:1px 10px 1px 0;white-space:nowrap;opacity:.65">${h.changed_at || "–"}</td>
-        <td style="padding:1px 10px 1px 0;white-space:nowrap;font-weight:600">${h.rating}${h.outlook ? "/" + h.outlook : ""}</td>
-        <td style="padding:1px 0;white-space:nowrap;${actionCls(h.action)}">${h.action || "–"}</td></tr>`).join("");
-  return `<div style="font-weight:600;margin-bottom:3px">${x.agency || "Agency"} — rating history</div>`
-    + (rows ? `<table style="font-size:11px">${rows}</table>`
-            : `<div style="opacity:.65">No archived events yet</div>`)
-    + `<div style="opacity:.65;margin-top:3px">Rating opens the latest rationale · click the agency name to pin this list with a report link per date</div>`;
-};
-
-// Pinned popover: unlike the hover tooltip, it stays put and its per-event
-// report links are clickable. One global element, repositioned per click.
+// Rating-history popover: opens on clicking the agency chip; each event
+// links to the rationale that agency published at the time. One global
+// element, repositioned per click.
 const histPop = document.createElement("div");
 histPop.id = "histpop";
 histPop.className = "hidden fixed z-[60] max-w-xs rounded-md border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 shadow-xl p-3 text-xs";
@@ -479,9 +461,11 @@ document.addEventListener("keydown", (e) => { if (e.key === "Escape") hideRating
 const ratingHtml = (b) => {
   if (b.ratings && b.ratings.length) {
     return b.ratings.map(x => `
-      <div class="whitespace-nowrap" data-tip-html="${escAttr(ratingTipHtml(x))}">
+      <div class="whitespace-nowrap">
         <button onclick="showRatingHistory(event, '${b.isin}', '${x.agency || ""}')"
+           data-tip="${x.agency || "Agency"}'s rating history — with a report link per date"
            class="text-[10px] font-semibold uppercase tracking-wider text-zinc-500 mr-1 hover:text-emerald-600 dark:hover:text-emerald-400 cursor-pointer">${x.agency || "?"}</button><a href="${x.press_release || agencySearchUrl(x.agency, b)}" target="_blank" rel="noopener"
+           data-tip="Agency-verified via NSDL — read the latest ${x.agency || "agency"} rationale"
            class="${RATING_LINK_CLASS}">${x.rating.replace(/\/+$/, "")}</a>
       </div>`).join("");
   }
@@ -1292,10 +1276,9 @@ tipEl.id = "tooltip";
 document.body.appendChild(tipEl);
 
 document.addEventListener("mouseover", (e) => {
-  const target = e.target.closest("[data-tip], [data-tip-html]");
-  if (!target || !(target.dataset.tip || target.dataset.tipHtml)) { tipEl.style.opacity = "0"; return; }
-  if (target.dataset.tipHtml) tipEl.innerHTML = target.dataset.tipHtml;
-  else tipEl.textContent = target.dataset.tip;
+  const target = e.target.closest("[data-tip]");
+  if (!target || !target.dataset.tip) { tipEl.style.opacity = "0"; return; }
+  tipEl.textContent = target.dataset.tip;
   tipEl.style.opacity = "1";
 });
 
