@@ -13,10 +13,10 @@ describe("fmt.num", () => {
 
 describe("fmt.inr", () => {
   it("uses crore for >= 1e7", () => {
-    expect(fmt.inr(2.5e7)).toBe("₹2.50Cr");
+    expect(fmt.inr(2.5e7)).toBe("₹2.50 Cr");
   });
   it("uses lakh for >= 1e5", () => {
-    expect(fmt.inr(150000)).toBe("₹1.50L");
+    expect(fmt.inr(150000)).toBe("₹1.50 L");
   });
   it("plain rupees below a lakh", () => {
     expect(fmt.inr(99999)).toBe("₹99,999");

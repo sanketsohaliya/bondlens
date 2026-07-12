@@ -8,7 +8,7 @@ import {
   type UTCTimestamp,
 } from "lightweight-charts";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { api } from "../api/client";
+import { api, fmt } from "../api/client";
 
 const RANGES = [
   ["1M", 31],
@@ -29,6 +29,7 @@ export default function TradeChart({
   const [exchange, setExchange] = useState<"" | "NSE" | "BSE">("");
   const [showOtc, setShowOtc] = useState(true);
   const container = useRef<HTMLDivElement>(null);
+  const tooltip = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
 
   const { data, isLoading } = useQuery({
@@ -67,6 +68,12 @@ export default function TradeChart({
     chartRef.current = chart;
 
     const ts = (d: string) => (new Date(d).getTime() / 1000) as UTCTimestamp;
+    // biome-ignore lint/suspicious/noExplicitAny: lightweight-charts series types
+    let retailSeries: any = null;
+    // biome-ignore lint/suspicious/noExplicitAny: lightweight-charts series types
+    let otcSeries: any = null;
+    // biome-ignore lint/suspicious/noExplicitAny: lightweight-charts series types
+    let volSeries: any = null;
 
     // Retail dirty price (₹) — merge NSE+BSE by date, prefer higher-turnover.
     const retailByDate = new Map<string, { close: number; volume: number }>();
@@ -90,9 +97,10 @@ export default function TradeChart({
         topColor: "rgba(16,185,129,0.25)",
         bottomColor: "rgba(16,185,129,0.02)",
         lineWidth: 2,
-        title: "Retail ₹",
+        priceLineVisible: false,
       });
       area.setData(retail.map((r) => ({ time: r.time, value: r.close })));
+      retailSeries = area;
 
       const vol = chart.addSeries(HistogramSeries, {
         priceScaleId: "vol",
@@ -103,6 +111,7 @@ export default function TradeChart({
         scaleMargins: { top: 0.82, bottom: 0 },
       });
       vol.setData(retail.map((r) => ({ time: r.time, value: r.volume })));
+      volSeries = vol;
     }
 
     // OTC: clean % converted to ₹ via face value (approximate comparability).
@@ -121,11 +130,50 @@ export default function TradeChart({
           color: "#a1a1aa",
           lineWidth: 1,
           lineStyle: 1,
-          title: "OTC clean→₹",
+          priceLineVisible: false,
         });
         line.setData(otc);
+        otcSeries = line;
       }
     }
+
+    // Crosshair tooltip: date + retail ₹ / volume / OTC ₹ at the cursor.
+    chart.subscribeCrosshairMove((param) => {
+      const el = tooltip.current;
+      if (!el) return;
+      if (!param.time || !param.point) {
+        el.style.display = "none";
+        return;
+      }
+      const rows: string[] = [];
+      const rv = retailSeries && param.seriesData.get(retailSeries);
+      const vv = volSeries && param.seriesData.get(volSeries);
+      const ov = otcSeries && param.seriesData.get(otcSeries);
+      if (rv && "value" in rv)
+        rows.push(
+          `<span style="color:#10b981">Retail</span> ₹${Number(rv.value).toLocaleString("en-IN")}`,
+        );
+      if (vv && "value" in vv && vv.value > 0)
+        rows.push(
+          `<span style="color:#71717a">Vol</span> ${Number(vv.value).toLocaleString("en-IN")}`,
+        );
+      if (ov && "value" in ov)
+        rows.push(
+          `<span style="color:#a1a1aa">OTC</span> ₹${Number(ov.value).toLocaleString("en-IN")}`,
+        );
+      if (rows.length === 0) {
+        el.style.display = "none";
+        return;
+      }
+      const d = new Date((param.time as number) * 1000);
+      el.innerHTML = `<div style="color:#71717a;margin-bottom:2px">${d.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}</div>${rows.join("<br/>")}`;
+      el.style.display = "block";
+      const w = container.current?.clientWidth ?? 0;
+      const flip = param.point.x > w - 150;
+      el.style.left = flip ? "auto" : `${param.point.x + 14}px`;
+      el.style.right = flip ? `${w - param.point.x + 14}px` : "auto";
+      el.style.top = `${param.point.y + 10}px`;
+    });
 
     chart.timeScale().fitContent();
     const onResize = () =>
@@ -139,10 +187,32 @@ export default function TradeChart({
     };
   }, [filtered, showOtc, faceValue]);
 
-  const counts = useMemo(() => {
-    const retail = filtered.filter((t) => t.segment === "retail").length;
-    return { retail, otc: filtered.length - retail };
+  const stats = useMemo(() => {
+    const retail = filtered.filter((t) => t.segment === "retail");
+    const otc = filtered.filter((t) => t.segment === "otc");
+    const closes = retail.map((t) => Number(t.close)).filter((v) => v > 0);
+    const sum = (xs: (number | null)[]) => xs.reduce((a: number, v) => a + (Number(v) || 0), 0);
+    return {
+      retailDays: retail.length,
+      otcDays: otc.length,
+      high: closes.length ? Math.max(...closes) : null,
+      low: closes.length ? Math.min(...closes) : null,
+      retailTurnover: sum(retail.map((t) => t.turnover)),
+      retailVolume: sum(retail.map((t) => t.volume)),
+      otcTurnover: sum(otc.map((t) => t.turnover)),
+      trades: sum(retail.map((t) => t.num_trades)),
+    };
   }, [filtered]);
+
+  const recent = useMemo(
+    () =>
+      [...filtered]
+        .sort(
+          (a, b) => b.trade_date.localeCompare(a.trade_date) || (a.segment < b.segment ? -1 : 1),
+        )
+        .slice(0, 14),
+    [filtered],
+  );
 
   return (
     <div className="space-y-3">
@@ -198,14 +268,106 @@ export default function TradeChart({
           No trades in this range.
         </div>
       ) : (
-        <div ref={container} className="w-full" />
+        <div className="relative">
+          <div ref={container} className="w-full" />
+          <div
+            ref={tooltip}
+            className="pointer-events-none absolute z-20 hidden rounded-md border border-zinc-700 bg-zinc-900/95 px-2.5 py-1.5 text-[11px] leading-snug text-zinc-200 shadow-lg"
+          />
+        </div>
       )}
 
       <div className="text-xs text-zinc-600">
-        {counts.retail} retail days · {counts.otc} OTC days ·{" "}
         <span className="text-emerald-500">— retail dirty ₹</span> ·{" "}
         <span className="text-zinc-400">-- OTC clean % × face</span>
       </div>
+
+      {filtered.length > 0 && (
+        <>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            {(
+              [
+                ["Period high", stats.high != null ? fmt.inr(stats.high) : "–"],
+                ["Period low", stats.low != null ? fmt.inr(stats.low) : "–"],
+                ["Retail turnover", `${fmt.inr(stats.retailTurnover)} / ${stats.retailDays}d`],
+                [
+                  "OTC turnover",
+                  stats.otcDays ? `${fmt.inr(stats.otcTurnover)} / ${stats.otcDays}d` : "–",
+                ],
+                ["Units traded (retail)", stats.retailVolume.toLocaleString("en-IN")],
+                ["Trades (retail)", stats.trades ? stats.trades.toLocaleString("en-IN") : "–"],
+              ] as const
+            ).map(([label, value]) => (
+              <div
+                key={label}
+                className="rounded-lg border border-zinc-800 bg-zinc-900/50 px-3 py-2"
+              >
+                <div className="text-[10px] text-zinc-500">{label}</div>
+                <div className="text-xs font-semibold text-zinc-200 mt-0.5">{value}</div>
+              </div>
+            ))}
+          </div>
+
+          <div>
+            <h3 className="text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-2">
+              Recent trades
+            </h3>
+            <div className="rounded-lg border border-zinc-800 overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="text-left text-zinc-500 border-b border-zinc-800">
+                    <th className="px-3 py-1.5 font-medium">Date</th>
+                    <th className="px-3 py-1.5 font-medium">Segment</th>
+                    <th className="px-3 py-1.5 font-medium">Price</th>
+                    <th className="px-3 py-1.5 font-medium">Yield</th>
+                    <th className="px-3 py-1.5 font-medium">Volume</th>
+                    <th className="px-3 py-1.5 font-medium">Turnover</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {recent.map((t) => (
+                    <tr
+                      key={`${t.trade_date}-${t.exchange}-${t.segment}`}
+                      className="border-b border-zinc-800/50 last:border-0"
+                    >
+                      <td className="px-3 py-1.5 text-zinc-400 whitespace-nowrap">
+                        {fmt.date(t.trade_date)}
+                      </td>
+                      <td className="px-3 py-1.5">
+                        <span
+                          className={t.segment === "retail" ? "text-emerald-500" : "text-zinc-400"}
+                        >
+                          {t.segment === "retail" ? t.exchange : `OTC (${t.exchange})`}
+                        </span>
+                      </td>
+                      <td className="px-3 py-1.5 text-zinc-200 whitespace-nowrap">
+                        {t.segment === "retail"
+                          ? fmt.inr(t.close != null ? Number(t.close) : null)
+                          : (t.wap ?? t.last_price) != null
+                            ? `${fmt.num(Number(t.wap ?? t.last_price))}%`
+                            : "–"}
+                      </td>
+                      <td className="px-3 py-1.5 text-zinc-400">
+                        {fmt.pct(
+                          t.wap_yield != null || t.last_yield != null
+                            ? Number(t.wap_yield ?? t.last_yield)
+                            : null,
+                        )}
+                      </td>
+                      <td className="px-3 py-1.5 text-zinc-400">
+                        {t.volume != null ? Number(t.volume).toLocaleString("en-IN") : "–"}
+                      </td>
+                      <td className="px-3 py-1.5 text-zinc-400">
+                        {fmt.inr(t.turnover != null ? Number(t.turnover) : null)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }

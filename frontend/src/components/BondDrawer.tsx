@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { api, fmt } from "../api/client";
 import type { BondDetail } from "../api/types";
 import CashflowTable from "./CashflowTable";
+import CopyBtn from "./CopyBtn";
 import RatingBadge from "./RatingBadge";
 import RatingTimeline from "./RatingTimeline";
 import { WatchStar } from "./ScreenerTable";
@@ -60,9 +61,10 @@ export default function BondDrawer({
                     )}
                   </div>
                   <div className="text-sm text-zinc-400 mt-0.5">{bond.issuer_name}</div>
-                  <div className="text-xs text-zinc-600 font-mono mt-0.5">
+                  <div className="text-xs text-zinc-600 font-mono mt-0.5 flex items-center gap-1.5">
                     {bond.isin}
-                    {bond.sector && ` · ${bond.sector}`}
+                    <CopyBtn text={bond.isin} label="ISIN" />
+                    {bond.sector && <span>· {bond.sector}</span>}
                   </div>
                 </div>
                 <div className="flex items-center gap-2">

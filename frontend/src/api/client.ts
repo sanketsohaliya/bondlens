@@ -48,9 +48,9 @@ export const fmt = {
     v == null
       ? "–"
       : v >= 1e7
-        ? `₹${(v / 1e7).toFixed(2)}Cr`
+        ? `₹${(v / 1e7).toFixed(2)} Cr`
         : v >= 1e5
-          ? `₹${(v / 1e5).toFixed(2)}L`
+          ? `₹${(v / 1e5).toFixed(2)} L`
           : `₹${v.toLocaleString("en-IN", { maximumFractionDigits: 0 })}`,
   pct: (v: number | null | undefined): string => (v == null ? "–" : `${v.toFixed(2)}%`),
   date: (v: string | null | undefined): string =>
