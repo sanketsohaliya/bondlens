@@ -25,25 +25,27 @@ def test_yn_still_handles_yes_no():
     assert _yn("Maybe") is None
 
 
-# --- rating composite dedupe ------------------------------------------------
+# --- rating composite: one entry per agency ---------------------------------
 
-def _cur(*pairs):
-    return [{"rating": r, "outlook": o} for r, o in pairs]
-
-
-def test_composite_collapses_identical_agency_ratings():
-    cur = _cur(("AAA", "Stable"), ("AAA", "Stable"), ("AAA", "Stable"))
-    assert ratings.composite(cur) == "AAA/Stable ×3"
+def _cur(*triples):
+    return [{"agency": a, "rating": r, "outlook": o} for a, r, o in triples]
 
 
-def test_composite_keeps_disagreements_visible():
-    cur = _cur(("AA+", "Stable"), ("AA", "Negative"), ("AA+", "Stable"))
-    assert ratings.composite(cur) == "AA+/Stable ×2, AA/Negative"
+def test_composite_names_every_agency():
+    cur = _cur(("CARE", "AAA", "Stable"), ("CRISIL", "AAA", "Stable"),
+               ("ICRA", "AAA", "Stable"))
+    assert ratings.composite(cur) == (
+        "CARE AAA/Stable, CRISIL AAA/Stable, ICRA AAA/Stable")
+
+
+def test_composite_keeps_disagreements_visible_best_first():
+    cur = _cur(("ICRA", "AA", "Negative"), ("CRISIL", "AA+", "Stable"))
+    assert ratings.composite(cur) == "CRISIL AA+/Stable, ICRA AA/Negative"
 
 
 def test_composite_no_outlook_and_single():
-    assert ratings.composite(_cur(("AAA", None))) == "AAA"
-    assert ratings.composite(_cur(("AA", "No Outlook"))) == "AA"
+    assert ratings.composite(_cur(("CARE", "AAA", None))) == "CARE AAA"
+    assert ratings.composite(_cur(("CARE", "AA", "No Outlook"))) == "CARE AA"
     assert ratings.composite([]) is None
 
 

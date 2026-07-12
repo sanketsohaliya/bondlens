@@ -49,6 +49,17 @@ def screener_core() -> dict[str, dict]:
             for r in conn.execute(_LATEST_TRADE_SQL, (segment,)).fetchall():
                 if r["isin"] in core:
                     core[r["isin"]][key] = dict(r)
+
+        # Latest retail trade per exchange (turnover breakdown by venue).
+        for r in conn.execute("""
+            SELECT DISTINCT ON (isin, exchange) isin, exchange, turnover
+            FROM eod_trades
+            WHERE segment = 'retail'
+            ORDER BY isin, exchange, trade_date DESC
+        """).fetchall():
+            if r["isin"] in core:
+                core[r["isin"]].setdefault("retail_exch", {})[
+                    (r["exchange"] or "").upper()] = dict(r)
     return core
 
 

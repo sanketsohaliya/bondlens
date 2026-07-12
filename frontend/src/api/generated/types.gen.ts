@@ -111,6 +111,14 @@ export type Bond = {
      */
     num_trades: number | null;
     /**
+     * Nse Turnover
+     */
+    nse_turnover: number | null;
+    /**
+     * Bse Turnover
+     */
+    bse_turnover: number | null;
+    /**
      * Days Since Traded
      */
     days_since_traded: number | null;

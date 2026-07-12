@@ -199,7 +199,32 @@ function Row({
             ? "perp"
             : "–"}
       </td>
-      <td className="px-3 py-2.5 text-zinc-400 whitespace-nowrap">{fmt.inr(b.turnover)}</td>
+      <td className="px-3 py-2.5 whitespace-nowrap text-xs leading-snug">
+        {b.nse_turnover == null && b.bse_turnover == null && b.otc_turnover == null ? (
+          <span className="text-zinc-500">–</span>
+        ) : (
+          <>
+            {b.nse_turnover != null && (
+              <div className="text-zinc-400">
+                <span className="text-zinc-600">NSE </span>
+                {fmt.inr(b.nse_turnover)}
+              </div>
+            )}
+            {b.bse_turnover != null && (
+              <div className="text-zinc-400">
+                <span className="text-zinc-600">BSE </span>
+                {fmt.inr(b.bse_turnover)}
+              </div>
+            )}
+            {b.otc_turnover != null && (
+              <div className="text-zinc-400">
+                <span className="text-zinc-600">OTC </span>
+                {fmt.inr(b.otc_turnover)}
+              </div>
+            )}
+          </>
+        )}
+      </td>
       <td className="px-3 py-2.5 whitespace-nowrap">
         <span className={b.stale ? "text-zinc-600" : "text-zinc-400"}>
           {b.days_since_traded == null

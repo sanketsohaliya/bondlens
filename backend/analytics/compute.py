@@ -23,7 +23,8 @@ _COLS: list[LiteralString] = [
     "nse_symbol", "nse_series", "bse_scrip_id", "coupon", "face_value",
     "coupon_basis", "frequency", "secured", "tax_free", "perpetual",
     "maturity_date", "schedule_shape", "ltp", "trade_date", "exchange",
-    "volume", "turnover", "num_trades", "otc_price_pct", "otc_yield",
+    "volume", "turnover", "num_trades", "nse_turnover", "bse_turnover",
+    "otc_price_pct", "otc_yield",
     "otc_trade_date", "otc_turnover", "ytm", "ytm_method", "ytm_reliable",
     "current_yield", "duration",
     "credit_rating", "rating_rank", "rating_change", "rating_prev",
@@ -146,6 +147,10 @@ def build_rows(today: date | None = None) -> list[dict]:
             "volume": _f(retail and retail.get("volume")),
             "turnover": _f(retail and retail.get("turnover")),
             "num_trades": retail.get("num_trades") if retail else None,
+            "nse_turnover": _f(
+                (r.get("retail_exch") or {}).get("NSE", {}).get("turnover")),
+            "bse_turnover": _f(
+                (r.get("retail_exch") or {}).get("BSE", {}).get("turnover")),
             "otc_price_pct": _f(otc and (otc.get("wap") or otc.get("last_price"))),
             "otc_yield": _f(otc and (otc.get("wap_yield") or otc.get("last_yield"))),
             "otc_trade_date": otc["trade_date"] if otc else None,

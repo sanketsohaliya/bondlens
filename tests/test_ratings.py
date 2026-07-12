@@ -34,10 +34,21 @@ def test_best_rank_across_agencies():
 
 
 def test_composite():
-    cur = [{"rating": "AAA", "outlook": "Stable"},
-           {"rating": "AA+", "outlook": "No Outlook"}]
-    assert ratings.composite(cur) == "AAA/Stable, AA+"
+    cur = [{"agency": "ICRA", "rating": "AAA", "outlook": "Stable"},
+           {"agency": "CRISIL", "rating": "AA+", "outlook": "No Outlook"}]
+    assert ratings.composite(cur) == "ICRA AAA/Stable, CRISIL AA+"
     assert ratings.composite([]) is None
+
+
+def test_composite_dedupes_and_keeps_disagreements():
+    cur = [{"agency": "CRISIL", "rating": "AA+", "outlook": "Stable"},
+           {"agency": "CRISIL", "rating": "AA+", "outlook": "Stable"},
+           {"agency": "ICRA", "rating": "AA", "outlook": "Negative"}]
+    assert ratings.composite(cur) == "CRISIL AA+/Stable, ICRA AA/Negative"
+
+
+def test_composite_without_agency():
+    assert ratings.composite([{"rating": "AA"}]) == "AA"
 
 
 def test_recent_downgrade_detected():

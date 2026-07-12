@@ -53,21 +53,26 @@ def best_rank(current: list[dict]) -> int | None:
 
 
 def composite(current: list[dict]) -> str | None:
-    """Display string across agencies, deduplicated: agreeing agencies
-    collapse to one entry with a count ('AAA/Stable ×3'); disagreements
-    stay visible ('AA+/Stable ×2, AA/Negative'). Best grade first."""
+    """Display string across agencies, one entry per agency with its name
+    ('CRISIL AA+/Stable, ICRA AA/Negative'). Best grade first; entries
+    without a parseable grade sort last. Duplicate (agency, rating)
+    pairs collapse to one."""
     if not current:
         return None
-    counts: dict[str, int] = {}
+    seen: set[tuple[str, str]] = set()
+    parts: list[tuple[str, str]] = []
     for x in current:
         s = x.get("rating") or ""
+        if not s:
+            continue
         if x.get("outlook") and x["outlook"].lower() not in ("no outlook", ""):
             s += f"/{x['outlook']}"
-        if s:
-            counts[s] = counts.get(s, 0) + 1
-    parts = sorted(counts.items(),
-                   key=lambda kv: (rank(kv[0]) is None, rank(kv[0]) or 0))
-    return ", ".join(s if n == 1 else f"{s} ×{n}" for s, n in parts) or None
+        agency = (x.get("agency") or "").strip()
+        if (agency, s) not in seen:
+            seen.add((agency, s))
+            parts.append((agency, s))
+    parts.sort(key=lambda p: (rank(p[1]) is None, rank(p[1]) or 0, p[0]))
+    return ", ".join(f"{a} {s}" if a else s for a, s in parts) or None
 
 
 def recent_change(history: list[dict],

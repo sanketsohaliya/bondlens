@@ -39,6 +39,8 @@ class Bond(BaseModel):
     volume: float | None
     turnover: float | None
     num_trades: int | None
+    nse_turnover: float | None
+    bse_turnover: float | None
     days_since_traded: int | None
     stale: bool
     otc_price_pct: float | None
