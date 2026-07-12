@@ -15,8 +15,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from bondlens import db                      # noqa: E402
-from bondlens.nsdl_parse import PARSERS, parse_holdings   # noqa: E402
+from bondlens import db  # noqa: E402
+from bondlens.nsdl_parse import PARSERS, parse_holdings  # noqa: E402
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS bond_info (

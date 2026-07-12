@@ -6,7 +6,6 @@ only the functions the universe builder uses.
 import csv
 import io
 import re
-from typing import Dict, List
 
 import requests
 
@@ -40,7 +39,7 @@ def fetch_debt_csv(timeout: int = 20) -> str:
     return resp.text
 
 
-def parse_debt_isins(text: str) -> List[Dict]:
+def parse_debt_isins(text: str) -> list[dict]:
     """Per-ISIN records from NSE's DEBT.csv master (the CM listed-debt set).
 
     Returns one dict per ISIN with symbol, series, face value, coupon
@@ -86,6 +85,6 @@ def parse_debt_isins(text: str) -> List[Dict]:
     return list(out.values())
 
 
-def fetch_debt_isins(timeout: int = 20) -> List[Dict]:
+def fetch_debt_isins(timeout: int = 20) -> list[dict]:
     """Fetch and parse DEBT.csv in one step."""
     return parse_debt_isins(fetch_debt_csv(timeout=timeout))

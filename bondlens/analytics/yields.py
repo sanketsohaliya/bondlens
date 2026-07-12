@@ -5,7 +5,6 @@ stated otherwise. Yields are % annualized, compounded at the bond's actual
 payment frequency (falls back to annual when the frequency is unknown).
 """
 from datetime import date
-from typing import List, Optional, Tuple
 
 from . import daycount
 from .schedule import Flow, Schedule
@@ -17,18 +16,18 @@ _MAX_PLAUSIBLE = 100.0
 _LO, _HI = -0.50, 2.00  # bisection band, rate per year
 
 
-def _plausible(pct: Optional[float]) -> Optional[float]:
+def _plausible(pct: float | None) -> float | None:
     if pct is None or not (_MIN_PLAUSIBLE <= pct <= _MAX_PLAUSIBLE):
         return None
     return pct
 
 
-def _times_amounts(flows: List[Flow], today: date, dc: str) -> List[Tuple[float, float]]:
+def _times_amounts(flows: list[Flow], today: date, dc: str) -> list[tuple[float, float]]:
     return [(daycount.year_frac(today, f.due_date, dc), f.amount)
             for f in flows if f.amount and f.due_date > today]
 
 
-def _solve(price: float, tv: List[Tuple[float, float]], m: int) -> Optional[float]:
+def _solve(price: float, tv: list[tuple[float, float]], m: int) -> float | None:
     """Bisection solve for the annual rate (compounded m times/yr) that
     prices the flows at ``price``. None when no root is bracketed."""
     if not price or not tv:
@@ -62,7 +61,7 @@ def _solve(price: float, tv: List[Tuple[float, float]], m: int) -> Optional[floa
 
 
 def exact_ytm(price: float, sched: Schedule,
-              today: Optional[date] = None) -> Optional[float]:
+              today: date | None = None) -> float | None:
     """YTM (%) from the dirty price against the buyer-receivable flows,
     compounded at the bond's payment frequency."""
     today = today or date.today()
@@ -74,8 +73,8 @@ def exact_ytm(price: float, sched: Schedule,
     return round(y, 2) if y is not None else None
 
 
-def yield_to_worst(price: float, sched: Schedule, call_dates: List[date],
-                   today: Optional[date] = None) -> Optional[float]:
+def yield_to_worst(price: float, sched: Schedule, call_dates: list[date],
+                   today: date | None = None) -> float | None:
     """Lowest yield across maturity and each call scenario.
 
     A call scenario truncates the schedule at the call date and redeems
@@ -111,7 +110,7 @@ def _outstanding_at(sched: Schedule, on: date) -> float:
 
 
 def accrued_interest(sched: Schedule,
-                     today: Optional[date] = None) -> Optional[float]:
+                     today: date | None = None) -> float | None:
     """Accrued interest per unit under the bond's day-count convention.
 
     Accrues the next coupon across [previous coupon date, next coupon
@@ -141,13 +140,13 @@ def accrued_interest(sched: Schedule,
 
 
 def clean_price(dirty: float, sched: Schedule,
-                today: Optional[date] = None) -> Optional[float]:
+                today: date | None = None) -> float | None:
     acc = accrued_interest(sched, today)
     return round(dirty - acc, 2) if acc is not None and dirty else None
 
 
 def dirty_from_clean_pct(clean_pct: float, sched: Schedule,
-                         today: Optional[date] = None) -> Optional[float]:
+                         today: date | None = None) -> float | None:
     """OTC quotes are clean % of face; convert to dirty ₹ per unit for
     comparison with retail prices."""
     if not clean_pct or not sched.face_value:
@@ -158,8 +157,8 @@ def dirty_from_clean_pct(clean_pct: float, sched: Schedule,
     return round(clean_pct / 100.0 * sched.face_value + acc, 2)
 
 
-def modified_duration(price: float, sched: Schedule, ytm_pct: Optional[float],
-                      today: Optional[date] = None) -> Optional[float]:
+def modified_duration(price: float, sched: Schedule, ytm_pct: float | None,
+                      today: date | None = None) -> float | None:
     """Modified duration (yrs): % price drop per 1% yield rise."""
     if not price or ytm_pct is None or not sched.usable:
         return None
@@ -178,9 +177,9 @@ def modified_duration(price: float, sched: Schedule, ytm_pct: Optional[float],
     return round(weighted / pv / (1 + y / m), 2)
 
 
-def approx_ytm(price: float, coupon_pct: Optional[float], face_value: Optional[float],
-               maturity: Optional[date], periods_per_year: int = 1,
-               today: Optional[date] = None) -> Optional[float]:
+def approx_ytm(price: float, coupon_pct: float | None, face_value: float | None,
+               maturity: date | None, periods_per_year: int = 1,
+               today: date | None = None) -> float | None:
     """Fallback YTM from headline terms when no usable schedule exists:
     synthesizes level coupons from today to maturity."""
     today = today or date.today()
@@ -203,14 +202,14 @@ def approx_ytm(price: float, coupon_pct: Optional[float], face_value: Optional[f
     return round(y, 2) if y is not None else None
 
 
-def current_yield(price: float, coupon_pct: Optional[float],
-                  face_value: Optional[float]) -> Optional[float]:
+def current_yield(price: float, coupon_pct: float | None,
+                  face_value: float | None) -> float | None:
     if not price or not coupon_pct or not face_value:
         return None
     return round(coupon_pct * face_value / price, 2)
 
 
-def xirr(dated_flows: List[Tuple[date, float]]) -> Optional[float]:
+def xirr(dated_flows: list[tuple[date, float]]) -> float | None:
     """Annualized IRR (%) over signed dated flows (outflows negative)."""
     flows = [(d, a) for d, a in dated_flows if d is not None and a]
     if len(flows) < 2:

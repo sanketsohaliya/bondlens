@@ -26,5 +26,9 @@ target-version = "py314"
 select = ["E", "F", "W", "I", "UP", "B"]
 ignore = ["E501"]
 
+[tool.ruff.lint.per-file-ignores]
+# FastAPI's Query()/Depends() defaults are the framework idiom.
+"bondlens/app.py" = ["B008"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]

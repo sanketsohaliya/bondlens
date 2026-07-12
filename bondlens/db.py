@@ -12,8 +12,7 @@ import gzip
 import hashlib
 import os
 from contextlib import contextmanager
-from datetime import datetime, timezone
-from typing import Dict, List
+from datetime import UTC, datetime
 
 from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool
@@ -152,7 +151,7 @@ def close_pool():
 
 # --- Watchlist --------------------------------------------------------------
 
-def get_watchlist() -> List[Dict]:
+def get_watchlist() -> list[dict]:
     with _conn() as conn:
         return conn.execute(
             "SELECT isin, added_at FROM watchlist ORDER BY added_at DESC"
@@ -188,12 +187,12 @@ def start_run() -> int:
     with _conn() as conn:
         row = conn.execute(
             "INSERT INTO bond_runs (run_at) VALUES (%s) RETURNING id",
-            (datetime.now(timezone.utc).isoformat(),),
+            (datetime.now(UTC).isoformat(),),
         ).fetchone()
     return row["id"]
 
 
-def save_raw_file(source: str, content, run_id: int = None) -> Dict:
+def save_raw_file(source: str, content, run_id: int = None) -> dict:
     """Archive a raw fetched master file (gzipped bytea in raw_files),
     linked to the run that captured it.
 
@@ -209,7 +208,7 @@ def save_raw_file(source: str, content, run_id: int = None) -> Dict:
             "(run_id, fetched_at, source, sha256, size_bytes, content) "
             "VALUES (%s, %s, %s, %s, %s, %s) "
             "ON CONFLICT (source, sha256) DO NOTHING RETURNING id",
-            (run_id, datetime.now(timezone.utc).isoformat(), source, sha,
+            (run_id, datetime.now(UTC).isoformat(), source, sha,
              len(data), gzip.compress(data)),
         ).fetchone()
     return {"source": source, "sha256": sha, "size": len(data),
@@ -224,7 +223,7 @@ def log_failed_run(error: str, log: str = None,
 
     Finalizes the open run row if run_id is given (failure after
     start_run); otherwise inserts a fresh row (failure during fetch)."""
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
     note = f"failed: {error}"
     log_text = f"{log}\n{now} {note}" if log else note
     with _conn() as conn:
@@ -242,9 +241,9 @@ def log_failed_run(error: str, log: str = None,
             )
 
 
-def save_universe(records: List[Dict], run_stats: Dict,
+def save_universe(records: list[dict], run_stats: dict,
                   as_of: str = None, max_shrink: float = 0.05,
-                  log: str = None, run_id: int = None) -> Dict:
+                  log: str = None, run_id: int = None) -> dict:
     """Reconcile today's universe against the stored one in one transaction.
 
     Upserts every incoming ISIN as 'listed' (preserving created_at and
@@ -260,7 +259,7 @@ def save_universe(records: List[Dict], run_stats: Dict,
     Returns a dict of counts (added / dropped / relisted / status_change /
     source_change / identifier_change / total), or {'aborted': True, ...}.
     """
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
     day = as_of or now[:10]
     incoming = {r["isin"]: r for r in records if r.get("isin")}
     if run_id is None:
@@ -390,7 +389,7 @@ def save_universe(records: List[Dict], run_stats: Dict,
     return summary
 
 
-def universe_counts() -> Dict:
+def universe_counts() -> dict:
     """Current universe headline counts."""
     with _conn() as conn:
         row = conn.execute(
@@ -406,7 +405,7 @@ def universe_counts() -> Dict:
     return dict(row) if row else {}
 
 
-def universe_isins(listed_only: bool = True) -> List[str]:
+def universe_isins(listed_only: bool = True) -> list[str]:
     """ISINs in the tracked universe (listed only by default)."""
     with _conn() as conn:
         q = "SELECT isin FROM bonds"
@@ -415,7 +414,7 @@ def universe_isins(listed_only: bool = True) -> List[str]:
         return [r["isin"] for r in conn.execute(q + " ORDER BY isin").fetchall()]
 
 
-def recent_universe_events(limit: int = 50) -> List[Dict]:
+def recent_universe_events(limit: int = 50) -> list[dict]:
     with _conn() as conn:
         return conn.execute(
             "SELECT event_date, isin, event_type, field, old_value, "

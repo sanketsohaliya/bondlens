@@ -3,7 +3,6 @@
 Reconstructed from bytecode after the source was lost in the v2 cleanup —
 only the functions the universe builder uses.
 """
-from typing import Dict, List
 
 import requests
 
@@ -30,7 +29,7 @@ def _to_float(value):
         return None
 
 
-def fetch_scrip_master_raw(statuses=LISTED_STATUSES, timeout: int = 60) -> Dict:
+def fetch_scrip_master_raw(statuses=LISTED_STATUSES, timeout: int = 60) -> dict:
     """Fetch BSE's raw list-of-securities payload per status.
 
     Returns {status: [rows...]} exactly as the API delivered it (all debt
@@ -57,7 +56,7 @@ def fetch_scrip_master_raw(statuses=LISTED_STATUSES, timeout: int = 60) -> Dict:
     return raw
 
 
-def parse_scrip_master(raw: Dict) -> List[Dict]:
+def parse_scrip_master(raw: dict) -> list[dict]:
     """Normalize the raw payload to one 'Debentures and Bonds' record per
     ISIN, deduped so an ISIN seen in multiple statuses keeps the first
     (Active before Suspended, per fetch order)."""
@@ -82,6 +81,6 @@ def parse_scrip_master(raw: Dict) -> List[Dict]:
     return list(out.values())
 
 
-def fetch_scrip_master(statuses=LISTED_STATUSES, timeout: int = 60) -> List[Dict]:
+def fetch_scrip_master(statuses=LISTED_STATUSES, timeout: int = 60) -> list[dict]:
     """Fetch and parse the listed 'Debentures and Bonds' set in one step."""
     return parse_scrip_master(fetch_scrip_master_raw(statuses, timeout=timeout))

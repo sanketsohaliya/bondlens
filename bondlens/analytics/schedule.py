@@ -20,9 +20,9 @@ Missing interest amounts are estimated from the coupon rate, face value
 outstanding and the actual day-count between flows; every estimated flow
 is flagged so downstream YTMs can be labeled exact vs estimated.
 """
+import itertools
 from dataclasses import dataclass, field
 from datetime import date
-from typing import Dict, List, Optional
 
 from . import daycount
 
@@ -32,13 +32,13 @@ _FACE_TOL = 0.02
 _MIN_SCALE = 5.0
 
 
-@dataclass
+@dataclass(slots=True)
 class Flow:
     """One normalized per-unit cash flow."""
     event: str                       # 'interest' | 'redemption'
     due_date: date
-    record_date: Optional[date] = None
-    amount: Optional[float] = None   # ₹ per unit of face value
+    record_date: date | None = None
+    amount: float | None = None   # ₹ per unit of face value
     estimated: bool = False          # amount was estimated, not published
 
     def receivable_by_buyer(self, today: date) -> bool:
@@ -51,20 +51,20 @@ class Flow:
         return True
 
 
-@dataclass
+@dataclass(slots=True)
 class Schedule:
     """Normalized schedule + provenance for one bond."""
     isin: str
     shape: str                       # plain|staggered|zero_coupon|cumulative|perpetual|irregular|empty
-    flows: List[Flow] = field(default_factory=list)
-    face_value: Optional[float] = None
-    frequency: Optional[str] = None  # monthly|quarterly|semiannual|annual|cumulative|irregular
-    periods_per_year: Optional[int] = None
+    flows: list[Flow] = field(default_factory=list)
+    face_value: float | None = None
+    frequency: str | None = None  # monthly|quarterly|semiannual|annual|cumulative|irregular
+    periods_per_year: int | None = None
     day_count: str = daycount.ACT_ACT
     scale: float = 1.0               # divisor applied to issue-level amounts
     amounts_estimated: bool = False  # any flow amount was estimated
     redemption_matches_face: bool = False
-    warnings: List[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
 
     @property
     def usable(self) -> bool:
@@ -74,7 +74,7 @@ class Schedule:
             return False
         return self.redemption_matches_face or self.shape == "perpetual"
 
-    def future_flows(self, today: Optional[date] = None) -> List[Flow]:
+    def future_flows(self, today: date | None = None) -> list[Flow]:
         today = today or date.today()
         return [f for f in self.flows
                 if f.amount and f.receivable_by_buyer(today)]
@@ -97,7 +97,7 @@ _FREQ_MAP = [
 ]
 
 
-def classify_frequency(text: Optional[str]) -> tuple[Optional[str], Optional[int]]:
+def classify_frequency(text: str | None) -> tuple[str | None, int | None]:
     """Map NSDL's frequency free-text to (name, periods_per_year)."""
     t = (text or "").strip().lower()
     if not t:
@@ -108,12 +108,12 @@ def classify_frequency(text: Optional[str]) -> tuple[Optional[str], Optional[int
     return "irregular", None
 
 
-def infer_frequency_from_flows(interest: List[Flow]) -> tuple[Optional[str], Optional[int]]:
+def infer_frequency_from_flows(interest: list[Flow]) -> tuple[str | None, int | None]:
     """Median gap between consecutive interest dates -> frequency."""
     if len(interest) < 2:
         return None, None
     dates = sorted(f.due_date for f in interest)
-    gaps = sorted((b - a).days for a, b in zip(dates, dates[1:]) if b > a)
+    gaps = sorted((b - a).days for a, b in itertools.pairwise(dates) if b > a)
     if not gaps:
         return None, None
     med = gaps[len(gaps) // 2]
@@ -124,8 +124,8 @@ def infer_frequency_from_flows(interest: List[Flow]) -> tuple[Optional[str], Opt
     return "irregular", None
 
 
-def build(isin: str, cashflows: List[Dict], terms: Optional[Dict],
-          today: Optional[date] = None) -> Schedule:
+def build(isin: str, cashflows: list[dict], terms: dict | None,
+          today: date | None = None) -> Schedule:
     """Build the canonical Schedule for one bond.
 
     ``cashflows``: bond_cashflows rows (event, due_date, record_date,
@@ -253,7 +253,7 @@ def build(isin: str, cashflows: List[Dict], terms: Optional[Dict],
     return sched
 
 
-def _normalize_rows(cashflows: List[Dict]) -> List[Flow]:
+def _normalize_rows(cashflows: list[dict]) -> list[Flow]:
     """bond_cashflows rows -> raw Flows (amounts still unscaled)."""
     flows = []
     for r in cashflows:
@@ -273,7 +273,7 @@ def _normalize_rows(cashflows: List[Dict]) -> List[Flow]:
     return flows
 
 
-def _estimate_missing(interest: List[Flow], redemptions: List[Flow],
+def _estimate_missing(interest: list[Flow], redemptions: list[Flow],
                       face: float, coupon_pct: float, dc: str):
     """Fill missing interest amounts as coupon x outstanding face x period
     year-fraction. Outstanding face steps down at each partial redemption
@@ -299,7 +299,7 @@ def _estimate_missing(interest: List[Flow], redemptions: List[Flow],
         prev_date = f.due_date
 
 
-def _num(v) -> Optional[float]:
+def _num(v) -> float | None:
     if v is None:
         return None
     try:

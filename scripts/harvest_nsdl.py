@@ -33,7 +33,7 @@ import threading
 import time
 import urllib.parse
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import requests
 
@@ -169,7 +169,7 @@ def load_state():
 
 def store(isin, endpoint, quarter, status, text, prev, run_id):
     """Insert a new row, or just bump last_checked_at when unchanged."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     sha = hashlib.sha256(text.encode()).hexdigest()
     try:
         payload = json.loads(text)
@@ -201,7 +201,7 @@ def start_nsdl_run(tiers, workers, n_isins):
         row = conn.execute(
             "INSERT INTO nsdl_runs (run_at, tiers, workers, isins) "
             "VALUES (%s, %s, %s, %s) RETURNING id",
-            (datetime.now(timezone.utc), ",".join(sorted(tiers)),
+            (datetime.now(UTC), ",".join(sorted(tiers)),
              workers, n_isins)).fetchone()
     return row["id"]
 
@@ -212,7 +212,7 @@ def finish_nsdl_run(run_id, ok, notes=None):
             "UPDATE nsdl_runs SET finished_at = %s, fetched = %s, "
             " unchanged = %s, skipped = %s, failed = %s, ok = %s, "
             " notes = %s WHERE id = %s",
-            (datetime.now(timezone.utc), _stats["fetched"],
+            (datetime.now(UTC), _stats["fetched"],
              _stats["unchanged"], _stats["skipped"], _stats["failed"],
              ok, notes, run_id))
 
@@ -223,7 +223,7 @@ def due(prev, tier, force):
         return True
     if tier == "static":
         return False  # terminal answer already stored
-    return prev[2] < datetime.now(timezone.utc) - MAX_AGE[tier]
+    return prev[2] < datetime.now(UTC) - MAX_AGE[tier]
 
 
 def harvest_holdings(isin, state, quarters_payload, force, run_id):

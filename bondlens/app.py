@@ -13,7 +13,6 @@ import re
 import threading
 import time
 from datetime import date, datetime
-from typing import Dict, List, Optional
 
 from fastapi import FastAPI, HTTPException, Query
 
@@ -26,14 +25,14 @@ CORE_TTL_SECONDS = 600
 STALE_AFTER_DAYS = 7   # retail price older than this is flagged stale
 
 _core_lock = threading.Lock()
-_core: Dict = {"built_at": 0.0, "bonds": []}
+_core: dict = {"built_at": 0.0, "bonds": []}
 
 
 # --------------------------------------------------------------------------
 # Screener core
 # --------------------------------------------------------------------------
 
-def _build_core() -> List[Dict]:
+def _build_core() -> list[dict]:
     """Join everything once and compute per-bond analytics."""
     today = date.today()
     core = queries.screener_core()
@@ -122,7 +121,7 @@ def _build_core() -> List[Dict]:
     return out
 
 
-def _get_core(force: bool = False) -> List[Dict]:
+def _get_core(force: bool = False) -> list[dict]:
     with _core_lock:
         if force or time.time() - _core["built_at"] > CORE_TTL_SECONDS:
             _core["bonds"] = _build_core()
@@ -130,18 +129,18 @@ def _get_core(force: bool = False) -> List[Dict]:
         return _core["bonds"]
 
 
-def _yn(v: Optional[str]) -> Optional[bool]:
+def _yn(v: str | None) -> bool | None:
     if v is None:
         return None
     s = str(v).strip().lower()
     return True if s in ("yes", "true", "t", "y") else False if s in ("no", "false", "f", "n") else None
 
 
-def _f(v) -> Optional[float]:
+def _f(v) -> float | None:
     return float(v) if v is not None else None
 
 
-def _years(maturity: Optional[date], today: date) -> Optional[float]:
+def _years(maturity: date | None, today: date) -> float | None:
     if maturity is None or maturity <= today:
         return None
     return round((maturity - today).days / 365.0, 2)
@@ -153,19 +152,19 @@ def _years(maturity: Optional[date], today: date) -> Optional[float]:
 
 @app.get("/api/bonds")
 def bonds(
-    min_ytm: Optional[float] = Query(None),
-    max_ytm: Optional[float] = Query(None),
-    rating: Optional[str] = Query(None, description="Substring match, e.g. AA"),
-    min_rating: Optional[str] = Query(None, description="Quality floor, e.g. AA-"),
-    sector: Optional[str] = Query(None),
-    industry: Optional[str] = Query(None),
-    issuer: Optional[str] = Query(None, description="Issuer name substring"),
-    exchange: Optional[str] = Query(None, description="NSE or BSE"),
-    frequency: Optional[str] = Query(None, description="monthly|quarterly|semiannual|annual"),
-    min_years: Optional[float] = Query(None),
-    max_years: Optional[float] = Query(None),
-    max_ltp: Optional[float] = Query(None, description="Max price per unit"),
-    min_turnover: Optional[float] = Query(None, description="Min ₹ turnover on last trade day"),
+    min_ytm: float | None = Query(None),
+    max_ytm: float | None = Query(None),
+    rating: str | None = Query(None, description="Substring match, e.g. AA"),
+    min_rating: str | None = Query(None, description="Quality floor, e.g. AA-"),
+    sector: str | None = Query(None),
+    industry: str | None = Query(None),
+    issuer: str | None = Query(None, description="Issuer name substring"),
+    exchange: str | None = Query(None, description="NSE or BSE"),
+    frequency: str | None = Query(None, description="monthly|quarterly|semiannual|annual"),
+    min_years: float | None = Query(None),
+    max_years: float | None = Query(None),
+    max_ltp: float | None = Query(None, description="Max price per unit"),
+    min_turnover: float | None = Query(None, description="Min ₹ turnover on last trade day"),
     secured_only: bool = Query(False),
     tax_free_only: bool = Query(False),
     below_par: bool = Query(False),
@@ -174,7 +173,7 @@ def bonds(
     downgraded_only: bool = Query(False),
     exclude_defaulted: bool = Query(True),
     watchlist_only: bool = Query(False),
-    q: Optional[str] = Query(None, description="Search ISIN / symbol / issuer"),
+    q: str | None = Query(None, description="Search ISIN / symbol / issuer"),
     limit: int = Query(500, le=5000),
     offset: int = Query(0, ge=0),
 ):
@@ -258,7 +257,7 @@ def filters():
 # --------------------------------------------------------------------------
 
 @app.get("/api/bonds/{isin}")
-def bond_detail(isin: str, price: Optional[float] = Query(None, gt=0)):
+def bond_detail(isin: str, price: float | None = Query(None, gt=0)):
     """Everything known about one bond. ``price`` reprices every
     price-derived figure for what-if analysis."""
     isin = isin.strip().upper()
@@ -348,7 +347,7 @@ def bond_detail(isin: str, price: Optional[float] = Query(None, gt=0)):
     }
 
 
-def _parse_call_dates(terms: Optional[Dict]) -> List[date]:
+def _parse_call_dates(terms: dict | None) -> list[date]:
     """Extract usable call dates from bond_terms' free-text fields."""
     if not terms or (terms.get("call_indicator") or "").lower() != "yes":
         return []
@@ -374,10 +373,10 @@ def _parse_call_dates(terms: Optional[Dict]) -> List[date]:
 @app.get("/api/bonds/{isin}/trades")
 def bond_trades(
     isin: str,
-    date_from: Optional[date] = Query(None, alias="from"),
-    date_to: Optional[date] = Query(None, alias="to"),
-    exchange: Optional[str] = Query(None),
-    segment: Optional[str] = Query(None),
+    date_from: date | None = Query(None, alias="from"),
+    date_to: date | None = Query(None, alias="to"),
+    exchange: str | None = Query(None),
+    segment: str | None = Query(None),
 ):
     rows = queries.trades(isin.strip().upper(), date_from, date_to,
                           exchange, segment)
@@ -399,7 +398,7 @@ def watch(isin: str):
     try:
         db.add_to_watchlist(isin)
     except Exception:  # noqa: BLE001 - FK violation = unknown ISIN
-        raise HTTPException(status_code=404, detail="Unknown ISIN")
+        raise HTTPException(status_code=404, detail="Unknown ISIN") from None
     _invalidate_watch(isin, True)
     return {"isin": isin, "watched": True}
 

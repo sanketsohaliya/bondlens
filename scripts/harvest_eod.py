@@ -26,7 +26,7 @@ import gzip
 import hashlib
 import sys
 import time
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
 import requests
@@ -131,7 +131,7 @@ def load_state():
 
 
 def store(source, day, url, status, content, run_id, replace):
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     sha = hashlib.sha256(content).hexdigest() if content else None
     blob = gzip.compress(content) if content else None
     with db._conn() as conn:
@@ -170,7 +170,7 @@ def main():
         run_id = conn.execute(
             "INSERT INTO eod_runs (run_at, date_from, date_to) "
             "VALUES (%s, %s, %s) RETURNING id",
-            (datetime.now(timezone.utc), date_from, date_to)
+            (datetime.now(UTC), date_from, date_to)
         ).fetchone()["id"]
 
     session = requests.Session()
@@ -220,7 +220,7 @@ def main():
         conn.execute(
             "UPDATE eod_runs SET finished_at = %s, fetched = %s, "
             " absent = %s, skipped = %s, failed = %s, ok = %s WHERE id = %s",
-            (datetime.now(timezone.utc), stats["fetched"], stats["absent"],
+            (datetime.now(UTC), stats["fetched"], stats["absent"],
              stats["skipped"], stats["failed"], ok, run_id))
     print(f"DONE {stats}", flush=True)
     db.close_pool()

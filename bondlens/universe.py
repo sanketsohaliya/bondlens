@@ -25,7 +25,7 @@ import json
 import re
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from . import bse, nse
 
@@ -112,7 +112,7 @@ def run(active_only: bool = False, dry_run: bool = False) -> dict:
     log_lines = []
 
     def log(msg):
-        log_lines.append(f"{datetime.now(timezone.utc).isoformat()} {msg}")
+        log_lines.append(f"{datetime.now(UTC).isoformat()} {msg}")
 
     run_id = None
     try:
@@ -123,7 +123,7 @@ def run(active_only: bool = False, dry_run: bool = False) -> dict:
             f"union={len(records)} ({stats['notes']})")
 
         result = {
-            "run_at": datetime.now(timezone.utc).isoformat(),
+            "run_at": datetime.now(UTC).isoformat(),
             "sources": stats,
             "union_total": len(records),
             "nse_only": sum(1 for r in records

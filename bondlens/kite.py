@@ -9,18 +9,17 @@ which has Buy/Sell buttons for logged-in users.
 import csv
 import io
 import time
-from typing import Dict, Optional
 
 import requests
 
 INSTRUMENTS_URL = "https://api.kite.trade/instruments/NSE"
 CACHE_TTL_SECONDS = 12 * 3600
 
-_cache: Dict[str, int] = {}
+_cache: dict[str, int] = {}
 _cache_time: float = 0.0
 
 
-def _load() -> Dict[str, int]:
+def _load() -> dict[str, int]:
     resp = requests.get(INSTRUMENTS_URL, timeout=30)
     resp.raise_for_status()
     reader = csv.DictReader(io.StringIO(resp.text))
@@ -31,7 +30,7 @@ def _load() -> Dict[str, int]:
     }
 
 
-def token_for(symbol: Optional[str], series: Optional[str]) -> Optional[int]:
+def token_for(symbol: str | None, series: str | None) -> int | None:
     """Return Kite instrument_token for an NSE bond symbol+series, or None."""
     global _cache, _cache_time
     if not symbol:
@@ -48,7 +47,7 @@ def token_for(symbol: Optional[str], series: Optional[str]) -> Optional[int]:
     return _cache.get(tradingsymbol) or _cache.get(symbol)
 
 
-def kite_url(symbol: Optional[str], series: Optional[str]) -> Optional[str]:
+def kite_url(symbol: str | None, series: str | None) -> str | None:
     token = token_for(symbol, series)
     if token is None:
         return None

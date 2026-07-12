@@ -6,9 +6,9 @@ Agencies use a shared grade scale (AAA..D) with +/- modifiers and
 occasional prefixes ("CARE AAA", "CRISIL AA+ (CE)", "IND AA") — the parser
 strips agency prefixes but suffixes like (CE)/(SO) ride along.
 """
+import itertools
 import re
 from datetime import date, timedelta
-from typing import Dict, List, Optional
 
 # Best (lowest index) to worst.
 RATING_ORDER = [
@@ -31,7 +31,7 @@ _WITHDRAWN_WORDS = ("withdraw",)
 _DEFAULT_GRADES = {"D"}
 
 
-def grade(rating: Optional[str]) -> Optional[str]:
+def grade(rating: str | None) -> str | None:
     """Extract the canonical grade token from a raw rating string."""
     if not rating:
         return None
@@ -39,20 +39,20 @@ def grade(rating: Optional[str]) -> Optional[str]:
     return m.group(1) if m else None
 
 
-def rank(rating: Optional[str]) -> Optional[int]:
+def rank(rating: str | None) -> int | None:
     """Rank of a single raw rating string (0 = AAA = best)."""
     g = grade(rating)
     return RATING_RANK.get(g) if g else None
 
 
-def best_rank(current: List[Dict]) -> Optional[int]:
+def best_rank(current: list[dict]) -> int | None:
     """Best (lowest) rank across an ISIN's current agency ratings."""
     ranks = [r for r in (rank(x.get("rating")) for x in current)
              if r is not None]
     return min(ranks) if ranks else None
 
 
-def composite(current: List[Dict]) -> Optional[str]:
+def composite(current: list[dict]) -> str | None:
     """Display string across agencies: 'AAA/Stable (CRISIL, ICRA)' style
     kept simple — one entry per agency, joined."""
     if not current:
@@ -66,8 +66,8 @@ def composite(current: List[Dict]) -> Optional[str]:
     return ", ".join(p for p in parts if p) or None
 
 
-def recent_change(history: List[Dict],
-                  today: Optional[date] = None) -> Optional[Dict]:
+def recent_change(history: list[dict],
+                  today: date | None = None) -> dict | None:
     """Most significant rating action inside the flag window.
 
     Returns {'direction': 'up'|'down', 'agency', 'rating', 'prev_rating',
@@ -77,7 +77,7 @@ def recent_change(history: List[Dict],
     """
     today = today or date.today()
     cutoff = today - timedelta(days=FLAG_DAYS)
-    by_agency: Dict[str, List[Dict]] = {}
+    by_agency: dict[str, list[dict]] = {}
     for h in history:
         if h.get("agency"):
             by_agency.setdefault(h["agency"], []).append(h)
@@ -86,7 +86,7 @@ def recent_change(history: List[Dict],
     for agency, rows in by_agency.items():
         dated = sorted((r for r in rows if r.get("rating_date")),
                        key=lambda r: r["rating_date"])
-        for prev, cur in zip(dated, dated[1:]):
+        for prev, cur in itertools.pairwise(dated):
             if cur["rating_date"] < cutoff:
                 continue
             pr, cr = rank(prev.get("rating")), rank(cur.get("rating"))
@@ -113,14 +113,14 @@ def recent_change(history: List[Dict],
     return max(pool, key=lambda c: c["rating_date"])
 
 
-def in_default(current: List[Dict]) -> bool:
+def in_default(current: list[dict]) -> bool:
     """Any agency currently rates the bond D."""
     return any(grade(x.get("rating")) in _DEFAULT_GRADES for x in current)
 
 
-def timeline(history: List[Dict]) -> Dict[str, List[Dict]]:
+def timeline(history: list[dict]) -> dict[str, list[dict]]:
     """Per-agency rating trail, newest first, for the detail view."""
-    out: Dict[str, List[Dict]] = {}
+    out: dict[str, list[dict]] = {}
     for h in sorted(history,
                     key=lambda r: (r.get("rating_date") or date.min),
                     reverse=True):

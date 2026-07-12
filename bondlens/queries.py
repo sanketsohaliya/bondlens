@@ -5,7 +5,6 @@ universe in a handful of set-based queries (not per-ISIN loops) and is
 cached by the app layer — data only changes when the daily jobs run.
 """
 from datetime import date
-from typing import Dict, List, Optional
 
 from . import db
 
@@ -22,7 +21,7 @@ ORDER BY isin, trade_date DESC, turnover DESC NULLS LAST
 """
 
 
-def screener_core() -> Dict[str, Dict]:
+def screener_core() -> dict[str, dict]:
     """One dict per listed bond with identity, terms, info and the latest
     retail + OTC trades. Keyed by ISIN. Analytics are layered on top by
     the app (schedules need the cashflow table separately)."""
@@ -52,9 +51,9 @@ def screener_core() -> Dict[str, Dict]:
     return core
 
 
-def all_cashflows() -> Dict[str, List[Dict]]:
+def all_cashflows() -> dict[str, list[dict]]:
     """bond_cashflows grouped by ISIN (for the schedule engine)."""
-    out: Dict[str, List[Dict]] = {}
+    out: dict[str, list[dict]] = {}
     with db._conn() as conn:
         for r in conn.execute(
                 "SELECT isin, event, due_date, record_date, amount_payable, "
@@ -64,15 +63,15 @@ def all_cashflows() -> Dict[str, List[Dict]]:
     return out
 
 
-def all_terms() -> Dict[str, Dict]:
+def all_terms() -> dict[str, dict]:
     with db._conn() as conn:
         return {r["isin"]: dict(r) for r in conn.execute(
             "SELECT * FROM bond_terms").fetchall()}
 
 
-def current_ratings() -> Dict[str, List[Dict]]:
+def current_ratings() -> dict[str, list[dict]]:
     """Current agency ratings per ISIN."""
-    out: Dict[str, List[Dict]] = {}
+    out: dict[str, list[dict]] = {}
     with db._conn() as conn:
         for r in conn.execute(
                 "SELECT isin, agency, rating, outlook, rating_action, "
@@ -83,10 +82,10 @@ def current_ratings() -> Dict[str, List[Dict]]:
     return out
 
 
-def rating_history(isin: Optional[str] = None) -> Dict[str, List[Dict]]:
+def rating_history(isin: str | None = None) -> dict[str, list[dict]]:
     """Full rating trail per ISIN (one ISIN, or everything for the
     screener's change detection)."""
-    out: Dict[str, List[Dict]] = {}
+    out: dict[str, list[dict]] = {}
     q = ("SELECT isin, agency, rating, outlook, rating_action, rating_date, "
          "press_release_link AS press_release, is_current FROM bond_ratings ")
     with db._conn() as conn:
@@ -110,7 +109,7 @@ def defaulted_isins() -> set:
 
 # --- Detail view ------------------------------------------------------------
 
-def bond_row(isin: str) -> Optional[Dict]:
+def bond_row(isin: str) -> dict | None:
     with db._conn() as conn:
         r = conn.execute("""
             SELECT b.*, COALESCE(i.issuer_name, b.issuer_name) AS issuer_name,
@@ -122,14 +121,14 @@ def bond_row(isin: str) -> Optional[Dict]:
     return dict(r) if r else None
 
 
-def bond_terms(isin: str) -> Optional[Dict]:
+def bond_terms(isin: str) -> dict | None:
     with db._conn() as conn:
         r = conn.execute(
             "SELECT * FROM bond_terms WHERE isin = %s", (isin,)).fetchone()
     return dict(r) if r else None
 
 
-def bond_cashflows(isin: str) -> List[Dict]:
+def bond_cashflows(isin: str) -> list[dict]:
     with db._conn() as conn:
         return [dict(r) for r in conn.execute(
             "SELECT event, due_date, record_date, payment_date, "
@@ -139,7 +138,7 @@ def bond_cashflows(isin: str) -> List[Dict]:
             (isin,)).fetchall()]
 
 
-def bond_extras(isin: str) -> Dict[str, List[Dict]]:
+def bond_extras(isin: str) -> dict[str, list[dict]]:
     """Listings, documents, further issues, redemption events, defaults."""
     out = {}
     with db._conn() as conn:
@@ -171,7 +170,7 @@ def bond_extras(isin: str) -> Dict[str, List[Dict]]:
     return out
 
 
-def issuer_siblings(isin: str, issuer_name: str) -> List[Dict]:
+def issuer_siblings(isin: str, issuer_name: str) -> list[dict]:
     """Other listed bonds by the same issuer, with latest retail price."""
     with db._conn() as conn:
         return [dict(r) for r in conn.execute("""
@@ -195,9 +194,9 @@ def issuer_siblings(isin: str, issuer_name: str) -> List[Dict]:
         """, (isin, issuer_name)).fetchall()]
 
 
-def trades(isin: str, date_from: Optional[date] = None,
-           date_to: Optional[date] = None, exchange: Optional[str] = None,
-           segment: Optional[str] = None) -> List[Dict]:
+def trades(isin: str, date_from: date | None = None,
+           date_to: date | None = None, exchange: str | None = None,
+           segment: str | None = None) -> list[dict]:
     """Full trade history for one ISIN (charts)."""
     conds, params = ["isin = %s"], [isin]
     if date_from:
@@ -223,7 +222,7 @@ def trades(isin: str, date_from: Optional[date] = None,
 
 # --- Data freshness ---------------------------------------------------------
 
-def status() -> Dict:
+def status() -> dict:
     with db._conn() as conn:
         universe = conn.execute(
             "SELECT run_at, ok, total, added, dropped FROM bond_runs "
