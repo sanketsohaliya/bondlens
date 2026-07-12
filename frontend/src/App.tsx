@@ -2,13 +2,13 @@ import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { api } from "./api/client";
 import type { ScreenerParams } from "./api/types";
-import BondDrawer from "./components/BondDrawer";
+import BondDrawer, { type Tab } from "./components/BondDrawer";
 import FilterBar, { DEFAULT_PRESET } from "./components/FilterBar";
 import ScreenerTable from "./components/ScreenerTable";
 
 export default function App() {
   const [params, setParams] = useState<ScreenerParams>(DEFAULT_PRESET.params);
-  const [selected, setSelected] = useState<string | null>(null);
+  const [selected, setSelected] = useState<{ isin: string; tab?: Tab } | null>(null);
 
   const bonds = useQuery({
     queryKey: ["bonds", params],
@@ -17,8 +17,8 @@ export default function App() {
 
   return (
     <div className="min-h-screen">
-      <div className="max-w-screen-2xl mx-auto px-4 py-8">
-        <header className="mb-8">
+      <div className="max-w-screen-2xl mx-auto px-4 py-5">
+        <header className="mb-5">
           <h1 className="text-3xl font-extrabold tracking-tight">
             Bond<span className="text-emerald-400">Lens</span>
           </h1>
@@ -43,12 +43,18 @@ export default function App() {
             bonds={bonds.data?.bonds ?? []}
             loading={bonds.isLoading}
             error={bonds.error?.message ?? null}
-            onSelect={setSelected}
+            onSelect={(isin, tab) => setSelected({ isin, tab })}
           />
         </main>
       </div>
 
-      {selected && <BondDrawer isin={selected} onClose={() => setSelected(null)} />}
+      {selected && (
+        <BondDrawer
+          isin={selected.isin}
+          initialTab={selected.tab}
+          onClose={() => setSelected(null)}
+        />
+      )}
     </div>
   );
 }

@@ -8,10 +8,18 @@ import RatingTimeline from "./RatingTimeline";
 import { WatchStar } from "./ScreenerTable";
 import TradeChart from "./TradeChart";
 
-type Tab = "overview" | "chart" | "cashflows" | "ratings";
+export type Tab = "overview" | "chart" | "cashflows" | "ratings";
 
-export default function BondDrawer({ isin, onClose }: { isin: string; onClose: () => void }) {
-  const [tab, setTab] = useState<Tab>("overview");
+export default function BondDrawer({
+  isin,
+  initialTab,
+  onClose,
+}: {
+  isin: string;
+  initialTab?: Tab;
+  onClose: () => void;
+}) {
+  const [tab, setTab] = useState<Tab>(initialTab ?? "overview");
   const [whatIf, setWhatIf] = useState<string>("");
   const price = whatIf ? Number(whatIf) : undefined;
 

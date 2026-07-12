@@ -38,7 +38,7 @@ export default function ScreenerTable({
   bonds: Bond[];
   loading: boolean;
   error: string | null;
-  onSelect: (isin: string) => void;
+  onSelect: (isin: string, tab?: "ratings") => void;
 }) {
   const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: "turnover", dir: -1 });
 
@@ -101,7 +101,13 @@ export default function ScreenerTable({
   );
 }
 
-function Row({ bond: b, onSelect }: { bond: Bond; onSelect: (isin: string) => void }) {
+function Row({
+  bond: b,
+  onSelect,
+}: {
+  bond: Bond;
+  onSelect: (isin: string, tab?: "ratings") => void;
+}) {
   return (
     <tr
       onClick={() => onSelect(b.isin)}
@@ -176,7 +182,14 @@ function Row({ bond: b, onSelect }: { bond: Bond; onSelect: (isin: string) => vo
         )}
       </td>
       <td className="px-3 py-2.5 text-zinc-400 whitespace-nowrap">{fmt.pct(b.coupon)}</td>
-      <td className="px-3 py-2.5 whitespace-nowrap">
+      <td
+        className="px-3 py-2.5 whitespace-nowrap hover:underline decoration-zinc-600 underline-offset-2"
+        onClick={(e) => {
+          e.stopPropagation();
+          onSelect(b.isin, "ratings");
+        }}
+        title="Open rating history"
+      >
         <RatingBadge rating={b.credit_rating} />
       </td>
       <td className="px-3 py-2.5 text-zinc-400 whitespace-nowrap">
