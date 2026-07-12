@@ -89,8 +89,9 @@ npm test          # vitest
   pushes only when something is wrong (job failed/missing, stale trades,
   stale analytics, stuck runs). Test the wiring:
   `docker compose exec jobs python scripts/healthcheck.py --ping`
-- **Backups**: `C:\Users\sanket.patel\OneDrive - FE fundinfo\Desktop\bondlens.dump is a
-  `full pg_dump -Fc, replaced atomically every Saturday morning. Restore with
+- **Backups**: `C:\Users\sanket.patel\OneDrive - FE fundinfo\Desktop\bondlens.dump`
+  is a full `pg_dump -Fc`, replaced atomically every Saturday morning
+  (OneDrive also syncs it offsite). Restore with
   `pg_restore -d bondlens bondlens.dump`.
 - **Container logs** are capped at 10MB × 3 files per service
   (`docker compose logs jobs` to view).
