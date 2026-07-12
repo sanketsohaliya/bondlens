@@ -53,17 +53,21 @@ def best_rank(current: list[dict]) -> int | None:
 
 
 def composite(current: list[dict]) -> str | None:
-    """Display string across agencies: 'AAA/Stable (CRISIL, ICRA)' style
-    kept simple — one entry per agency, joined."""
+    """Display string across agencies, deduplicated: agreeing agencies
+    collapse to one entry with a count ('AAA/Stable ×3'); disagreements
+    stay visible ('AA+/Stable ×2, AA/Negative'). Best grade first."""
     if not current:
         return None
-    parts = []
+    counts: dict[str, int] = {}
     for x in current:
         s = x.get("rating") or ""
         if x.get("outlook") and x["outlook"].lower() not in ("no outlook", ""):
             s += f"/{x['outlook']}"
-        parts.append(s)
-    return ", ".join(p for p in parts if p) or None
+        if s:
+            counts[s] = counts.get(s, 0) + 1
+    parts = sorted(counts.items(),
+                   key=lambda kv: (rank(kv[0]) is None, rank(kv[0]) or 0))
+    return ", ".join(s if n == 1 else f"{s} ×{n}" for s, n in parts) or None
 
 
 def recent_change(history: list[dict],

@@ -6,8 +6,7 @@ screener analytics into bond_analytics (scripts/compute_analytics.py).
 The API is stateless: the screener is a filtered SELECT; only the
 per-bond detail view computes yields live (it supports what-if pricing).
 """
-import re
-from datetime import date, datetime
+from datetime import date
 
 from fastapi import FastAPI, HTTPException, Query
 
@@ -110,15 +109,27 @@ def bond_detail(isin: str, price: float | None = Query(None, gt=0)):
     face = core.get("face_value") or (
         float(terms["face_value"]) if terms and terms.get("face_value") else None)
 
-    exact = yields.exact_ytm(ltp, sched, today) if ltp else None
-    approx = yields.approx_ytm(ltp, coupon, face,
-                               terms.get("redemption_date") if terms else None,
-                               sched.periods_per_year or 1, today) if ltp else None
-    best = exact if exact is not None else approx
+    red_date = terms.get("redemption_date") if terms else None
+    perpetual = bool(terms and terms.get("perpetual")) or (
+        red_date is not None and red_date.year >= 2500)
+    if perpetual:
+        red_date = None
+    call_dates = yields.parse_call_dates(terms)
+    if perpetual:
+        # A maturity-based YTM against a perpetual (9999 sentinel) is
+        # spurious — yield-to-call is the meaningful figure.
+        exact = approx = None
+        best = ytw = (yields.yield_to_call(ltp, sched, call_dates, today)
+                      if ltp else None)
+    else:
+        exact = yields.exact_ytm(ltp, sched, today) if ltp else None
+        approx = yields.approx_ytm(ltp, coupon, face, red_date,
+                                   sched.periods_per_year or 1,
+                                   today) if ltp else None
+        best = exact if exact is not None else approx
+        ytw = (yields.yield_to_worst(ltp, sched, call_dates, today)
+               if ltp and call_dates else None)
     accrued = yields.accrued_interest(sched, today)
-    call_dates = _parse_call_dates(terms)
-    ytw = (yields.yield_to_worst(ltp, sched, call_dates, today)
-           if ltp and call_dates else None)
 
     flows_out = []
     future_total = 0.0
@@ -151,10 +162,9 @@ def bond_detail(isin: str, price: float | None = Query(None, gt=0)):
         "schedule_usable": sched.usable,
         "schedule_warnings": sched.warnings,
         "amounts_estimated": sched.amounts_estimated,
-        "maturity_date": terms.get("redemption_date") if terms else None,
+        "maturity_date": red_date,
         "exchange": core.get("exchange"),
-        "years_to_maturity": _years(
-            terms.get("redemption_date") if terms else None, today),
+        "years_to_maturity": _years(red_date, today),
         "ytm_exact": exact,
         "ytm_approx": approx,
         "ytm": best,
@@ -177,25 +187,6 @@ def bond_detail(isin: str, price: float | None = Query(None, gt=0)):
                         if row.get("issuer_name") else [],
         "in_watchlist": bool(core.get("in_watchlist")),
     }
-
-
-def _parse_call_dates(terms: dict | None) -> list[date]:
-    """Extract usable call dates from bond_terms' free-text fields."""
-    if not terms or (terms.get("call_indicator") or "").lower() != "yes":
-        return []
-    text = terms.get("call_specified_dates") or terms.get("call_deadline") or ""
-    dates = []
-    for m in re.finditer(r"(\d{1,2})[-/](\d{1,2}|\w{3})[-/](\d{4})", str(text)):
-        d, mth, y = m.groups()
-        try:
-            if mth.isdigit():
-                dates.append(date(int(y), int(mth), int(d)))
-            else:
-                dates.append(datetime.strptime(
-                    f"{d}-{mth}-{y}", "%d-%b-%Y").date())
-        except ValueError:
-            continue
-    return sorted(set(dates))
 
 
 # --------------------------------------------------------------------------

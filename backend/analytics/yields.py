@@ -4,7 +4,8 @@ All prices are dirty ₹ per unit (the retail trading convention) unless
 stated otherwise. Yields are % annualized, compounded at the bond's actual
 payment frequency (falls back to annual when the frequency is unknown).
 """
-from datetime import date
+import re
+from datetime import date, datetime
 
 from . import daycount
 from .schedule import Flow, Schedule
@@ -99,6 +100,50 @@ def yield_to_worst(price: float, sched: Schedule, call_dates: list[date],
         if y is not None:
             worst = min(worst, round(y, 2))
     return worst
+
+
+def yield_to_call(price: float | None, sched: Schedule,
+                  call_dates: list[date],
+                  today: date | None = None) -> float | None:
+    """Yield to the earliest future call: coupons to the call date plus
+    redemption of the outstanding face there. The maturity leg is
+    deliberately NOT considered — this is for perpetuals, where a
+    maturity-based YTM is meaningless."""
+    today = today or date.today()
+    if not price or not sched.face_value:
+        return None
+    m = sched.periods_per_year or 1
+    for cd in sorted(call_dates):
+        if cd <= today:
+            continue
+        flows = [f for f in sched.future_flows(today)
+                 if f.due_date <= cd and f.event == "interest"]
+        flows.append(Flow(event="redemption", due_date=cd,
+                          amount=_outstanding_at(sched, cd)))
+        tv = _times_amounts(flows, today, sched.day_count)
+        y = _solve(price, tv, m)
+        if y is not None:
+            return round(y, 2)
+    return None
+
+
+def parse_call_dates(terms: dict | None) -> list[date]:
+    """Extract usable call dates from bond_terms' free-text fields."""
+    if not terms or (terms.get("call_indicator") or "").lower() != "yes":
+        return []
+    text = terms.get("call_specified_dates") or terms.get("call_deadline") or ""
+    dates = []
+    for m in re.finditer(r"(\d{1,2})[-/](\d{1,2}|\w{3})[-/](\d{4})", str(text)):
+        d, mth, y = m.groups()
+        try:
+            if mth.isdigit():
+                dates.append(date(int(y), int(mth), int(d)))
+            else:
+                dates.append(datetime.strptime(
+                    f"{d}-{mth}-{y}", "%d-%b-%Y").date())
+        except ValueError:
+            continue
+    return sorted(set(dates))
 
 
 def _outstanding_at(sched: Schedule, on: date) -> float:

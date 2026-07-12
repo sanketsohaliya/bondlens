@@ -141,7 +141,11 @@ export type Bond = {
     /**
      * Ytm Method
      */
-    ytm_method: 'exact' | 'estimated' | 'approx' | null;
+    ytm_method: 'exact' | 'estimated' | 'approx' | 'ytc' | null;
+    /**
+     * Ytm Reliable
+     */
+    ytm_reliable: boolean | null;
     /**
      * Current Yield
      */

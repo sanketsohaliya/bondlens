@@ -9,7 +9,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel
 
-YtmMethod = Literal["exact", "estimated", "approx"]
+YtmMethod = Literal["exact", "estimated", "approx", "ytc"]
 
 
 class Bond(BaseModel):
@@ -47,6 +47,7 @@ class Bond(BaseModel):
     otc_days_since_traded: int | None
     ytm: float | None
     ytm_method: YtmMethod | None
+    ytm_reliable: bool | None
     current_yield: float | None
     duration: float | None
     credit_rating: str | None

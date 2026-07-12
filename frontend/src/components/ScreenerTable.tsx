@@ -134,18 +134,36 @@ function Row({ bond: b, onSelect }: { bond: Bond; onSelect: (isin: string) => vo
       <td className="px-3 py-2.5 whitespace-nowrap">
         <span
           className={
-            b.ytm != null && b.ytm >= 10 ? "text-emerald-400 font-semibold" : "text-zinc-200"
+            b.ytm_reliable === false
+              ? "text-zinc-600"
+              : b.ytm != null && b.ytm >= 10
+                ? "text-emerald-400 font-semibold"
+                : "text-zinc-200"
+          }
+          title={
+            b.ytm_reliable === false
+              ? "Likely an annualization artifact (near maturity or out of band) — treat with caution"
+              : undefined
           }
         >
           {fmt.pct(b.ytm)}
         </span>
-        {b.ytm_method && (
+        {b.ytm_method === "ytc" ? (
           <span
-            className={`ml-1 text-[10px] ${b.ytm_method === "exact" ? "text-emerald-600" : "text-zinc-600"}`}
-            title={b.ytm_method === "exact" ? "From the actual payment schedule" : "Estimated"}
+            className="ml-1 text-[10px] text-sky-500"
+            title="Yield to earliest call (perpetual)"
           >
-            {b.ytm_method === "exact" ? "●" : "○"}
+            YTC
           </span>
+        ) : (
+          b.ytm_method && (
+            <span
+              className={`ml-1 text-[10px] ${b.ytm_method === "exact" ? "text-emerald-600" : "text-zinc-600"}`}
+              title={b.ytm_method === "exact" ? "From the actual payment schedule" : "Estimated"}
+            >
+              {b.ytm_method === "exact" ? "●" : "○"}
+            </span>
+          )
         )}
       </td>
       <td className="px-3 py-2.5 text-zinc-400 whitespace-nowrap">{fmt.pct(b.current_yield)}</td>

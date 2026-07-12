@@ -24,18 +24,44 @@ _COLS: list[LiteralString] = [
     "coupon_basis", "frequency", "secured", "tax_free", "perpetual",
     "maturity_date", "schedule_shape", "ltp", "trade_date", "exchange",
     "volume", "turnover", "num_trades", "otc_price_pct", "otc_yield",
-    "otc_trade_date", "ytm", "ytm_method", "current_yield", "duration",
+    "otc_trade_date", "ytm", "ytm_method", "ytm_reliable",
+    "current_yield", "duration",
     "credit_rating", "rating_rank", "rating_change", "rating_prev",
     "rating_changed_at", "in_default", "computed_at",
 ]
 
 
 def _yn(v: str | None) -> bool | None:
+    """NSDL boolean-ish text → bool. Covers yes/no AND the secured
+    column's \"Secured\"/\"Unsecured\" values (exact tokens — substring
+    matching would let \"unsecured\" hit \"secured\")."""
     if v is None:
         return None
     s = str(v).strip().lower()
-    return (True if s in ("yes", "true", "t", "y")
-            else False if s in ("no", "false", "f", "n") else None)
+    return (True if s in ("yes", "true", "t", "y", "secured")
+            else False if s in ("no", "false", "f", "n", "unsecured")
+            else None)
+
+
+# YTM values outside these bands are almost always annualization artifacts
+# (tiny price gaps on bonds days from maturity), not tradable yields.
+_RELIABLE = (-1.0, 50.0)
+_RELIABLE_NEAR = (0.0, 20.0)
+_NEAR_DAYS = 90
+
+
+def ytm_reliability(ytm: float | None, maturity: date | None,
+                    today: date) -> bool | None:
+    """False = display with caution; None = no YTM to judge."""
+    if ytm is None:
+        return None
+    lo, hi = _RELIABLE
+    if not lo <= ytm <= hi:
+        return False
+    if maturity is not None and (maturity - today).days < _NEAR_DAYS:
+        lo, hi = _RELIABLE_NEAR
+        return lo <= ytm <= hi
+    return True
 
 
 def _f(v) -> float | None:
@@ -66,15 +92,29 @@ def build_rows(today: date | None = None) -> list[dict]:
         coupon = float(r["coupon_rate"]) if r.get("coupon_rate") else None
         face = float(r["face_value"]) if r.get("face_value") else None
 
+        red_date = r.get("redemption_date")
+        perpetual = bool(r.get("perpetual")) or (
+            red_date is not None and red_date.year >= 2500)
+        if perpetual:
+            red_date = None  # the 9999 sentinel is not a maturity
+
         ytm = ytm_method = None
-        if price:
+        if price and perpetual:
+            # Maturity-based YTM is meaningless for perpetuals; price to
+            # the earliest call when one is published.
+            ytc = yields.yield_to_call(
+                price, sched, yields.parse_call_dates(terms_map.get(isin)),
+                today)
+            if ytc is not None:
+                ytm, ytm_method = ytc, "ytc"
+        elif price:
             exact = yields.exact_ytm(price, sched, today)
             if exact is not None:
                 ytm, ytm_method = exact, (
                     "estimated" if sched.amounts_estimated else "exact")
             else:
                 approx = yields.approx_ytm(
-                    price, coupon, face, r.get("redemption_date"),
+                    price, coupon, face, red_date,
                     sched.periods_per_year or 1, today)
                 if approx is not None:
                     ytm, ytm_method = approx, "approx"
@@ -97,8 +137,8 @@ def build_rows(today: date | None = None) -> list[dict]:
             "frequency": sched.frequency,
             "secured": _yn(r.get("secured")),
             "tax_free": _yn(r.get("tax_free")),
-            "perpetual": bool(r.get("perpetual")),
-            "maturity_date": r.get("redemption_date"),
+            "perpetual": perpetual,
+            "maturity_date": red_date,
             "schedule_shape": sched.shape,
             "ltp": price,
             "trade_date": retail["trade_date"] if retail else None,
@@ -111,6 +151,7 @@ def build_rows(today: date | None = None) -> list[dict]:
             "otc_trade_date": otc["trade_date"] if otc else None,
             "ytm": ytm,
             "ytm_method": ytm_method,
+            "ytm_reliable": ytm_reliability(ytm, red_date, today),
             "current_yield": yields.current_yield(price, coupon, face),
             "duration": yields.modified_duration(price, sched, ytm, today)
                         if ytm_method in ("exact", "estimated") else None,
