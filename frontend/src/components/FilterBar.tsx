@@ -167,7 +167,7 @@ export default function FilterBar({
 
   return (
     <div className="space-y-5">
-      <section>
+      <section className="pt-6">
         <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-7 gap-2">
           {PRESETS.map((p) => (
             <Tip key={p.id} text={p.tip} className="contents">
