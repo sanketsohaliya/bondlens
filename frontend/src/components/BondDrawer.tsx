@@ -13,10 +13,12 @@ export type Tab = "overview" | "chart" | "cashflows" | "ratings";
 export default function BondDrawer({
   isin,
   initialTab,
+  onSelect,
   onClose,
 }: {
   isin: string;
   initialTab?: Tab;
+  onSelect?: (isin: string) => void;
   onClose: () => void;
 }) {
   const [tab, setTab] = useState<Tab>(initialTab ?? "overview");
@@ -103,7 +105,9 @@ export default function BondDrawer({
             </header>
 
             <div className="p-4 space-y-4">
-              {tab === "overview" && <Overview bond={bond} whatIf={whatIf} setWhatIf={setWhatIf} />}
+              {tab === "overview" && (
+                <Overview bond={bond} whatIf={whatIf} setWhatIf={setWhatIf} onSelect={onSelect} />
+              )}
               {tab === "chart" && <TradeChart isin={bond.isin} faceValue={bond.face_value} />}
               {tab === "cashflows" && <CashflowTable bond={bond} />}
               {tab === "ratings" && <RatingTimeline timeline={bond.rating_timeline} />}
@@ -132,10 +136,12 @@ function Overview({
   bond: b,
   whatIf,
   setWhatIf,
+  onSelect,
 }: {
   bond: BondDetail;
   whatIf: string;
   setWhatIf: (v: string) => void;
+  onSelect?: (isin: string) => void;
 }) {
   return (
     <div className="space-y-4">
@@ -213,14 +219,20 @@ function Overview({
           </h3>
           <div className="rounded-lg border border-zinc-800 divide-y divide-zinc-800/60 max-h-56 overflow-y-auto scroll-slim">
             {b.issuer_bonds.map((s) => (
-              <div key={s.isin} className="flex items-center justify-between px-3 py-2 text-xs">
+              <button
+                type="button"
+                key={s.isin}
+                onClick={() => onSelect?.(s.isin)}
+                disabled={!onSelect}
+                className="w-full flex items-center justify-between px-3 py-2 text-xs text-left enabled:hover:bg-zinc-900/70 enabled:cursor-pointer transition-colors"
+              >
                 <span className="font-mono text-zinc-400">{s.nse_symbol ?? s.isin}</span>
                 <span className="text-zinc-500">
                   {s.coupon_rate != null ? `${Number(s.coupon_rate).toFixed(2)}%` : ""} ·{" "}
                   {fmt.date(s.redemption_date)} ·{" "}
                   {s.close != null ? fmt.inr(Number(s.close)) : "untraded"}
                 </span>
-              </div>
+              </button>
             ))}
           </div>
         </div>

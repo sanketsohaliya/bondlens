@@ -49,8 +49,10 @@ export default function App() {
 
       {selected && (
         <BondDrawer
+          key={selected.isin}
           isin={selected.isin}
           initialTab={selected.tab}
+          onSelect={(isin) => setSelected({ isin })}
           onClose={() => setSelected(null)}
         />
       )}
