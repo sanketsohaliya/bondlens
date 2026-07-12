@@ -6,6 +6,9 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "codegen": "openapi-ts",
+    "check": "biome check src && tsc -b",
+    "test": "vitest run",
     "preview": "vite preview"
   },
   "dependencies": {
@@ -15,13 +18,16 @@
     "react-dom": "^19"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.5.3",
+    "@hey-api/openapi-ts": "^0.99.0",
     "@tailwindcss/vite": "^4",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@vitejs/plugin-react": "^5",
     "tailwindcss": "^4",
     "typescript": "^5.9",
-    "vite": "^7"
+    "vite": "^7",
+    "vitest": "^4.1.10"
   },
   "allowScripts": {
     "esbuild@0.28.1": true

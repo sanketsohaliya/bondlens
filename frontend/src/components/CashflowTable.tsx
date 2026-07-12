@@ -17,7 +17,11 @@ export default function CashflowTable({ bond: b }: { bond: BondDetail }) {
         {b.amounts_estimated && <span className="text-amber-500">some amounts estimated</span>}
       </div>
 
-      <Section title={`Future (${fmt.inr(b.future_total_per_unit)}/unit)`} flows={future} highlight />
+      <Section
+        title={`Future (${fmt.inr(b.future_total_per_unit)}/unit)`}
+        flows={future}
+        highlight
+      />
       {past.length > 0 && <Section title="Past" flows={past.slice().reverse()} />}
     </div>
   );
@@ -62,7 +66,9 @@ function Section({
                     {f.event}
                   </span>
                 </td>
-                <td className="px-3 py-2 text-zinc-500 whitespace-nowrap">{fmt.date(f.record_date)}</td>
+                <td className="px-3 py-2 text-zinc-500 whitespace-nowrap">
+                  {fmt.date(f.record_date)}
+                </td>
                 <td className="px-3 py-2 text-right whitespace-nowrap">
                   {fmt.inr(f.amount)}
                   {f.estimated && (

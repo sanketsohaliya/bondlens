@@ -1,12 +1,12 @@
-import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useEffect, useState } from "react";
 import { api, fmt } from "../api/client";
 import type { BondDetail } from "../api/types";
-import RatingBadge from "./RatingBadge";
-import TradeChart from "./TradeChart";
 import CashflowTable from "./CashflowTable";
+import RatingBadge from "./RatingBadge";
 import RatingTimeline from "./RatingTimeline";
 import { WatchStar } from "./ScreenerTable";
+import TradeChart from "./TradeChart";
 
 type Tab = "overview" | "chart" | "cashflows" | "ratings";
 
@@ -67,6 +67,7 @@ export default function BondDrawer({ isin, onClose }: { isin: string; onClose: (
                     </a>
                   )}
                   <button
+                    type="button"
                     onClick={onClose}
                     className="text-zinc-500 hover:text-zinc-200 text-xl leading-none px-2"
                   >
@@ -77,6 +78,7 @@ export default function BondDrawer({ isin, onClose }: { isin: string; onClose: (
               <nav className="flex gap-1 mt-3 -mb-px">
                 {(["overview", "chart", "cashflows", "ratings"] as Tab[]).map((t) => (
                   <button
+                    type="button"
                     key={t}
                     onClick={() => setTab(t)}
                     className={
@@ -93,9 +95,7 @@ export default function BondDrawer({ isin, onClose }: { isin: string; onClose: (
             </header>
 
             <div className="p-4 space-y-4">
-              {tab === "overview" && (
-                <Overview bond={bond} whatIf={whatIf} setWhatIf={setWhatIf} />
-              )}
+              {tab === "overview" && <Overview bond={bond} whatIf={whatIf} setWhatIf={setWhatIf} />}
               {tab === "chart" && <TradeChart isin={bond.isin} faceValue={bond.face_value} />}
               {tab === "cashflows" && <CashflowTable bond={bond} />}
               {tab === "ratings" && <RatingTimeline timeline={bond.rating_timeline} />}
@@ -111,7 +111,9 @@ function Stat({ label, value, accent }: { label: string; value: string; accent?:
   return (
     <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 px-3 py-2.5">
       <div className="text-[11px] text-zinc-500">{label}</div>
-      <div className={`text-sm font-semibold mt-0.5 ${accent ? "text-emerald-400" : "text-zinc-100"}`}>
+      <div
+        className={`text-sm font-semibold mt-0.5 ${accent ? "text-emerald-400" : "text-zinc-100"}`}
+      >
         {value}
       </div>
     </div>
@@ -130,7 +132,11 @@ function Overview({
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5">
-        <Stat label={`YTM ${b.ytm_exact != null ? "(exact)" : "(approx)"}`} value={fmt.pct(b.ytm)} accent />
+        <Stat
+          label={`YTM ${b.ytm_exact != null ? "(exact)" : "(approx)"}`}
+          value={fmt.pct(b.ytm)}
+          accent
+        />
         {b.yield_to_worst != null && b.yield_to_worst !== b.ytm && (
           <Stat label="Yield to worst" value={fmt.pct(b.yield_to_worst)} />
         )}
@@ -164,7 +170,11 @@ function Overview({
           className="bg-zinc-900 border border-zinc-700 rounded-md px-2 py-1.5 text-sm w-40 focus:outline-none focus:border-emerald-500"
         />
         {whatIf && (
-          <button onClick={() => setWhatIf("")} className="text-red-400 hover:underline">
+          <button
+            type="button"
+            onClick={() => setWhatIf("")}
+            className="text-red-400 hover:underline"
+          >
             reset
           </button>
         )}
@@ -199,7 +209,8 @@ function Overview({
                 <span className="font-mono text-zinc-400">{s.nse_symbol ?? s.isin}</span>
                 <span className="text-zinc-500">
                   {s.coupon_rate != null ? `${Number(s.coupon_rate).toFixed(2)}%` : ""} ·{" "}
-                  {fmt.date(s.redemption_date)} · {s.close != null ? fmt.inr(Number(s.close)) : "untraded"}
+                  {fmt.date(s.redemption_date)} ·{" "}
+                  {s.close != null ? fmt.inr(Number(s.close)) : "untraded"}
                 </span>
               </div>
             ))}

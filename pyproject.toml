@@ -16,6 +16,8 @@ dev = [
     "pytest>=8",
     "httpx2",         # starlette TestClient transport
     "ruff>=0.14",
+    "basedpyright>=1.39.9",
+    "pre-commit>=4.6.0",
 ]
 
 [tool.ruff]
@@ -29,6 +31,28 @@ ignore = ["E501"]
 [tool.ruff.lint.per-file-ignores]
 # FastAPI's Query()/Depends() defaults are the framework idiom.
 "bondlens/app.py" = ["B008"]
+
+[tool.basedpyright]
+pythonVersion = "3.14"
+venvPath = "."
+venv = ".venv"
+include = ["bondlens", "scripts", "tests"]
+typeCheckingMode = "standard"
+# basedpyright extras dialed back to pyright-compatible behavior
+reportAny = false
+reportExplicitAny = false
+reportUnusedCallResult = false
+reportUnknownMemberType = false
+reportUnknownVariableType = false
+reportUnknownArgumentType = false
+reportUnknownParameterType = false
+reportMissingParameterType = false
+reportMissingTypeStubs = false
+reportUntypedFunctionDecorator = false
+reportImplicitOverride = false
+reportImplicitStringConcatenation = false
+reportCallInDefaultInitializer = false
+reportUnannotatedClassAttribute = false
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

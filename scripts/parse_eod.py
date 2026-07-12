@@ -23,6 +23,7 @@ import io
 import sys
 import zipfile
 from pathlib import Path
+from typing import LiteralString
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from bondlens import db  # noqa: E402
@@ -53,7 +54,7 @@ CREATE INDEX IF NOT EXISTS idx_eod_trades_date ON eod_trades (trade_date);
 ALTER TABLE eod_raw ADD COLUMN IF NOT EXISTS parsed_at TIMESTAMPTZ;
 """
 
-UPSERT_SET = ", ".join(
+UPSERT_SET: LiteralString = ", ".join(
     f"{c} = EXCLUDED.{c}"
     for c in ("price_basis", "open", "high", "low", "close",
               "prev_close", "last_price", "wap", "last_yield",
@@ -212,7 +213,8 @@ def parse_bse_debt(content: bytes, universe):
 PARSERS = {"nse_cm": parse_nse_cm, "nse_cbm": parse_nse_cbm,
            "bse_debt": parse_bse_debt}
 
-COLS = ["isin", "trade_date", "exchange", "segment", "price_basis",
+COLS: list[LiteralString] = [
+    "isin", "trade_date", "exchange", "segment", "price_basis",
         "open", "high", "low", "close", "prev_close", "last_price",
         "wap", "last_yield", "wap_yield", "volume", "turnover",
         "num_trades", "raw_id"]
@@ -278,7 +280,7 @@ def main():
             if rows:
                 conn.cursor().executemany(
                     f"INSERT INTO eod_trades ({', '.join(COLS)}) VALUES "
-                    f"({', '.join(['%s'] * len(COLS))}) "
+                    f"({', '.join('%s' for _ in COLS)}) "
                     "ON CONFLICT (isin, trade_date, exchange, segment) "
                     f"DO UPDATE SET {UPSERT_SET}",
                     [tuple(r[c] for c in COLS) for r in rows.values()])

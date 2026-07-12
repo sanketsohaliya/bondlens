@@ -1,12 +1,19 @@
-import { useMemo, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMemo, useState } from "react";
 import { api, fmt } from "../api/client";
 import type { Bond, BondsResponse } from "../api/types";
 import RatingBadge from "./RatingBadge";
 
 type SortKey = keyof Pick<
   Bond,
-  "ytm" | "ltp" | "turnover" | "years_to_maturity" | "rating_rank" | "coupon" | "current_yield" | "days_since_traded"
+  | "ytm"
+  | "ltp"
+  | "turnover"
+  | "years_to_maturity"
+  | "rating_rank"
+  | "coupon"
+  | "current_yield"
+  | "days_since_traded"
 >;
 
 const COLS: { key: SortKey | null; label: string; cls?: string }[] = [
@@ -51,7 +58,9 @@ export default function ScreenerTable({
     return <div className="p-8 text-center text-red-400 text-sm">{error}</div>;
   }
   if (loading) {
-    return <div className="p-8 text-center text-zinc-500 text-sm animate-pulse">Loading bonds…</div>;
+    return (
+      <div className="p-8 text-center text-zinc-500 text-sm animate-pulse">Loading bonds…</div>
+    );
   }
 
   return (
@@ -65,11 +74,16 @@ export default function ScreenerTable({
                 className={`px-3 py-2.5 font-medium whitespace-nowrap ${c.key ? "cursor-pointer select-none hover:text-zinc-300" : ""}`}
                 onClick={() =>
                   c.key &&
-                  setSort((s) => ({ key: c.key!, dir: s.key === c.key ? ((s.dir * -1) as 1 | -1) : -1 }))
+                  setSort((s) => ({
+                    key: c.key!,
+                    dir: s.key === c.key ? ((s.dir * -1) as 1 | -1) : -1,
+                  }))
                 }
               >
                 {c.label}
-                {c.key === sort.key && <span className="ml-1 text-emerald-400">{sort.dir === -1 ? "▼" : "▲"}</span>}
+                {c.key === sort.key && (
+                  <span className="ml-1 text-emerald-400">{sort.dir === -1 ? "▼" : "▲"}</span>
+                )}
               </th>
             ))}
           </tr>
@@ -104,13 +118,25 @@ function Row({ bond: b, onSelect }: { bond: Bond; onSelect: (isin: string) => vo
               DEFAULT
             </span>
           )}
-          {b.rating_change === "down" && <span className="text-red-400 text-xs" title={`was ${b.rating_prev}`}>▼</span>}
-          {b.rating_change === "up" && <span className="text-emerald-400 text-xs" title={`was ${b.rating_prev}`}>▲</span>}
+          {b.rating_change === "down" && (
+            <span className="text-red-400 text-xs" title={`was ${b.rating_prev}`}>
+              ▼
+            </span>
+          )}
+          {b.rating_change === "up" && (
+            <span className="text-emerald-400 text-xs" title={`was ${b.rating_prev}`}>
+              ▲
+            </span>
+          )}
         </div>
         <div className="text-xs text-zinc-500 truncate max-w-64">{b.issuer_name ?? b.isin}</div>
       </td>
       <td className="px-3 py-2.5 whitespace-nowrap">
-        <span className={b.ytm != null && b.ytm >= 10 ? "text-emerald-400 font-semibold" : "text-zinc-200"}>
+        <span
+          className={
+            b.ytm != null && b.ytm >= 10 ? "text-emerald-400 font-semibold" : "text-zinc-200"
+          }
+        >
           {fmt.pct(b.ytm)}
         </span>
         {b.ytm_method && (
@@ -126,7 +152,9 @@ function Row({ bond: b, onSelect }: { bond: Bond; onSelect: (isin: string) => vo
       <td className="px-3 py-2.5 whitespace-nowrap">
         <span className={b.stale ? "text-zinc-500" : "text-zinc-200"}>{fmt.inr(b.ltp)}</span>
         {b.face_value != null && b.ltp != null && b.ltp < b.face_value && (
-          <span className="ml-1 text-[10px] text-sky-400" title="below face value">↓par</span>
+          <span className="ml-1 text-[10px] text-sky-400" title="below face value">
+            ↓par
+          </span>
         )}
       </td>
       <td className="px-3 py-2.5 text-zinc-400 whitespace-nowrap">{fmt.pct(b.coupon)}</td>
@@ -134,12 +162,20 @@ function Row({ bond: b, onSelect }: { bond: Bond; onSelect: (isin: string) => vo
         <RatingBadge rating={b.credit_rating} rank={b.rating_rank} />
       </td>
       <td className="px-3 py-2.5 text-zinc-400 whitespace-nowrap">
-        {b.years_to_maturity != null ? `${b.years_to_maturity.toFixed(1)}y` : b.perpetual ? "perp" : "–"}
+        {b.years_to_maturity != null
+          ? `${b.years_to_maturity.toFixed(1)}y`
+          : b.perpetual
+            ? "perp"
+            : "–"}
       </td>
       <td className="px-3 py-2.5 text-zinc-400 whitespace-nowrap">{fmt.inr(b.turnover)}</td>
       <td className="px-3 py-2.5 whitespace-nowrap">
         <span className={b.stale ? "text-amber-500" : "text-zinc-400"}>
-          {b.days_since_traded == null ? "never" : b.days_since_traded <= 1 ? "today" : `${b.days_since_traded}d ago`}
+          {b.days_since_traded == null
+            ? "never"
+            : b.days_since_traded <= 1
+              ? "today"
+              : `${b.days_since_traded}d ago`}
         </span>
       </td>
     </tr>
@@ -154,7 +190,10 @@ export function WatchStar({ isin, watched }: { isin: string; watched: boolean })
       // Patch every cached screener result instead of refetching.
       qc.setQueriesData<BondsResponse>({ queryKey: ["bonds"] }, (old) =>
         old
-          ? { ...old, bonds: old.bonds.map((b) => (b.isin === isin ? { ...b, in_watchlist: !watched } : b)) }
+          ? {
+              ...old,
+              bonds: old.bonds.map((b) => (b.isin === isin ? { ...b, in_watchlist: !watched } : b)),
+            }
           : old,
       );
       qc.invalidateQueries({ queryKey: ["bond", isin] });
@@ -162,6 +201,7 @@ export function WatchStar({ isin, watched }: { isin: string; watched: boolean })
   });
   return (
     <button
+      type="button"
       onClick={(e) => {
         e.stopPropagation();
         toggle.mutate();

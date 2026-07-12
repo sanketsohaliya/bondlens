@@ -7,10 +7,10 @@
 
 # 2) NSDL harvest + parse — 07:00 daily. ';' not '&&': parse what was
 #    fetched even if some calls failed.
-0 7 * * * cd /app && python scripts/harvest_nsdl.py --workers 8; python scripts/parse_nsdl.py
+0 7 * * * cd /app && python scripts/harvest_nsdl.py --workers 8; python scripts/parse_nsdl.py; python scripts/compute_analytics.py
 
 # 3) EOD trades harvest + parse — 19:00 Mon-Fri (exchanges publish ~16-18h)
-0 19 * * 1-5 cd /app && python scripts/harvest_eod.py; python scripts/parse_eod.py
+0 19 * * 1-5 cd /app && python scripts/harvest_eod.py; python scripts/parse_eod.py; python scripts/compute_analytics.py
 
 # 4) EOD safety retry — 07:15 Tue-Sat (late publications; idempotent)
-15 7 * * 2-6 cd /app && python scripts/harvest_eod.py; python scripts/parse_eod.py
+15 7 * * 2-6 cd /app && python scripts/harvest_eod.py; python scripts/parse_eod.py; python scripts/compute_analytics.py

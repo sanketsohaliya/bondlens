@@ -16,10 +16,16 @@ def test_grade_extraction():
     assert ratings.grade("Withdrawn") is None
 
 
+def _rank(grade: str) -> int:
+    r = ratings.rank(grade)
+    assert r is not None
+    return r
+
+
 def test_rank_ordering():
-    assert ratings.rank("AAA") < ratings.rank("AA+") < ratings.rank("AA")
-    assert ratings.rank("BBB-") < ratings.rank("BB+")
-    assert ratings.rank("D") == max(ratings.RATING_RANK.values())
+    assert _rank("AAA") < _rank("AA+") < _rank("AA")
+    assert _rank("BBB-") < _rank("BB+")
+    assert _rank("D") == max(ratings.RATING_RANK.values())
 
 
 def test_best_rank_across_agencies():
@@ -42,6 +48,7 @@ def test_recent_downgrade_detected():
          "rating_action": "Downgrade"},
     ]
     ch = ratings.recent_change(hist, TODAY)
+    assert ch is not None
     assert ch["direction"] == "down"
     assert ch["prev_rating"] == "AA"
 
@@ -67,7 +74,8 @@ def test_downgrade_wins_over_upgrade():
         {"agency": "CARE", "rating": "AA-", "rating_date": TODAY - timedelta(days=3),
          "rating_action": "Downgrade"},
     ]
-    assert ratings.recent_change(hist, TODAY)["direction"] == "down"
+    ch = ratings.recent_change(hist, TODAY)
+    assert ch is not None and ch["direction"] == "down"
 
 
 def test_direction_from_grades_when_action_missing():
@@ -77,7 +85,8 @@ def test_direction_from_grades_when_action_missing():
         {"agency": "CRISIL", "rating": "AA-", "rating_date": TODAY - timedelta(days=7),
          "rating_action": None},
     ]
-    assert ratings.recent_change(hist, TODAY)["direction"] == "up"
+    ch = ratings.recent_change(hist, TODAY)
+    assert ch is not None and ch["direction"] == "up"
 
 
 def test_in_default():

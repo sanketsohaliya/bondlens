@@ -114,6 +114,7 @@ def test_missing_interest_amount_estimated():
     s = schedule.build("X", flows, _terms(), today=TODAY)
     est = [f for f in s.flows if f.event == "interest" and f.estimated]
     assert len(est) == 1
+    assert est[0].amount is not None
     assert abs(est[0].amount - 100) < 1  # 10% of 1000 over ~1yr
     assert s.amounts_estimated
 

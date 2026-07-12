@@ -40,7 +40,8 @@ services:
     build: .
     restart: unless-stopped
     init: true   # tini as PID 1; supercronic's own reaper crashes as PID 1
-    command: ["supercronic", "-passthrough-logs", "/app/crontab"]
+    command: ["sh", "-c",
+              "python scripts/migrate.py && python scripts/compute_analytics.py --if-empty && exec supercronic -passthrough-logs /app/crontab"]
     environment:
       DATABASE_URL: postgresql://bondlens:bondlens@db:5432/bondlens
     depends_on:

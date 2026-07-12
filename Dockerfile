@@ -23,6 +23,7 @@ RUN uv export --frozen --no-dev --no-emit-project -o /tmp/req.txt \
 
 COPY bondlens/ bondlens/
 COPY scripts/ scripts/
+COPY migrations/ migrations/
 COPY crontab .
 
 # default: the API. The jobs service overrides with supercronic.

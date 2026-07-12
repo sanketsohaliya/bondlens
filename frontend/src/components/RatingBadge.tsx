@@ -19,10 +19,7 @@ export default function RatingBadge({
       : COLORS.find(([max]) => rank <= max)![1];
   const first = rating.split(",")[0].trim();
   return (
-    <span
-      className={`inline-block text-xs px-1.5 py-0.5 rounded border ${cls}`}
-      title={rating}
-    >
+    <span className={`inline-block text-xs px-1.5 py-0.5 rounded border ${cls}`} title={rating}>
       {first}
     </span>
   );

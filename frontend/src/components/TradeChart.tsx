@@ -1,13 +1,13 @@
-import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   AreaSeries,
-  HistogramSeries,
-  LineSeries,
   createChart,
+  HistogramSeries,
   type IChartApi,
+  LineSeries,
   type UTCTimestamp,
 } from "lightweight-charts";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api/client";
 
 const RANGES = [
@@ -41,9 +41,7 @@ export default function TradeChart({
     const days = RANGES.find(([r]) => r === range)![1];
     const cutoff = days ? Date.now() - days * 86400_000 : 0;
     return data.trades.filter(
-      (t) =>
-        new Date(t.trade_date).getTime() >= cutoff &&
-        (!exchange || t.exchange === exchange),
+      (t) => new Date(t.trade_date).getTime() >= cutoff && (!exchange || t.exchange === exchange),
     );
   }, [data, range, exchange]);
 
@@ -151,6 +149,7 @@ export default function TradeChart({
       <div className="flex flex-wrap items-center gap-2 text-xs">
         {RANGES.map(([r]) => (
           <button
+            type="button"
             key={r}
             onClick={() => setRange(r)}
             className={
@@ -166,6 +165,7 @@ export default function TradeChart({
         <span className="w-px h-4 bg-zinc-800 mx-1" />
         {(["", "NSE", "BSE"] as const).map((ex) => (
           <button
+            type="button"
             key={ex || "both"}
             onClick={() => setExchange(ex)}
             className={

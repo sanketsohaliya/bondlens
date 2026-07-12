@@ -3,137 +3,43 @@
 One database (``bondlens``), one pool. Connection comes from the
 DATABASE_URL env var (default: local dev database).
 
-The universe/harvest tables here are the ones the scheduled jobs write to;
-the NSDL parse layer (bond_info, bond_terms, bond_cashflows, ...) and the
-EOD trade tables define their schemas in their own scripts because they own
-those tables' lifecycles (truncate-rebuild / incremental append).
+Schema lives in migrations/ (applied by scripts/migrate.py, which the
+jobs container runs on start). This module only provides the pool and
+the write helpers for the universe/watchlist tables.
 """
 import gzip
 import hashlib
 import os
+from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import UTC, datetime
+from typing import Any
 
-from psycopg.rows import dict_row
+from psycopg import Connection
+from psycopg.rows import DictRow, dict_row
 from psycopg_pool import ConnectionPool
 
 DATABASE_URL = os.environ.get(
     "DATABASE_URL", "postgresql://bondlens:bondlens@localhost:5432/bondlens"
 )
 
-SCHEMA = """
--- The daily-tracked corporate-bond universe: union of the NSE (DEBT.csv)
--- and BSE (ListofScripData Active+Suspended) listing masters. One row per
--- ISIN ever seen; `status` flips to 'dropped' when an ISIN leaves both
--- masters (matured/delisted) but the row is kept for history.
---
--- Deliberately stores ONLY data that cannot be re-fetched later from
--- NSDL/CDSL: exchange-specific identifiers/status and point-in-time
--- observations. Descriptive fields (coupon, face value, listing/maturity
--- dates, security type) are NOT duplicated here -- they are joined on
--- demand from the NSDL cache (or derived from the ISIN) at read time.
--- issuer_name is the exception: NSDL misses ~17% of the listed universe,
--- so the exchange-provided name is the only source for those bonds.
-CREATE TABLE IF NOT EXISTS bonds (
-    isin TEXT PRIMARY KEY,
-    status TEXT NOT NULL DEFAULT 'listed'
-        CHECK (status IN ('listed', 'dropped')),
-    on_nse BOOLEAN NOT NULL DEFAULT FALSE,
-    on_bse BOOLEAN NOT NULL DEFAULT FALSE,
-    bse_status TEXT,                         -- Active | Suspended | NULL
-    issuer_name TEXT,           -- NSE company name, else BSE issuer name
-    nse_symbol TEXT,
-    nse_series TEXT,
-    bse_scrip_code TEXT,
-    bse_scrip_id TEXT,
-    created_at TIMESTAMPTZ NOT NULL,  -- when the row was inserted; immutable
-    first_seen TIMESTAMPTZ NOT NULL,  -- first observed listed; immutable
-    last_seen TIMESTAMPTZ NOT NULL,   -- last observed in a master
-    updated_at TIMESTAMPTZ NOT NULL   -- last write to this row
-);
-CREATE INDEX IF NOT EXISTS idx_bonds_status
-    ON bonds (status);
 
--- Append-only change log of universe membership/status transitions.
--- One row per changed field: status_change / source_change /
--- identifier_change carry (field, old_value, new_value); membership events
--- (added/dropped/relisted) need no payload -- the row state captures it.
-CREATE TABLE IF NOT EXISTS bond_events (
-    id BIGSERIAL PRIMARY KEY,
-    event_date DATE NOT NULL,   -- observation day (matches the master files)
-    isin TEXT NOT NULL,
-    event_type TEXT NOT NULL
-        CHECK (event_type IN ('added', 'dropped', 'relisted',
-                              'status_change', 'source_change',
-                              'identifier_change')),
-    field TEXT,                 -- which column changed (NULL for membership)
-    old_value TEXT,
-    new_value TEXT,
-    created_at TIMESTAMPTZ NOT NULL
-);
-CREATE INDEX IF NOT EXISTS idx_bond_events_isin
-    ON bond_events (isin);
-CREATE INDEX IF NOT EXISTS idx_bond_events_date
-    ON bond_events (event_date);
-
--- One row per universe-build run. The row is INSERTed when the run
--- starts and finalized (counts, ok, log) when it ends -- so a row left
--- with ok IS NULL means the run crashed mid-way.
-CREATE TABLE IF NOT EXISTS bond_runs (
-    id BIGSERIAL PRIMARY KEY,
-    run_at TIMESTAMPTZ NOT NULL,
-    nse_corp INTEGER,
-    bse_active INTEGER,
-    bse_suspended INTEGER,
-    overlap INTEGER,
-    total INTEGER,
-    added INTEGER,
-    dropped INTEGER,
-    relisted INTEGER,
-    ok BOOLEAN,
-    notes TEXT,
-    log TEXT                    -- timestamped step-by-step run log
-);
-
--- Verbatim archive of the raw master files each run was built from.
--- Exchanges only publish today's file, so these are unrecoverable later.
--- Content is gzip-compressed; deduped by content hash so re-runs on an
--- unchanged master store nothing new.
-CREATE TABLE IF NOT EXISTS raw_files (
-    id BIGSERIAL PRIMARY KEY,
-    run_id BIGINT REFERENCES bond_runs(id),  -- run that captured this file
-    fetched_at TIMESTAMPTZ NOT NULL,
-    source TEXT NOT NULL,       -- 'nse_debt_csv' | 'bse_scrip_master'
-    sha256 TEXT NOT NULL,       -- hash of the uncompressed content
-    size_bytes INTEGER NOT NULL,-- uncompressed size
-    content BYTEA NOT NULL,     -- gzipped payload
-    UNIQUE (source, sha256)
-);
-
--- User watchlist (the only user-writable table).
-CREATE TABLE IF NOT EXISTS watchlist (
-    isin TEXT PRIMARY KEY REFERENCES bonds (isin),
-    added_at TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-"""
-
-_pool: ConnectionPool = None
+_pool: ConnectionPool[Connection[DictRow]] | None = None
 
 
-def _get_pool() -> ConnectionPool:
+def _get_pool() -> ConnectionPool[Connection[DictRow]]:
     global _pool
     if _pool is None:
         _pool = ConnectionPool(
             DATABASE_URL, min_size=1, max_size=8, open=True,
+            connection_class=Connection[DictRow],
             kwargs={"row_factory": dict_row},
         )
-        with _pool.connection() as conn:
-            conn.execute(SCHEMA)
     return _pool
 
 
 @contextmanager
-def _conn():
+def _conn() -> Iterator[Connection[DictRow]]:
     """Pooled connection; commits on clean exit, rolls back on exception."""
     with _get_pool().connection() as conn:
         yield conn
@@ -151,7 +57,7 @@ def close_pool():
 
 # --- Watchlist --------------------------------------------------------------
 
-def get_watchlist() -> list[dict]:
+def get_watchlist() -> list[dict[str, Any]]:
     with _conn() as conn:
         return conn.execute(
             "SELECT isin, added_at FROM watchlist ORDER BY added_at DESC"
@@ -189,10 +95,12 @@ def start_run() -> int:
             "INSERT INTO bond_runs (run_at) VALUES (%s) RETURNING id",
             (datetime.now(UTC).isoformat(),),
         ).fetchone()
+    assert row is not None  # RETURNING on INSERT always yields a row
     return row["id"]
 
 
-def save_raw_file(source: str, content, run_id: int = None) -> dict:
+def save_raw_file(source: str, content: str | bytes,
+                  run_id: int | None = None) -> dict[str, Any]:
     """Archive a raw fetched master file (gzipped bytea in raw_files),
     linked to the run that captured it.
 
@@ -215,8 +123,8 @@ def save_raw_file(source: str, content, run_id: int = None) -> dict:
             "stored": row is not None}
 
 
-def log_failed_run(error: str, log: str = None,
-                   run_id: int = None) -> None:
+def log_failed_run(error: str, log: str | None = None,
+                   run_id: int | None = None) -> None:
     """Record a failed universe run (fetch or write error) so bond_runs is
     the complete run history, not just the successful ones. Count columns
     stay NULL to distinguish 'failed' from 'ran with zero changes'.
@@ -242,8 +150,9 @@ def log_failed_run(error: str, log: str = None,
 
 
 def save_universe(records: list[dict], run_stats: dict,
-                  as_of: str = None, max_shrink: float = 0.05,
-                  log: str = None, run_id: int = None) -> dict:
+                  as_of: str | None = None, max_shrink: float = 0.05,
+                  log: str | None = None,
+                  run_id: int | None = None) -> dict:
     """Reconcile today's universe against the stored one in one transaction.
 
     Upserts every incoming ISIN as 'listed' (preserving created_at and

@@ -203,6 +203,7 @@ def start_nsdl_run(tiers, workers, n_isins):
             "VALUES (%s, %s, %s, %s) RETURNING id",
             (datetime.now(UTC), ",".join(sorted(tiers)),
              workers, n_isins)).fetchone()
+    assert row is not None
     return row["id"]
 
 
@@ -269,7 +270,7 @@ def harvest_isin(isin, state, tiers, force, run_id):
         time.sleep(DELAY)
         # holdings immediately after quarterenddate, matching the UI's
         # Investor Category Holdings position in the sidebar.
-        if name == "quarterenddate" and status == 200:
+        if name == "quarterenddate" and status == 200 and text is not None:
             try:
                 quarters = json.loads(text)
             except ValueError:

@@ -128,7 +128,7 @@ def accrued_interest(sched: Schedule,
             prev = f
         elif nxt is None:
             nxt = f
-    if nxt is None:
+    if nxt is None or nxt.amount is None:
         return None
     if prev is None:
         return None
@@ -139,7 +139,7 @@ def accrued_interest(sched: Schedule,
     return round(nxt.amount * min(1.0, elapsed / total), 2)
 
 
-def clean_price(dirty: float, sched: Schedule,
+def clean_price(dirty: float | None, sched: Schedule,
                 today: date | None = None) -> float | None:
     acc = accrued_interest(sched, today)
     return round(dirty - acc, 2) if acc is not None and dirty else None
@@ -157,7 +157,8 @@ def dirty_from_clean_pct(clean_pct: float, sched: Schedule,
     return round(clean_pct / 100.0 * sched.face_value + acc, 2)
 
 
-def modified_duration(price: float, sched: Schedule, ytm_pct: float | None,
+def modified_duration(price: float | None, sched: Schedule,
+                      ytm_pct: float | None,
                       today: date | None = None) -> float | None:
     """Modified duration (yrs): % price drop per 1% yield rise."""
     if not price or ytm_pct is None or not sched.usable:
@@ -202,7 +203,7 @@ def approx_ytm(price: float, coupon_pct: float | None, face_value: float | None,
     return round(y, 2) if y is not None else None
 
 
-def current_yield(price: float, coupon_pct: float | None,
+def current_yield(price: float | None, coupon_pct: float | None,
                   face_value: float | None) -> float | None:
     if not price or not coupon_pct or not face_value:
         return None

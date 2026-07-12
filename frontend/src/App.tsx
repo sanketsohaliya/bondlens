@@ -1,11 +1,11 @@
-import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
 import { api } from "./api/client";
 import type { ScreenerParams } from "./api/types";
-import StatusBar from "./components/StatusBar";
+import BondDrawer from "./components/BondDrawer";
 import FilterBar from "./components/FilterBar";
 import ScreenerTable from "./components/ScreenerTable";
-import BondDrawer from "./components/BondDrawer";
+import StatusBar from "./components/StatusBar";
 
 export default function App() {
   const [params, setParams] = useState<ScreenerParams>({});
@@ -42,9 +42,7 @@ export default function App() {
         />
       </main>
 
-      {selected && (
-        <BondDrawer isin={selected} onClose={() => setSelected(null)} />
-      )}
+      {selected && <BondDrawer isin={selected} onClose={() => setSelected(null)} />}
     </div>
   );
 }

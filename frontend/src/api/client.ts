@@ -25,8 +25,10 @@ export const api = {
     get<BondsResponse>("/api/bonds", params as Record<string, unknown>),
   bond: (isin: string, price?: number) =>
     get<BondDetail>(`/api/bonds/${isin}`, price ? { price } : undefined),
-  trades: (isin: string, params?: { from?: string; to?: string; exchange?: string; segment?: string }) =>
-    get<TradesResponse>(`/api/bonds/${isin}/trades`, params),
+  trades: (
+    isin: string,
+    params?: { from?: string; to?: string; exchange?: string; segment?: string },
+  ) => get<TradesResponse>(`/api/bonds/${isin}/trades`, params),
   status: () => get<Status>("/api/status"),
   filters: () => get<Filters>("/api/filters"),
   watch: async (isin: string) => {
@@ -54,5 +56,9 @@ export const fmt = {
   date: (v: string | null | undefined): string =>
     v == null
       ? "–"
-      : new Date(v).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }),
+      : new Date(v).toLocaleDateString("en-IN", {
+          day: "2-digit",
+          month: "short",
+          year: "numeric",
+        }),
 };

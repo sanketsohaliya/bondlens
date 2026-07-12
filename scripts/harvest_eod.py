@@ -167,11 +167,13 @@ def main():
 
     stats = {"fetched": 0, "absent": 0, "skipped": 0, "failed": 0}
     with db._conn() as conn:
-        run_id = conn.execute(
+        run_row = conn.execute(
             "INSERT INTO eod_runs (run_at, date_from, date_to) "
             "VALUES (%s, %s, %s) RETURNING id",
             (datetime.now(UTC), date_from, date_to)
-        ).fetchone()["id"]
+        ).fetchone()
+    assert run_row is not None
+    run_id = run_row["id"]
 
     session = requests.Session()
     session.headers.update(HEADERS)
@@ -189,11 +191,13 @@ def main():
                 stats["skipped"] += 1
                 continue
             got = False
+            status, url = None, ""
             for url in urls_for(source, day):
                 status, content = fetch(session, url)
                 if status is None:
                     continue
-                if status == 200 and looks_valid(source, content):
+                if status == 200 and content is not None \
+                        and looks_valid(source, content):
                     store(source, day, url, 200, content, run_id,
                           replace=args.force or recheck)
                     stats["fetched"] += 1

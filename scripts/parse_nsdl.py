@@ -12,6 +12,7 @@ import sys
 import time
 from collections import defaultdict
 from pathlib import Path
+from typing import LiteralString
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -144,7 +145,8 @@ CREATE INDEX IF NOT EXISTS idx_bond_holdings_isin
     ON bond_holdings (isin, quarter);
 """
 
-TABLES = ["bond_info", "bond_terms", "bond_cashflows", "bond_further_issues",
+TABLES: list[LiteralString] = [
+    "bond_info", "bond_terms", "bond_cashflows", "bond_further_issues",
           "bond_redemption_events", "bond_ratings", "bond_listings",
           "bond_documents", "bond_contacts", "bond_arrangers",
           "bond_defaults", "bond_technical_defaults", "bond_restructurings",

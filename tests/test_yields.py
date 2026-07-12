@@ -55,7 +55,7 @@ def test_ytm_below_par_above_coupon():
     flows = [Flow("interest", date(2027, 7, 12), amount=100),
              Flow("redemption", date(2027, 7, 12), amount=1000)]
     y = yields.exact_ytm(950, _sched(flows), TODAY)
-    assert y > 10.0
+    assert y is not None and y > 10.0
 
 
 def test_ytm_zero_coupon():
@@ -93,6 +93,7 @@ def test_clean_price():
              Flow("redemption", date(2027, 1, 12), amount=1000)]
     s = _sched(flows)
     acc = yields.accrued_interest(s, TODAY)
+    assert acc is not None
     assert yields.clean_price(1050, s, TODAY) == pytest.approx(1050 - acc)
 
 
@@ -125,6 +126,7 @@ def test_ytw_call_below_ytm_for_premium_bond():
     price = 1100.0  # premium bond: early call hurts
     ytm = yields.exact_ytm(price, s, TODAY)
     ytw = yields.yield_to_worst(price, s, [date(2027, 7, 12)], TODAY)
+    assert ytm is not None and ytw is not None
     assert ytw < ytm
 
 

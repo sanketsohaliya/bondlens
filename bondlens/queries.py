@@ -5,6 +5,7 @@ universe in a handful of set-based queries (not per-ISIN loops) and is
 cached by the app layer — data only changes when the daily jobs run.
 """
 from datetime import date
+from typing import Any, LiteralString
 
 from . import db
 
@@ -107,6 +108,128 @@ def defaulted_isins() -> set:
     return {r["isin"] for r in rows}
 
 
+# --- Screener over the precomputed bond_analytics table ---------------------
+
+_SCREENER_SELECT = """
+SELECT a.*,
+       CASE WHEN a.maturity_date > CURRENT_DATE
+            THEN round((a.maturity_date - CURRENT_DATE) / 365.0, 2)
+       END                                        AS years_to_maturity,
+       CASE WHEN a.trade_date IS NOT NULL
+            THEN CURRENT_DATE - a.trade_date END  AS days_since_traded,
+       (a.trade_date IS NULL
+        OR CURRENT_DATE - a.trade_date > %(stale_days)s) AS stale,
+       CASE WHEN a.otc_trade_date IS NOT NULL
+            THEN CURRENT_DATE - a.otc_trade_date END AS otc_days_since_traded,
+       (w.isin IS NOT NULL)                       AS in_watchlist
+FROM bond_analytics a
+LEFT JOIN watchlist w ON w.isin = a.isin
+"""
+
+
+def screener(f: dict, stale_days: int) -> tuple[list[dict], int, float | None]:
+    """Filtered screener rows from bond_analytics.
+
+    ``f`` mirrors the API query params. Returns (page, total, as_of_epoch).
+    """
+    conds: list[LiteralString] = []
+    p: dict[str, Any] = {"stale_days": stale_days}
+
+    def add(cond: LiteralString, **params: Any):
+        conds.append(cond)
+        p.update(params)
+
+    if f.get("watchlist_only"):
+        add("w.isin IS NOT NULL")
+    elif f.get("exclude_defaulted", True):
+        add("NOT a.in_default")
+    if f.get("min_ytm") is not None:
+        add("a.ytm >= %(min_ytm)s", min_ytm=f["min_ytm"])
+    if f.get("max_ytm") is not None:
+        add("a.ytm <= %(max_ytm)s", max_ytm=f["max_ytm"])
+    if f.get("rating"):
+        add("a.credit_rating ILIKE %(rating)s", rating=f"%{f['rating']}%")
+    if f.get("min_rating_rank") is not None:
+        add("a.rating_rank <= %(rank)s", rank=f["min_rating_rank"])
+    if f.get("sector"):
+        add("a.sector ILIKE %(sector)s", sector=f"%{f['sector']}%")
+    if f.get("industry"):
+        add("a.industry ILIKE %(industry)s", industry=f"%{f['industry']}%")
+    if f.get("issuer"):
+        add("a.issuer_name ILIKE %(issuer)s", issuer=f"%{f['issuer']}%")
+    if (f.get("exchange") or "").upper() == "NSE":
+        add("a.on_nse")
+    elif (f.get("exchange") or "").upper() == "BSE":
+        add("a.on_bse")
+    if f.get("frequency"):
+        add("a.frequency = %(freq)s", freq=f["frequency"].lower())
+    if f.get("min_years") is not None:
+        add("a.maturity_date > CURRENT_DATE AND "
+            "round((a.maturity_date - CURRENT_DATE) / 365.0, 2) >= %(min_years)s",
+            min_years=f["min_years"])
+    if f.get("max_years") is not None:
+        add("a.maturity_date > CURRENT_DATE AND "
+            "round((a.maturity_date - CURRENT_DATE) / 365.0, 2) <= %(max_years)s",
+            max_years=f["max_years"])
+    if f.get("max_ltp") is not None:
+        add("a.ltp <= %(max_ltp)s", max_ltp=f["max_ltp"])
+    if f.get("min_turnover") is not None:
+        add("a.turnover >= %(min_turnover)s", min_turnover=f["min_turnover"])
+    if f.get("secured_only"):
+        add("a.secured")
+    if f.get("tax_free_only"):
+        add("a.tax_free")
+    if f.get("below_par"):
+        add("a.ltp < a.face_value")
+    if f.get("fresh_only"):
+        add("a.trade_date IS NOT NULL AND "
+            "CURRENT_DATE - a.trade_date <= %(stale_days)s")
+    if f.get("exact_only"):
+        add("a.ytm_method = 'exact'")
+    if f.get("downgraded_only"):
+        add("a.rating_change = 'down'")
+    if f.get("q"):
+        add("(a.isin ILIKE %(q)s OR "
+            "coalesce(a.nse_symbol, '') || ' ' || coalesce(a.issuer_name, '') "
+            "ILIKE %(q)s)", q=f"%{f['q'].strip()}%")
+
+    where: LiteralString = ("WHERE " + " AND ".join(conds)) if conds else ""
+    with db._conn() as conn:
+        total = conn.execute(
+            f"SELECT count(*) AS n FROM bond_analytics a "
+            f"LEFT JOIN watchlist w ON w.isin = a.isin {where}", p).fetchone()
+        rows = conn.execute(
+            f"{_SCREENER_SELECT} {where} "
+            "ORDER BY coalesce(a.turnover, 0) DESC, a.isin "
+            "LIMIT %(limit)s OFFSET %(offset)s",
+            {**p, "limit": f.get("limit", 500), "offset": f.get("offset", 0)},
+        ).fetchall()
+        as_of = conn.execute(
+            "SELECT extract(epoch FROM max(computed_at)) AS t "
+            "FROM bond_analytics").fetchone()
+    return ([dict(r) for r in rows], total["n"] if total else 0,
+            float(as_of["t"]) if as_of and as_of["t"] else None)
+
+
+def analytics_row(isin: str, stale_days: int) -> dict | None:
+    with db._conn() as conn:
+        r = conn.execute(f"{_SCREENER_SELECT} WHERE a.isin = %(isin)s",
+                         {"isin": isin, "stale_days": stale_days}).fetchone()
+    return dict(r) if r else None
+
+
+def screener_filters() -> dict:
+    with db._conn() as conn:
+        sectors = conn.execute(
+            "SELECT DISTINCT sector FROM bond_analytics "
+            "WHERE sector IS NOT NULL ORDER BY sector").fetchall()
+        freqs = conn.execute(
+            "SELECT DISTINCT frequency FROM bond_analytics "
+            "WHERE frequency IS NOT NULL ORDER BY frequency").fetchall()
+    return {"sectors": [r["sector"] for r in sectors],
+            "frequencies": [r["frequency"] for r in freqs]}
+
+
 # --- Detail view ------------------------------------------------------------
 
 def bond_row(isin: str) -> dict | None:
@@ -198,7 +321,8 @@ def trades(isin: str, date_from: date | None = None,
            date_to: date | None = None, exchange: str | None = None,
            segment: str | None = None) -> list[dict]:
     """Full trade history for one ISIN (charts)."""
-    conds, params = ["isin = %s"], [isin]
+    conds: list[LiteralString] = ["isin = %s"]
+    params: list[Any] = [isin]
     if date_from:
         conds.append("trade_date >= %s")
         params.append(date_from)

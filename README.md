@@ -34,14 +34,21 @@ docker compose up -d --build
 ```sh
 # backend (uv-managed venv against the container DB)
 uv sync
+.venv/bin/python scripts/migrate.py        # apply pending migrations
 .venv/bin/python -m pytest tests/ -q
 .venv/bin/uvicorn bondlens.app:app --reload
 
 # frontend (vite dev server proxies /api to :8000)
 cd frontend && npm install && npm run dev
+npm run codegen   # regenerate TS types from the API's OpenAPI schema
+npm run check     # biome + tsc
+npm test          # vitest
 
 # schedule-engine coverage report
 .venv/bin/python scripts/validate_schedules.py -v
+
+# quality gates (also run as git pre-commit hooks)
+.venv/bin/pre-commit run --all-files
 ```
 
 ## Architecture notes
@@ -56,5 +63,19 @@ cd frontend && npm install && npm run dev
   issue-level rescaling, estimated amounts); `yields.py` does day-count-
   aware YTM/YTW/accrued/duration; `ratings.py` derives composite grades,
   change flags and default status from agency rating trails.
+- **Precomputed screener**: `scripts/compute_analytics.py` (run by the
+  jobs container after every parse) writes per-bond analytics into
+  `bond_analytics`; the API serves the screener as a stateless indexed
+  SELECT. Date-relative fields (staleness, years to maturity) are
+  derived in SQL at read time.
+- **Contract-first API**: responses are validated against Pydantic
+  models (`bondlens/models.py`); the frontend's TypeScript types are
+  generated from the OpenAPI schema (`npm run codegen`), so backend and
+  frontend cannot drift silently.
+- **Migrations**: schema lives in `migrations/*.sql`, applied in order
+  by `scripts/migrate.py` (jobs container runs it on start; tracked in
+  `schema_migrations`).
 - **Prices**: retail trades are dirty ₹ per unit (headline LTP); OTC
   trades are clean % of face and shown/charted separately.
+- **Quality gates**: ruff + basedpyright + pytest + Biome, enforced via
+  pre-commit hooks.

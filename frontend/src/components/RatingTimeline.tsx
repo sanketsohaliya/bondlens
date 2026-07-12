@@ -1,11 +1,7 @@
 import { fmt } from "../api/client";
 import type { RatingEvent } from "../api/types";
 
-export default function RatingTimeline({
-  timeline,
-}: {
-  timeline: Record<string, RatingEvent[]>;
-}) {
+export default function RatingTimeline({ timeline }: { timeline: Record<string, RatingEvent[]> }) {
   const agencies = Object.keys(timeline);
   if (agencies.length === 0) {
     return <div className="text-sm text-zinc-500 p-4">No rating history.</div>;
