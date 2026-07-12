@@ -168,9 +168,6 @@ export default function FilterBar({
   return (
     <div className="space-y-5">
       <section>
-        <p className="text-[11px] font-semibold uppercase tracking-wider text-zinc-500 mb-2">
-          Strategies
-        </p>
         <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-7 gap-2">
           {PRESETS.map((p) => (
             <Tip key={p.id} text={p.tip} className="contents">
