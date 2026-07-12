@@ -22,7 +22,6 @@ export default function App() {
           <h1 className="text-3xl font-extrabold tracking-tight">
             Bond<span className="text-emerald-400">Lens</span>
           </h1>
-          <p className="text-sm text-zinc-500 mt-1">Corporate Bond Screener</p>
         </header>
 
         <main className="space-y-5">
