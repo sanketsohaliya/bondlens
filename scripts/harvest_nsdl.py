@@ -38,7 +38,7 @@ from datetime import UTC, datetime, timedelta
 import requests
 
 sys.path.insert(0, ".")
-from bondlens import db  # noqa: E402
+from backend import db  # noqa: E402
 
 BASE = "https://www.indiabondinfo.nsdl.com/bds-service/v1/public/bdsinfo"
 HEADERS = {
@@ -328,9 +328,13 @@ def main():
         db.close_pool()
         raise
 
-    ok = _stats["failed"] == 0
+    # A few dead ISINs out of tens of thousands of calls is normal; only
+    # flag the run unhealthy when failures suggest systematic breakage.
+    attempts = (_stats["fetched"] + _stats["unchanged"] + _stats["failed"]) or 1
+    ok = _stats["failed"] <= max(25, attempts * 0.01)
     finish_nsdl_run(run_id, ok=ok,
-                    notes=None if ok else f"{_stats['failed']} fetch failures")
+                    notes=f"{_stats['failed']} fetch failures"
+                          if _stats["failed"] else None)
     print(f"DONE {json.dumps(_stats)}", flush=True)
     db.close_pool()
     return 0 if ok else 1

@@ -1,7 +1,7 @@
 """Rating logic tests over bond_ratings-shaped rows."""
 from datetime import date, timedelta
 
-from bondlens.analytics import ratings
+from backend.analytics import ratings
 
 TODAY = date(2026, 7, 12)
 

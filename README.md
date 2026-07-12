@@ -17,9 +17,11 @@ screener.
 - **web** — React 19 + TypeScript, Vite 7, Tailwind 4, lightweight-charts,
   served by nginx which proxies `/api` (port 3000)
 - **jobs** — supercronic running the scheduled harvesters (IST):
-  - 05:30 Mon–Sat: universe build (`bondlens/universe.py`)
+  - 05:30 Mon–Sat: universe build (`backend/universe.py`)
   - 07:00 daily: NSDL harvest + parse (`scripts/harvest_nsdl.py`, `parse_nsdl.py`)
   - 19:00 Mon–Fri (+07:15 retry): EOD trades (`scripts/harvest_eod.py`, `parse_eod.py`)
+  - 08:00 daily: DB backup to the Windows Desktop (`scripts/backup_db.py`)
+  - 08:45 daily + 19:45 Mon–Fri: healthcheck with ntfy alerts (`scripts/healthcheck.py`)
 
 ## Run
 
@@ -36,7 +38,7 @@ docker compose up -d --build
 uv sync
 .venv/bin/python scripts/migrate.py        # apply pending migrations
 .venv/bin/python -m pytest tests/ -q
-.venv/bin/uvicorn bondlens.app:app --reload
+.venv/bin/uvicorn backend.app:app --reload
 
 # frontend (vite dev server proxies /api to :8000)
 cd frontend && npm install && npm run dev
@@ -58,7 +60,7 @@ npm test          # vitest
   rewritten and re-run over history without refetching.
 - **Parse layers are disposable**: `parse_nsdl.py` truncate-rebuilds the
   `bond_*` tables; `parse_eod.py` appends to `eod_trades` incrementally.
-- **Analytics** (`bondlens/analytics/`): `schedule.py` normalizes NSDL
+- **Analytics** (`backend/analytics/`): `schedule.py` normalizes NSDL
   cashflow schedules (staggered redemptions, zero-coupon accretion,
   issue-level rescaling, estimated amounts); `yields.py` does day-count-
   aware YTM/YTW/accrued/duration; `ratings.py` derives composite grades,
@@ -69,7 +71,7 @@ npm test          # vitest
   SELECT. Date-relative fields (staleness, years to maturity) are
   derived in SQL at read time.
 - **Contract-first API**: responses are validated against Pydantic
-  models (`bondlens/models.py`); the frontend's TypeScript types are
+  models (`backend/models.py`); the frontend's TypeScript types are
   generated from the OpenAPI schema (`npm run codegen`), so backend and
   frontend cannot drift silently.
 - **Migrations**: schema lives in `migrations/*.sql`, applied in order
@@ -79,3 +81,18 @@ npm test          # vitest
   trades are clean % of face and shown/charted separately.
 - **Quality gates**: ruff + basedpyright + pytest + Biome, enforced via
   pre-commit hooks.
+
+## Operations
+
+- **Alerts**: install the [ntfy](https://ntfy.sh) app and subscribe to the
+  topic set as `NTFY_TOPIC` in `docker-compose.yml`. The healthcheck
+  pushes only when something is wrong (job failed/missing, stale trades,
+  stale analytics, stuck runs). Test the wiring:
+  `docker compose exec jobs python scripts/healthcheck.py --ping`
+- **Backups**: `C:\Users\sanket.patel\Desktop\bondlens.dump` is a full
+  `pg_dump -Fc`, replaced atomically every morning. Restore with
+  `pg_restore -d bondlens bondlens.dump`.
+- **Container logs** are capped at 10MB × 3 files per service
+  (`docker compose logs jobs` to view).
+- **E2E pipeline check** (live scrape → parse → analytics against a
+  throwaway DB): `.venv/bin/pytest -m e2e -v -s`

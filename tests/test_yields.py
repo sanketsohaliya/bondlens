@@ -3,8 +3,8 @@ from datetime import date
 
 import pytest
 
-from bondlens.analytics import daycount, yields
-from bondlens.analytics.schedule import Flow, Schedule
+from backend.analytics import daycount, yields
+from backend.analytics.schedule import Flow, Schedule
 
 TODAY = date(2026, 7, 12)
 

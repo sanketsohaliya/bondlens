@@ -5,7 +5,7 @@ repos:
     hooks:
       - id: ruff
         name: ruff check
-        entry: .venv/bin/ruff check bondlens scripts tests
+        entry: .venv/bin/ruff check backend scripts tests
         language: system
         types: [python]
         pass_filenames: false

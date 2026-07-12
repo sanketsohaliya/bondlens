@@ -1,7 +1,16 @@
+# Bounded container logs: docker's json-file driver is unlimited by default.
+x-logging: &logging
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "3"
+
 services:
   db:
     image: postgres:18
     restart: unless-stopped
+    <<: *logging
     environment:
       POSTGRES_USER: bondlens
       POSTGRES_PASSWORD: bondlens
@@ -20,6 +29,7 @@ services:
   api:
     build: .
     restart: unless-stopped
+    <<: *logging
     environment:
       DATABASE_URL: postgresql://bondlens:bondlens@db:5432/bondlens
     ports:
@@ -31,6 +41,7 @@ services:
   web:
     build: ./frontend
     restart: unless-stopped
+    <<: *logging
     ports:
       - "3000:80"
     depends_on:
@@ -40,10 +51,16 @@ services:
     build: .
     restart: unless-stopped
     init: true   # tini as PID 1; supercronic's own reaper crashes as PID 1
+    <<: *logging
     command: ["sh", "-c",
               "python scripts/migrate.py && python scripts/compute_analytics.py --if-empty && exec supercronic -passthrough-logs /app/crontab"]
     environment:
       DATABASE_URL: postgresql://bondlens:bondlens@db:5432/bondlens
+      NTFY_TOPIC: bondlens-sanket-x7k2m9   # subscribe to this in the ntfy app
+      BACKUP_DIR: /desktop
+    volumes:
+      # Nightly pg_dump lands on the Windows Desktop, replacing the last one.
+      - /mnt/c/Users/sanket.patel/Desktop:/desktop
     depends_on:
       db:
         condition: service_healthy

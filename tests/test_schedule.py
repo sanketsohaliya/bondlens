@@ -2,7 +2,7 @@
 from datetime import date
 from decimal import Decimal
 
-from bondlens.analytics import schedule
+from backend.analytics import schedule
 
 TODAY = date(2026, 7, 12)
 

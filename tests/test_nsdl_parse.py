@@ -1,8 +1,8 @@
-"""Unit tests for bondlens.nsdl_parse (pure parsers, no DB)."""
+"""Unit tests for backend.nsdl_parse (pure parsers, no DB)."""
 import unittest
 from datetime import date
 
-from bondlens.nsdl_parse import (
+from backend.nsdl_parse import (
     agency_norm,
     clean,
     parse_credit_ratings,

@@ -26,7 +26,7 @@ from pathlib import Path
 from typing import LiteralString
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from bondlens import db  # noqa: E402
+from backend import db  # noqa: E402
 
 LAKH = 100_000
 

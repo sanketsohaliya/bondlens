@@ -11,14 +11,14 @@ The union is upserted into the v2 database (bonds), day-over-day changes are
 logged (bond_events), and each run is summarized (bond_runs).
 
 Run manually:
-    python -m bondlens.universe
-    python -m bondlens.universe --dry-run          # fetch + report, no DB write
-    python -m bondlens.universe --active-only       # exclude BSE Suspended
-    python -m bondlens.universe --json              # machine-readable summary
+    python -m backend.universe
+    python -m backend.universe --dry-run          # fetch + report, no DB write
+    python -m backend.universe --active-only       # exclude BSE Suspended
+    python -m backend.universe --json              # machine-readable summary
 
 Cron (weekdays + Sat, 05:30 IST -> after NSE's ~03:00 master regen):
     30 5 * * 1-6  cd /home/sanket/code/BondLens && \
-        .venv/bin/python -m bondlens.universe >> /var/log/bondlens_universe.log 2>&1
+        .venv/bin/python -m backend.universe >> /var/log/backend_universe.log 2>&1
 """
 import argparse
 import json

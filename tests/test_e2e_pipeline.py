@@ -67,7 +67,7 @@ def temp_db():
 
 def run_script(args: list[str]) -> subprocess.CompletedProcess[str]:
     """Run a production script exactly as cron does, but against the e2e DB."""
-    cmd = ([sys.executable, "-m", args[0]] if args[0].startswith("bondlens.")
+    cmd = ([sys.executable, "-m", args[0]] if args[0].startswith("backend.")
            else [sys.executable, *args])
     print(f"\n$ {' '.join(cmd)}")
     res = subprocess.run(
@@ -113,11 +113,11 @@ def last_trading_day() -> date:
 
 
 # --------------------------------------------------------------------------
-# Stage 1: universe scrape (bondlens/universe.py + nse.py + bse.py)
+# Stage 1: universe scrape (backend/universe.py + nse.py + bse.py)
 # --------------------------------------------------------------------------
 
 def test_stage1_universe_scrape():
-    res = run_script(["bondlens.universe"])
+    res = run_script(["backend.universe"])
     skip_if_network_error(res, "universe")
     assert res.returncode == 0, f"universe exited {res.returncode}"
 

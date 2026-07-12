@@ -12,8 +12,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from bondlens import db  # noqa: E402
-from bondlens.analytics import compute  # noqa: E402
+from backend import db  # noqa: E402
+from backend.analytics import compute  # noqa: E402
 
 
 def main() -> int:

@@ -6,9 +6,6 @@ __pycache__/
 *.pyc
 .pytest_cache/
 
-# Local data (NSE snapshots, NSDL cache, watchlist)
-bonds.db
-bonds.db-journal
 
 # Editor/OS noise
 .vscode/
@@ -18,3 +15,5 @@ nohup.out
 frontend/node_modules/
 frontend/dist/
 data/
+logs/
+*.tsbuildinfo
