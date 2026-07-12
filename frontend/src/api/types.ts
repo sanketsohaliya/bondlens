@@ -30,9 +30,11 @@ export interface ScreenerParams {
   retail_only?: boolean;
   otc_only?: boolean;
   secured_only?: boolean;
+  unsecured_only?: boolean;
   tax_free_only?: boolean;
   below_par?: boolean;
   fresh_only?: boolean;
+  traded_within?: number;
   exact_only?: boolean;
   downgraded_only?: boolean;
   exclude_defaulted?: boolean;

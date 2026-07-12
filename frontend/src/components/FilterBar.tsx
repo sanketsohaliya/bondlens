@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { api, fmt } from "../api/client";
-import type { ScreenerParams } from "../api/types";
+import type { Filters, ScreenerParams } from "../api/types";
 import Tip from "./Tooltip";
 
 export interface Preset {
@@ -74,8 +74,14 @@ export const PRESETS: Preset[] = [
     id: "value",
     name: "Value Hunter",
     sub: "≥9% AA- exact",
-    tip: "Well-paid credit risk on numbers you can trust: strong rating, exact NSDL schedule, fresh price",
-    params: { min_rating: "AA-", min_ytm: 9, exact_only: true, fresh_only: true },
+    tip: "Well-paid credit risk on numbers you can trust: strong rating, exact NSDL schedule, traded within a week",
+    params: { min_rating: "AA-", min_ytm: 9, exact_only: true, traded_within: 7 },
+  },
+  {
+    id: "taxfree",
+    name: "Tax-Free",
+    tip: "Interest exempt from income tax — compare after-tax, not headline yield",
+    params: { tax_free_only: true },
   },
   {
     id: "discount",
@@ -108,6 +114,9 @@ export const PRESETS: Preset[] = [
 
 export const DEFAULT_PRESET = PRESETS.find((p) => p.id === "fdbeater")!;
 
+/* Chips shown inline; the rest live under "More ▾". */
+const INLINE_IDS = ["fdbeater", "ultrasafe", "sweet", "highyield", "liquid", "watchlist"];
+
 /** v1's describeFilters(): human-readable summary of active filters. */
 export function describeFilters(p: ScreenerParams): string[] {
   const parts: string[] = [];
@@ -126,6 +135,8 @@ export function describeFilters(p: ScreenerParams): string[] {
   if (p.otc_only) parts.push("trades OTC");
   if (p.watchlist_only) parts.push("watchlist only");
   if (p.fresh_only) parts.push("fresh prices");
+  if (p.traded_within != null) parts.push(`traded ≤ ${p.traded_within}d ago`);
+  if (p.unsecured_only) parts.push("unsecured only");
   if (p.exact_only) parts.push("exact YTM only");
   if (p.below_par) parts.push("below face value");
   if (p.downgraded_only) parts.push("downgraded recently");
@@ -134,12 +145,6 @@ export function describeFilters(p: ScreenerParams): string[] {
   return parts;
 }
 
-const inputCls =
-  "w-full bg-transparent border border-zinc-700 rounded-md px-2.5 py-1.5 text-xs font-medium " +
-  "focus:outline-none focus:border-emerald-500 placeholder:text-zinc-600";
-
-const labelCls = "block text-[10px] font-semibold uppercase tracking-wider text-zinc-500 mb-1.5";
-
 export default function FilterBar({
   params,
   onChange,
@@ -147,9 +152,15 @@ export default function FilterBar({
   params: ScreenerParams;
   onChange: (p: ScreenerParams) => void;
 }) {
-  const [open, setOpen] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
   const [activePreset, setActivePreset] = useState<string | null>(DEFAULT_PRESET.id);
   const { data: filters } = useQuery({ queryKey: ["filters"], queryFn: api.filters });
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setMoreOpen(false);
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   const set = (patch: Partial<ScreenerParams>) => {
     setActivePreset(null);
@@ -166,209 +177,342 @@ export default function FilterBar({
     }
   };
 
-  const summary = describeFilters(params);
+  const inline = INLINE_IDS.map((id) => PRESETS.find((p) => p.id === id)!);
+  const overflow = PRESETS.filter((p) => !INLINE_IDS.includes(p.id));
+  const activeOverflow = overflow.find((p) => p.id === activePreset);
 
   return (
-    <div className="space-y-5">
-      <section className="pt-4">
-        <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-7 gap-2">
-          {PRESETS.map((p) => (
-            <Tip key={p.id} text={p.tip} className="contents">
-              <button
-                type="button"
-                onClick={() => applyPreset(p)}
-                className={`preset-chip ${activePreset === p.id ? "active" : ""}`}
-              >
-                {p.name}
-                {p.sub && <span>{p.sub}</span>}
-              </button>
-            </Tip>
-          ))}
-          <Tip text="Show everything" className="contents">
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center gap-2">
+        {inline.map((p) => (
+          <Tip key={p.id} text={p.tip} className="contents">
             <button
               type="button"
-              onClick={() => {
-                setActivePreset(null);
-                onChange({ q: params.q });
-              }}
-              className="preset-chip chip-clear"
+              onClick={() => applyPreset(p)}
+              className={`preset-chip flex-1 ${activePreset === p.id ? "active" : ""}`}
             >
-              Clear
+              {p.name}
+              {p.sub && <span>{p.sub}</span>}
             </button>
           </Tip>
-        </div>
-      </section>
+        ))}
 
-      <section className="rounded-lg border border-zinc-800 bg-zinc-900/50">
+        <span className="relative flex-1 flex">
+          <button
+            type="button"
+            onClick={() => setMoreOpen(!moreOpen)}
+            className={`preset-chip flex-1 ${activeOverflow ? "active" : ""}`}
+          >
+            {activeOverflow ? `More: ${activeOverflow.name}` : "More"}
+            <span>▾</span>
+          </button>
+          {moreOpen && (
+            <>
+              <div
+                className="fixed inset-0 z-20"
+                onClick={() => setMoreOpen(false)}
+                aria-hidden="true"
+              />
+              <div className="absolute left-0 top-full mt-2 z-30 w-64 rounded-lg border border-zinc-700 bg-zinc-900 shadow-xl py-1">
+                {overflow.map((p) => (
+                  <button
+                    type="button"
+                    key={p.id}
+                    title={p.tip}
+                    onClick={() => {
+                      applyPreset(p);
+                      setMoreOpen(false);
+                    }}
+                    className={`w-full flex items-center justify-between gap-3 px-3 py-2 text-xs text-left hover:bg-zinc-800 ${
+                      activePreset === p.id ? "text-emerald-400" : "text-zinc-300"
+                    }`}
+                  >
+                    <span className="font-medium">{p.name}</span>
+                    {p.sub && <span className="text-[10px] text-zinc-500">{p.sub}</span>}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+        </span>
+
+        <Tip text="Show everything" className="contents">
+          <button
+            type="button"
+            onClick={() => {
+              setActivePreset(null);
+              onChange({ q: params.q });
+            }}
+            className="preset-chip chip-clear flex-1"
+          >
+            Clear
+          </button>
+        </Tip>
+      </div>
+
+      <FilterFields params={params} set={set} filters={filters} />
+    </div>
+  );
+}
+
+type NumKey =
+  | "min_ytm"
+  | "max_ytm"
+  | "min_years"
+  | "max_years"
+  | "max_ltp"
+  | "min_turnover"
+  | "min_otc_turnover"
+  | "traded_within";
+type SelKey = "min_rating" | "sector" | "frequency" | "exchange";
+
+/* One always-visible row. Fields with a value are highlighted in emerald. */
+function FilterFields({
+  params,
+  set,
+  filters,
+}: {
+  params: ScreenerParams;
+  set: (patch: Partial<ScreenerParams>) => void;
+  filters: Filters | undefined;
+}) {
+  const lbl = (active: boolean) =>
+    `block text-[10px] font-semibold uppercase tracking-wider mb-1.5 whitespace-nowrap ${
+      active ? "text-emerald-600" : "text-zinc-500"
+    }`;
+  const box = (active: boolean) =>
+    "w-full bg-transparent border rounded-md px-2 py-1.5 text-xs font-medium " +
+    "focus:outline-none focus:border-emerald-600 placeholder:text-zinc-600 " +
+    (active ? "border-emerald-700/70" : "border-zinc-700");
+
+  const num = (label: string, key: NumKey) => {
+    const active = params[key] != null;
+    return (
+      <label>
+        <span className={lbl(active)}>{label}</span>
+        <input
+          type="number"
+          className={box(active)}
+          value={params[key] ?? ""}
+          onChange={(e) =>
+            set({ [key]: e.target.value ? +e.target.value : undefined } as Partial<ScreenerParams>)
+          }
+        />
+      </label>
+    );
+  };
+
+  const sel = (label: string, key: SelKey, options: string[]) => {
+    const active = !!params[key];
+    return (
+      <label>
+        <span className={lbl(active)}>{label}</span>
+        <select
+          className={box(active)}
+          value={params[key] ?? ""}
+          onChange={(e) => set({ [key]: e.target.value || undefined } as Partial<ScreenerParams>)}
+        >
+          <option value="">Any</option>
+          {options.map((o) => (
+            <option key={o}>{o}</option>
+          ))}
+        </select>
+      </label>
+    );
+  };
+
+  // Only the essentials show by default; every other filter lives behind
+  // "+ Filter" and appears once added (or whenever a preset sets its params).
+  // Removing one clears its params.
+  const EXTRAS = [
+    ["max_ytm", "Max YTM %"],
+    ["sector", "Sector"],
+    ["frequency", "Pays"],
+    ["exchange", "Exchange"],
+    ["max_years", "Max maturity"],
+    ["max_ltp", "Ticket size"],
+    ["min_otc_turnover", "OTC turnover"],
+    ["segment", "Segment"],
+    ["security", "Security"],
+    ["ytm_basis", "YTM basis"],
+  ] as const;
+  type ExtraId = (typeof EXTRAS)[number][0];
+
+  const extraActive: Record<ExtraId, boolean> = {
+    max_ytm: params.max_ytm != null,
+    sector: !!params.sector,
+    frequency: !!params.frequency,
+    exchange: !!params.exchange,
+    max_years: params.max_years != null,
+    max_ltp: params.max_ltp != null,
+    min_otc_turnover: params.min_otc_turnover != null,
+    segment: !!params.retail_only || !!params.otc_only,
+    security: !!params.secured_only || !!params.unsecured_only,
+    ytm_basis: !!params.exact_only,
+  };
+  const [added, setAdded] = useState<ExtraId[]>([]);
+  const [addOpen, setAddOpen] = useState(false);
+  const visible = EXTRAS.filter(([id]) => added.includes(id) || extraActive[id]);
+
+  const clearExtra: Record<ExtraId, Partial<ScreenerParams>> = {
+    max_ytm: { max_ytm: undefined },
+    sector: { sector: undefined },
+    frequency: { frequency: undefined },
+    exchange: { exchange: undefined },
+    max_years: { max_years: undefined },
+    max_ltp: { max_ltp: undefined },
+    min_otc_turnover: { min_otc_turnover: undefined },
+    segment: { retail_only: undefined, otc_only: undefined },
+    security: { secured_only: undefined, unsecured_only: undefined },
+    ytm_basis: { exact_only: undefined },
+  };
+
+  const extraControl = (id: ExtraId) => {
+    switch (id) {
+      case "segment": {
+        const v =
+          params.retail_only && params.otc_only
+            ? "both"
+            : params.retail_only
+              ? "retail"
+              : params.otc_only
+                ? "otc"
+                : "";
+        return (
+          <label className="flex-1">
+            <span className={lbl(!!v)}>Segment</span>
+            <select
+              className={box(!!v)}
+              value={v}
+              onChange={(e) =>
+                set({
+                  retail_only: ["retail", "both"].includes(e.target.value) || undefined,
+                  otc_only: ["otc", "both"].includes(e.target.value) || undefined,
+                })
+              }
+            >
+              <option value="">Any</option>
+              <option value="retail">Trades retail</option>
+              <option value="otc">Trades OTC</option>
+              <option value="both">Retail + OTC</option>
+            </select>
+          </label>
+        );
+      }
+      case "max_ytm":
+        return num("Max YTM %", "max_ytm");
+      case "sector":
+        return sel("Sector", "sector", filters?.sectors ?? []);
+      case "frequency":
+        return sel("Pays", "frequency", filters?.frequencies ?? []);
+      case "exchange":
+        return sel("Exchange", "exchange", ["NSE", "BSE"]);
+      case "max_years":
+        return num("Max mat (y)", "max_years");
+      case "max_ltp":
+        return num("Ticket ₹ max", "max_ltp");
+      case "min_otc_turnover":
+        return num("OTC trd ₹", "min_otc_turnover");
+      case "security": {
+        const v = params.secured_only ? "secured" : params.unsecured_only ? "unsecured" : "";
+        return (
+          <label className="flex-1">
+            <span className={lbl(!!v)}>Security</span>
+            <select
+              className={box(!!v)}
+              value={v}
+              onChange={(e) =>
+                set({
+                  secured_only: e.target.value === "secured" || undefined,
+                  unsecured_only: e.target.value === "unsecured" || undefined,
+                })
+              }
+            >
+              <option value="">Any</option>
+              <option value="secured">Secured</option>
+              <option value="unsecured">Unsecured</option>
+            </select>
+          </label>
+        );
+      }
+      case "ytm_basis":
+        return (
+          <label className="flex-1">
+            <span className={lbl(!!params.exact_only)}>YTM basis</span>
+            <select
+              className={box(!!params.exact_only)}
+              value={params.exact_only ? "exact" : ""}
+              onChange={(e) => set({ exact_only: e.target.value === "exact" || undefined })}
+            >
+              <option value="">Any</option>
+              <option value="exact">Exact only</option>
+            </select>
+          </label>
+        );
+    }
+  };
+
+  return (
+    <div className="grid grid-cols-[repeat(auto-fit,minmax(120px,1fr))] items-end gap-3">
+      {num("Min YTM %", "min_ytm")}
+      {num("Retail trd ₹", "min_turnover")}
+      {sel("Min rating", "min_rating", filters?.ratings ?? [])}
+      {num("Min mat (y)", "min_years")}
+      {num("Last traded ≤ (d)", "traded_within")}
+
+      {visible.map(([id, label]) => (
+        <span key={id} className="flex items-end gap-1">
+          {extraControl(id)}
+          <button
+            type="button"
+            title={`Remove ${label} filter`}
+            onClick={() => {
+              setAdded((a) => a.filter((x) => x !== id));
+              set(clearExtra[id]);
+            }}
+            className="pb-2 text-zinc-600 hover:text-red-400 text-xs leading-none"
+          >
+            ×
+          </button>
+        </span>
+      ))}
+
+      <span className="relative self-end justify-self-start">
         <button
           type="button"
-          onClick={() => setOpen(!open)}
-          className="w-full flex items-center justify-between gap-4 px-3.5 py-2.5 text-left"
+          onClick={() => setAddOpen(!addOpen)}
+          className="px-2.5 py-1.5 rounded-md border border-dashed border-zinc-700 text-xs font-medium text-zinc-500 hover:text-zinc-300 hover:border-zinc-500 transition-colors whitespace-nowrap"
         >
-          <span className="text-[11px] font-semibold uppercase tracking-wider text-zinc-500">
-            <span className={`inline-block mr-1.5 transition-transform ${open ? "rotate-90" : ""}`}>
-              ›
-            </span>
-            Filters{summary.length > 0 && ` · ${summary.length} active`}
-          </span>
-          {!open && summary.length > 0 && (
-            <span className="text-xs text-emerald-400/90 truncate">
-              {summary.map((s, i) => (
-                <span key={s}>
-                  {i > 0 && <span className="text-zinc-600 mx-1.5">|</span>}
-                  {s}
-                </span>
-              ))}
-            </span>
-          )}
+          + Filter
         </button>
-
-        {open && (
-          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3 px-3.5 pb-4 pt-1">
-            <label className="text-xs text-zinc-400">
-              <span className={labelCls}>Min YTM %</span>
-              <input
-                type="number"
-                className={inputCls}
-                value={params.min_ytm ?? ""}
-                onChange={(e) => set({ min_ytm: e.target.value ? +e.target.value : undefined })}
-              />
-            </label>
-            <label className="text-xs text-zinc-400">
-              <span className={labelCls}>Max YTM %</span>
-              <input
-                type="number"
-                className={inputCls}
-                value={params.max_ytm ?? ""}
-                onChange={(e) => set({ max_ytm: e.target.value ? +e.target.value : undefined })}
-              />
-            </label>
-            <label className="text-xs text-zinc-400">
-              <span className={labelCls}>Min rating</span>
-              <select
-                className={inputCls}
-                value={params.min_rating ?? ""}
-                onChange={(e) => set({ min_rating: e.target.value || undefined })}
-              >
-                <option value="">Any</option>
-                {(filters?.ratings ?? []).map((r) => (
-                  <option key={r}>{r}</option>
-                ))}
-              </select>
-            </label>
-            <label className="text-xs text-zinc-400">
-              <span className={labelCls}>Sector</span>
-              <select
-                className={inputCls}
-                value={params.sector ?? ""}
-                onChange={(e) => set({ sector: e.target.value || undefined })}
-              >
-                <option value="">Any</option>
-                {(filters?.sectors ?? []).map((s) => (
-                  <option key={s}>{s}</option>
-                ))}
-              </select>
-            </label>
-            <label className="text-xs text-zinc-400">
-              <span className={labelCls}>Pays interest</span>
-              <select
-                className={inputCls}
-                value={params.frequency ?? ""}
-                onChange={(e) => set({ frequency: e.target.value || undefined })}
-              >
-                <option value="">Any</option>
-                {(filters?.frequencies ?? []).map((f) => (
-                  <option key={f}>{f}</option>
-                ))}
-              </select>
-            </label>
-            <label className="text-xs text-zinc-400">
-              <span className={labelCls}>Exchange</span>
-              <select
-                className={inputCls}
-                value={params.exchange ?? ""}
-                onChange={(e) => set({ exchange: e.target.value || undefined })}
-              >
-                <option value="">Any</option>
-                <option>NSE</option>
-                <option>BSE</option>
-              </select>
-            </label>
-            <label className="text-xs text-zinc-400">
-              <span className={labelCls}>Min maturity (years)</span>
-              <input
-                type="number"
-                className={inputCls}
-                value={params.min_years ?? ""}
-                onChange={(e) => set({ min_years: e.target.value ? +e.target.value : undefined })}
-              />
-            </label>
-            <label className="text-xs text-zinc-400">
-              <span className={labelCls}>Max maturity (years)</span>
-              <input
-                type="number"
-                className={inputCls}
-                value={params.max_years ?? ""}
-                onChange={(e) => set({ max_years: e.target.value ? +e.target.value : undefined })}
-              />
-            </label>
-            <label className="text-xs text-zinc-400">
-              <span className={labelCls}>Ticket size (max ₹/unit)</span>
-              <input
-                type="number"
-                className={inputCls}
-                value={params.max_ltp ?? ""}
-                onChange={(e) => set({ max_ltp: e.target.value ? +e.target.value : undefined })}
-              />
-            </label>
-            <label className="text-xs text-zinc-400">
-              <span className={labelCls}>Retail traded ₹ (min)</span>
-              <input
-                type="number"
-                className={inputCls}
-                value={params.min_turnover ?? ""}
-                onChange={(e) =>
-                  set({ min_turnover: e.target.value ? +e.target.value : undefined })
-                }
-              />
-            </label>
-            <label className="text-xs text-zinc-400">
-              <span className={labelCls}>OTC traded ₹ (min)</span>
-              <input
-                type="number"
-                className={inputCls}
-                value={params.min_otc_turnover ?? ""}
-                onChange={(e) =>
-                  set({ min_otc_turnover: e.target.value ? +e.target.value : undefined })
-                }
-              />
-            </label>
-            <div className="col-span-2 flex flex-wrap items-end gap-3 text-xs text-zinc-400">
-              {(
-                [
-                  ["retail_only", "Trades retail"],
-                  ["otc_only", "Trades OTC"],
-                  ["fresh_only", "Fresh prices"],
-                  ["exact_only", "Exact YTM"],
-                  ["secured_only", "Secured"],
-                  ["tax_free_only", "Tax-free"],
-                  ["below_par", "Below par"],
-                ] as const
-              ).map(([key, label]) => (
-                <label key={key} className="flex items-center gap-1.5 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    className="accent-emerald-500"
-                    checked={!!params[key]}
-                    onChange={(e) => set({ [key]: e.target.checked || undefined })}
-                  />
+        {addOpen && (
+          <>
+            <div
+              className="fixed inset-0 z-20"
+              onClick={() => setAddOpen(false)}
+              aria-hidden="true"
+            />
+            <div className="absolute right-0 bottom-full mb-2 z-30 w-44 rounded-lg border border-zinc-700 bg-zinc-900 shadow-xl py-1">
+              {EXTRAS.filter(([id]) => !visible.some(([v]) => v === id)).map(([id, label]) => (
+                <button
+                  type="button"
+                  key={id}
+                  onClick={() => {
+                    setAdded((a) => [...a, id]);
+                    setAddOpen(false);
+                  }}
+                  className="w-full px-3 py-2 text-xs text-left text-zinc-300 hover:bg-zinc-800"
+                >
                   {label}
-                </label>
+                </button>
               ))}
+              {EXTRAS.every(([id]) => visible.some(([v]) => v === id)) && (
+                <div className="px-3 py-2 text-xs text-zinc-600">All filters added</div>
+              )}
             </div>
-          </div>
+          </>
         )}
-      </section>
+      </span>
     </div>
   );
 }

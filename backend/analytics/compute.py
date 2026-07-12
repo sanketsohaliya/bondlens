@@ -161,8 +161,10 @@ def build_rows(today: date | None = None) -> list[dict]:
             "current_yield": yields.current_yield(price, coupon, face),
             "duration": yields.modified_duration(price, sched, ytm, today)
                         if ytm_method in ("exact", "estimated") else None,
-            "credit_rating": ratings.composite(cur),
-            "rating_rank": ratings.best_rank(cur),
+            # Screener shows (and filters on) the most recent agency action
+            # only; the full multi-agency picture lives in the drawer timeline.
+            "credit_rating": ratings.composite(ratings.latest(cur)),
+            "rating_rank": ratings.best_rank(ratings.latest(cur)),
             "rating_change": change["direction"] if change else None,
             "rating_prev": change["prev_rating"] if change else None,
             "rating_changed_at": change["rating_date"] if change else None,

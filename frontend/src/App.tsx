@@ -17,27 +17,24 @@ export default function App() {
 
   return (
     <div className="min-h-screen">
-      <div className="max-w-screen-2xl mx-auto px-4 py-5">
-        <header className="mb-5">
+      <div className="max-w-screen-2xl mx-auto px-6 py-8">
+        <header className="flex items-center gap-4 mb-8">
           <h1 className="text-3xl font-extrabold tracking-tight">
             Bond<span className="text-emerald-400">Lens</span>
           </h1>
-        </header>
-
-        <main className="space-y-5">
-          <FilterBar params={params} onChange={setParams} />
-          <div className="flex items-center gap-4">
+          <div className="ml-auto flex items-center gap-3">
             <input
               type="text"
               placeholder="Search company, symbol, ISIN, rating"
-              className="max-w-xs w-full bg-transparent border border-zinc-700 rounded-md px-2.5 py-1.5 text-xs font-medium focus:outline-none focus:border-emerald-500 placeholder:text-zinc-600"
+              className="w-72 bg-transparent border border-zinc-700 rounded-md px-2.5 py-1.5 text-xs font-medium focus:outline-none focus:border-emerald-500 placeholder:text-zinc-600"
               value={params.q ?? ""}
               onChange={(e) => setParams({ ...params, q: e.target.value || undefined })}
             />
-            <span className="text-xs text-zinc-500">
-              {bonds.data ? `${bonds.data.count.toLocaleString()} bonds shown.` : "…"}
-            </span>
           </div>
+        </header>
+
+        <main className="space-y-6">
+          <FilterBar params={params} onChange={setParams} />
           <ScreenerTable
             bonds={bonds.data?.bonds ?? []}
             loading={bonds.isLoading}

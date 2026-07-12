@@ -113,23 +113,13 @@ function Row({
       </td>
       <td className="px-3 py-2.5 min-w-52">
         <div className="flex items-center gap-1.5">
-          <span className="font-semibold text-zinc-100 underline decoration-zinc-700 underline-offset-2">
+          <span className="font-semibold text-zinc-100 hover:text-emerald-400 transition-colors">
             {b.nse_symbol ?? b.bse_scrip_id ?? b.isin}
           </span>
           <CopyBtn text={b.nse_symbol ?? b.bse_scrip_id ?? b.isin} label="symbol" />
           {b.in_default && (
             <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-500/15 text-red-400 border border-red-500/30">
               DEFAULT
-            </span>
-          )}
-          {b.rating_change === "down" && (
-            <span className="text-red-400 text-xs" title={`was ${b.rating_prev}`}>
-              ▼
-            </span>
-          )}
-          {b.rating_change === "up" && (
-            <span className="text-emerald-400 text-xs" title={`was ${b.rating_prev}`}>
-              ▲
             </span>
           )}
         </div>
@@ -141,7 +131,7 @@ function Row({
             b.ytm_reliable === false
               ? "text-zinc-600 font-bold"
               : b.ytm != null && b.ytm >= 10
-                ? "text-emerald-400 font-bold"
+                ? "text-emerald-500 font-bold"
                 : b.ytm != null
                   ? "text-zinc-100 font-bold"
                   : "text-zinc-500"
@@ -196,7 +186,7 @@ function Row({
         )}
       </td>
       <td
-        className="px-3 py-2.5 whitespace-nowrap text-sm leading-snug hover:bg-zinc-900"
+        className="group/turnover px-3 py-2.5 whitespace-nowrap text-sm leading-snug"
         onClick={(e) => {
           e.stopPropagation();
           onSelect(b.isin, "chart");
@@ -209,7 +199,7 @@ function Row({
           <>
             {(b.nse_turnover != null || b.bse_turnover != null) && (
               <div>
-                <span className="text-zinc-200">
+                <span className="text-zinc-200 group-hover/turnover:underline decoration-zinc-600 underline-offset-2">
                   {fmt.inr((b.nse_turnover ?? 0) + (b.bse_turnover ?? 0))}
                 </span>
                 <span className="ml-1.5 text-[10px] uppercase tracking-wide text-zinc-500">
@@ -219,7 +209,9 @@ function Row({
             )}
             {b.otc_turnover != null && (
               <div>
-                <span className="text-zinc-200">{fmt.inr(b.otc_turnover)}</span>
+                <span className="text-zinc-200 group-hover/turnover:underline decoration-zinc-600 underline-offset-2">
+                  {fmt.inr(b.otc_turnover)}
+                </span>
                 <span className="ml-1.5 text-[10px] uppercase tracking-wide text-zinc-500">
                   OTC
                 </span>
@@ -234,9 +226,19 @@ function Row({
           e.stopPropagation();
           onSelect(b.isin, "ratings");
         }}
-        title="Open rating history"
+        title={
+          b.rating_change === "down"
+            ? `Downgraded recently — was ${b.rating_prev}`
+            : b.rating_change === "up"
+              ? `Upgraded recently — was ${b.rating_prev}`
+              : "Open rating history"
+        }
       >
-        <RatingBadge rating={b.credit_rating} />
+        <RatingBadge
+          rating={b.credit_rating}
+          showAgency={false}
+          tone={b.rating_change === "down" ? "down" : b.rating_change === "up" ? "up" : undefined}
+        />
       </td>
       <td className="px-3 py-2.5 whitespace-nowrap text-right">
         {b.maturity_date != null ? (

@@ -52,6 +52,20 @@ def best_rank(current: list[dict]) -> int | None:
     return min(ranks) if ranks else None
 
 
+def latest(current: list[dict]) -> list[dict]:
+    """The single most recent current agency rating, as a one-element list
+    for composite(). Undated rows lose to dated ones; a same-day tie breaks
+    toward the better grade. Empty input -> empty list."""
+    rated = [x for x in current if x.get("rating")]
+    if not rated:
+        return []
+    def key(x: dict):
+        r = rank(x.get("rating"))
+        return (x.get("rating_date") or date.min,
+                -(r if r is not None else len(RATING_ORDER)))
+    return [max(rated, key=key)]
+
+
 def composite(current: list[dict]) -> str | None:
     """Display string across agencies, one entry per agency with its name
     ('CRISIL: AA+/Stable, ICRA: AA/Negative'). The colon separates agency

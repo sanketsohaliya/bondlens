@@ -49,12 +49,12 @@ select option {
   padding-left: 0.5rem;
 }
 .preset-chip:hover {
-  border-color: rgb(52 211 153);
-  color: rgb(52 211 153);
+  border-color: rgb(16 185 129);
+  color: rgb(16 185 129);
 }
 .preset-chip.active {
-  background: rgb(16 185 129);
-  border-color: rgb(16 185 129);
+  background: rgb(5 150 105);
+  border-color: rgb(5 150 105);
   color: rgb(9 9 11);
 }
 .preset-chip.active span {

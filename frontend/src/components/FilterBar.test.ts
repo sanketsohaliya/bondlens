@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import { DEFAULT_PRESET, describeFilters, PRESETS } from "./FilterBar";
 
 describe("v1 strategy presets", () => {
-  it("has the 13 v1 strategies", () => {
-    expect(PRESETS).toHaveLength(13);
+  it("has the v1 strategies plus Tax-Free", () => {
+    expect(PRESETS).toHaveLength(14);
     expect(PRESETS.map((p) => p.id)).toContain("fdbeater");
   });
 

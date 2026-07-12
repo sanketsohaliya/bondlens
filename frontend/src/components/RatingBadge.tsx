@@ -1,6 +1,16 @@
 /* Plain neutral text, one line per agency: "CRISIL: AA+/Stable". The colon
    separates agency from rating — agency names can be multi-word. */
-export default function RatingBadge({ rating }: { rating: string | null }) {
+export default function RatingBadge({
+  rating,
+  showAgency = true,
+  tone,
+}: {
+  rating: string | null;
+  showAgency?: boolean;
+  /** Recent rating action: "down" renders the grade amber with ▼ (like a
+      stale LTP), "up" adds a subtle green ▲. */
+  tone?: "down" | "up";
+}) {
   if (!rating) return <span className="text-zinc-600 text-xs">unrated</span>;
   const entries = rating.split(", ");
   const shown = entries.length > 2 ? entries.slice(0, 2) : entries;
@@ -13,8 +23,14 @@ export default function RatingBadge({ rating }: { rating: string | null }) {
         const value = i > 0 ? entry.slice(i + 2) : entry;
         return (
           <div key={entry}>
-            <span className="text-zinc-200">{value}</span>
-            {agency && (
+            <span className={tone === "down" ? "text-amber-500/80" : "text-zinc-200"}>{value}</span>
+            {tone === "down" && (
+              <span className="ml-1 text-[10px] text-amber-500/80 align-middle">▼</span>
+            )}
+            {tone === "up" && (
+              <span className="ml-1 text-[10px] text-emerald-600 align-middle">▲</span>
+            )}
+            {showAgency && agency && (
               <span className="ml-1.5 text-[10px] uppercase tracking-wide text-zinc-500">
                 {agency}
               </span>

@@ -195,6 +195,8 @@ def screener(f: dict, stale_days: int) -> tuple[list[dict], int, float | None]:
         add("a.otc_trade_date IS NOT NULL")
     if f.get("secured_only"):
         add("a.secured")
+    if f.get("unsecured_only"):
+        add("a.secured IS NOT TRUE")
     if f.get("tax_free_only"):
         add("a.tax_free")
     if f.get("below_par"):
@@ -202,6 +204,10 @@ def screener(f: dict, stale_days: int) -> tuple[list[dict], int, float | None]:
     if f.get("fresh_only"):
         add("a.trade_date IS NOT NULL AND "
             "CURRENT_DATE - a.trade_date <= %(stale_days)s")
+    if f.get("traded_within") is not None:
+        add("a.trade_date IS NOT NULL AND "
+            "CURRENT_DATE - a.trade_date <= %(traded_within)s",
+            traded_within=f["traded_within"])
     if f.get("exact_only"):
         add("a.ytm_method = 'exact'")
     if f.get("downgraded_only"):

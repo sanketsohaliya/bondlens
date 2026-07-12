@@ -337,7 +337,9 @@ export default function TradeChart({
                         <span
                           className={t.segment === "retail" ? "text-emerald-500" : "text-zinc-400"}
                         >
-                          {t.segment === "retail" ? t.exchange : `OTC (${t.exchange})`}
+                          {t.segment === "retail"
+                            ? `Retail (${t.exchange})`
+                            : `OTC (${t.exchange})`}
                         </span>
                       </td>
                       <td className="px-3 py-1.5 text-zinc-200 whitespace-nowrap">
