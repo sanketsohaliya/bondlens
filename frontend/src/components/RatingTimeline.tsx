@@ -36,7 +36,7 @@ export default function RatingTimeline({ timeline }: { timeline: Record<string, 
                       href={e.press_release}
                       target="_blank"
                       rel="noreferrer"
-                      className="text-xs text-sky-400 hover:underline"
+                      className="text-xs text-emerald-500 hover:underline"
                     >
                       press release ↗
                     </a>

@@ -136,9 +136,9 @@ function Row({ bond: b, onSelect }: { bond: Bond; onSelect: (isin: string) => vo
           className={
             b.ytm_reliable === false
               ? "text-zinc-600"
-              : b.ytm != null && b.ytm >= 10
+              : b.ytm != null
                 ? "text-emerald-400 font-semibold"
-                : "text-zinc-200"
+                : "text-zinc-500"
           }
           title={
             b.ytm_reliable === false
@@ -150,7 +150,7 @@ function Row({ bond: b, onSelect }: { bond: Bond; onSelect: (isin: string) => vo
         </span>
         {b.ytm_method === "ytc" ? (
           <span
-            className="ml-1 text-[10px] text-sky-500"
+            className="ml-1 text-[10px] text-zinc-500"
             title="Yield to earliest call (perpetual)"
           >
             YTC
@@ -170,14 +170,14 @@ function Row({ bond: b, onSelect }: { bond: Bond; onSelect: (isin: string) => vo
       <td className="px-3 py-2.5 whitespace-nowrap">
         <span className={b.stale ? "text-zinc-500" : "text-zinc-200"}>{fmt.inr(b.ltp)}</span>
         {b.face_value != null && b.ltp != null && b.ltp < b.face_value && (
-          <span className="ml-1 text-[10px] text-sky-400" title="below face value">
+          <span className="ml-1 text-[10px] text-zinc-500" title="below face value">
             ↓par
           </span>
         )}
       </td>
       <td className="px-3 py-2.5 text-zinc-400 whitespace-nowrap">{fmt.pct(b.coupon)}</td>
       <td className="px-3 py-2.5 whitespace-nowrap">
-        <RatingBadge rating={b.credit_rating} rank={b.rating_rank} />
+        <RatingBadge rating={b.credit_rating} />
       </td>
       <td className="px-3 py-2.5 text-zinc-400 whitespace-nowrap">
         {b.years_to_maturity != null
@@ -188,7 +188,7 @@ function Row({ bond: b, onSelect }: { bond: Bond; onSelect: (isin: string) => vo
       </td>
       <td className="px-3 py-2.5 text-zinc-400 whitespace-nowrap">{fmt.inr(b.turnover)}</td>
       <td className="px-3 py-2.5 whitespace-nowrap">
-        <span className={b.stale ? "text-amber-500" : "text-zinc-400"}>
+        <span className={b.stale ? "text-zinc-600" : "text-zinc-400"}>
           {b.days_since_traded == null
             ? "never"
             : b.days_since_traded <= 1

@@ -118,7 +118,7 @@ export default function TradeChart({
         .filter((p, i, arr) => i === 0 || p.time !== arr[i - 1].time);
       if (otc.length) {
         const line = chart.addSeries(LineSeries, {
-          color: "#38bdf8",
+          color: "#a1a1aa",
           lineWidth: 1,
           lineStyle: 1,
           title: "OTC clean→₹",
@@ -181,7 +181,7 @@ export default function TradeChart({
         <label className="flex items-center gap-1.5 ml-auto text-zinc-400 cursor-pointer">
           <input
             type="checkbox"
-            className="accent-sky-400"
+            className="accent-emerald-500"
             checked={showOtc}
             onChange={(e) => setShowOtc(e.target.checked)}
           />
@@ -204,7 +204,7 @@ export default function TradeChart({
       <div className="text-xs text-zinc-600">
         {counts.retail} retail days · {counts.otc} OTC days ·{" "}
         <span className="text-emerald-500">— retail dirty ₹</span> ·{" "}
-        <span className="text-sky-400">-- OTC clean % × face</span>
+        <span className="text-zinc-400">-- OTC clean % × face</span>
       </div>
     </div>
   );

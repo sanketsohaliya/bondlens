@@ -3,12 +3,11 @@ import { useState } from "react";
 import { api } from "./api/client";
 import type { ScreenerParams } from "./api/types";
 import BondDrawer from "./components/BondDrawer";
-import FilterBar from "./components/FilterBar";
+import FilterBar, { DEFAULT_PRESET } from "./components/FilterBar";
 import ScreenerTable from "./components/ScreenerTable";
-import StatusBar from "./components/StatusBar";
 
 export default function App() {
-  const [params, setParams] = useState<ScreenerParams>({});
+  const [params, setParams] = useState<ScreenerParams>(DEFAULT_PRESET.params);
   const [selected, setSelected] = useState<string | null>(null);
 
   const bonds = useQuery({
@@ -18,29 +17,36 @@ export default function App() {
 
   return (
     <div className="min-h-screen">
-      <header className="border-b border-zinc-800 bg-zinc-950/90 backdrop-blur sticky top-0 z-30">
-        <div className="max-w-screen-2xl mx-auto px-4 py-3 flex items-center justify-between gap-4">
-          <div className="flex items-baseline gap-3">
-            <h1 className="text-xl font-bold tracking-tight">
-              Bond<span className="text-emerald-400">Lens</span>
-            </h1>
+      <div className="max-w-screen-2xl mx-auto px-4 py-8">
+        <header className="mb-8">
+          <h1 className="text-3xl font-extrabold tracking-tight">
+            Bond<span className="text-emerald-400">Lens</span>
+          </h1>
+          <p className="text-sm text-zinc-500 mt-1">Retail corporate bond scanner for NSE</p>
+        </header>
+
+        <main className="space-y-5">
+          <FilterBar params={params} onChange={setParams} />
+          <div className="flex items-center gap-4">
+            <input
+              type="text"
+              placeholder="Search company, symbol, ISIN, rating"
+              className="max-w-xs w-full bg-transparent border border-zinc-700 rounded-md px-2.5 py-1.5 text-xs font-medium focus:outline-none focus:border-emerald-500 placeholder:text-zinc-600"
+              value={params.q ?? ""}
+              onChange={(e) => setParams({ ...params, q: e.target.value || undefined })}
+            />
             <span className="text-xs text-zinc-500">
-              {bonds.data ? `${bonds.data.count.toLocaleString()} bonds` : "…"}
+              {bonds.data ? `${bonds.data.count.toLocaleString()} bonds shown.` : "…"}
             </span>
           </div>
-          <StatusBar />
-        </div>
-      </header>
-
-      <main className="max-w-screen-2xl mx-auto px-4 py-4 space-y-4">
-        <FilterBar params={params} onChange={setParams} />
-        <ScreenerTable
-          bonds={bonds.data?.bonds ?? []}
-          loading={bonds.isLoading}
-          error={bonds.error?.message ?? null}
-          onSelect={setSelected}
-        />
-      </main>
+          <ScreenerTable
+            bonds={bonds.data?.bonds ?? []}
+            loading={bonds.isLoading}
+            error={bonds.error?.message ?? null}
+            onSelect={setSelected}
+          />
+        </main>
+      </div>
 
       {selected && <BondDrawer isin={selected} onClose={() => setSelected(null)} />}
     </div>

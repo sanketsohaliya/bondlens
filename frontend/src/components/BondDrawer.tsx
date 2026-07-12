@@ -42,7 +42,7 @@ export default function BondDrawer({ isin, onClose }: { isin: string; onClose: (
                     <h2 className="text-lg font-bold">
                       {bond.nse_symbol ?? bond.bse_scrip_id ?? bond.isin}
                     </h2>
-                    <RatingBadge rating={bond.credit_rating} rank={bond.rating_rank} />
+                    <RatingBadge rating={bond.credit_rating} />
                     {bond.in_default && (
                       <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-500/15 text-red-400 border border-red-500/30">
                         DEFAULT
@@ -229,7 +229,7 @@ function Overview({
                 href={d.download_link!}
                 target="_blank"
                 rel="noreferrer"
-                className="text-sky-400 hover:underline mr-3"
+                className="text-emerald-500 hover:underline mr-3"
               >
                 {d.doc_name ?? "document"} ↗
               </a>
