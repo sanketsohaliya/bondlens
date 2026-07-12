@@ -20,6 +20,12 @@ input[type="date"] {
   color-scheme: dark;
 }
 
+/* Native dropdown lists should match the dark design, not the UA default. */
+select option {
+  background-color: rgb(24 24 27);
+  color: rgb(228 228 231);
+}
+
 /* v1 strategy chips (dark-only port of the original static/index.html styles). */
 .preset-chip {
   display: inline-flex;
