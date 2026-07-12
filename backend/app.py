@@ -45,6 +45,8 @@ def bonds(
         None, description="Min ₹ retail turnover on last trade day"),
     min_otc_turnover: float | None = Query(
         None, description="Min ₹ OTC turnover on last OTC trade day"),
+    retail_only: bool = Query(False, description="Only bonds with retail (exchange) trades"),
+    otc_only: bool = Query(False, description="Only bonds with OTC trades"),
     secured_only: bool = Query(False),
     tax_free_only: bool = Query(False),
     below_par: bool = Query(False),
@@ -68,6 +70,7 @@ def bonds(
         "issuer": issuer, "exchange": exchange, "frequency": frequency,
         "min_years": min_years, "max_years": max_years, "max_ltp": max_ltp,
         "min_turnover": min_turnover, "min_otc_turnover": min_otc_turnover,
+        "retail_only": retail_only, "otc_only": otc_only,
         "secured_only": secured_only,
         "tax_free_only": tax_free_only, "below_par": below_par,
         "fresh_only": fresh_only, "exact_only": exact_only,

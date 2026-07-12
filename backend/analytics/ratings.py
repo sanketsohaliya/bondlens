@@ -54,9 +54,10 @@ def best_rank(current: list[dict]) -> int | None:
 
 def composite(current: list[dict]) -> str | None:
     """Display string across agencies, one entry per agency with its name
-    ('CRISIL AA+/Stable, ICRA AA/Negative'). Best grade first; entries
-    without a parseable grade sort last. Duplicate (agency, rating)
-    pairs collapse to one."""
+    ('CRISIL: AA+/Stable, ICRA: AA/Negative'). The colon separates agency
+    from rating — agency names can be multi-word ('INDIA RATINGS'). Best
+    grade first; entries without a parseable grade sort last. Duplicate
+    (agency, rating) pairs collapse to one."""
     if not current:
         return None
     seen: set[tuple[str, str]] = set()
@@ -72,7 +73,7 @@ def composite(current: list[dict]) -> str | None:
             seen.add((agency, s))
             parts.append((agency, s))
     parts.sort(key=lambda p: (rank(p[1]) is None, rank(p[1]) or 0, p[0]))
-    return ", ".join(f"{a} {s}" if a else s for a, s in parts) or None
+    return ", ".join(f"{a}: {s}" if a else s for a, s in parts) or None
 
 
 def recent_change(history: list[dict],

@@ -189,6 +189,10 @@ def screener(f: dict, stale_days: int) -> tuple[list[dict], int, float | None]:
     if f.get("min_otc_turnover") is not None:
         add("a.otc_turnover >= %(min_otc_turnover)s",
             min_otc_turnover=f["min_otc_turnover"])
+    if f.get("retail_only"):
+        add("a.trade_date IS NOT NULL")
+    if f.get("otc_only"):
+        add("a.otc_trade_date IS NOT NULL")
     if f.get("secured_only"):
         add("a.secured")
     if f.get("tax_free_only"):

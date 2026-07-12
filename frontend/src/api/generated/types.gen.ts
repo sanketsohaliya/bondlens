@@ -930,6 +930,18 @@ export type BondsApiBondsGetData = {
          */
         min_otc_turnover?: number | null;
         /**
+         * Retail Only
+         *
+         * Only bonds with retail (exchange) trades
+         */
+        retail_only?: boolean;
+        /**
+         * Otc Only
+         *
+         * Only bonds with OTC trades
+         */
+        otc_only?: boolean;
+        /**
          * Secured Only
          */
         secured_only?: boolean;

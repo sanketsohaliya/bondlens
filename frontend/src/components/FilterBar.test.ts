@@ -66,6 +66,13 @@ describe("describeFilters", () => {
     ]);
   });
 
+  it("covers the segment-presence flags", () => {
+    expect(describeFilters({ retail_only: true, otc_only: true })).toEqual([
+      "trades retail",
+      "trades OTC",
+    ]);
+  });
+
   it("ignores the search query and empty params", () => {
     expect(describeFilters({ q: "hdfc" })).toEqual([]);
     expect(describeFilters({})).toEqual([]);

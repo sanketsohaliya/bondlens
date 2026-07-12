@@ -1,12 +1,13 @@
-/* Plain neutral text, one line per agency: "CRISIL AA+/Stable". */
+/* Plain neutral text, one line per agency: "CRISIL: AA+/Stable". The colon
+   separates agency from rating — agency names can be multi-word. */
 export default function RatingBadge({ rating }: { rating: string | null }) {
   if (!rating) return <span className="text-zinc-600 text-xs">unrated</span>;
   return (
     <div className="text-xs leading-snug" title={rating}>
       {rating.split(", ").map((entry) => {
-        const i = entry.indexOf(" ");
+        const i = entry.indexOf(": ");
         const agency = i > 0 ? entry.slice(0, i) : null;
-        const value = i > 0 ? entry.slice(i + 1) : entry;
+        const value = i > 0 ? entry.slice(i + 2) : entry;
         return (
           <div key={entry}>
             {agency && <span className="text-zinc-500">{agency} </span>}

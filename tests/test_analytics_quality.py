@@ -33,19 +33,19 @@ def _cur(*triples):
 
 def test_composite_names_every_agency():
     cur = _cur(("CARE", "AAA", "Stable"), ("CRISIL", "AAA", "Stable"),
-               ("ICRA", "AAA", "Stable"))
+               ("INDIA RATINGS", "AAA", "Stable"))
     assert ratings.composite(cur) == (
-        "CARE AAA/Stable, CRISIL AAA/Stable, ICRA AAA/Stable")
+        "CARE: AAA/Stable, CRISIL: AAA/Stable, INDIA RATINGS: AAA/Stable")
 
 
 def test_composite_keeps_disagreements_visible_best_first():
     cur = _cur(("ICRA", "AA", "Negative"), ("CRISIL", "AA+", "Stable"))
-    assert ratings.composite(cur) == "CRISIL AA+/Stable, ICRA AA/Negative"
+    assert ratings.composite(cur) == "CRISIL: AA+/Stable, ICRA: AA/Negative"
 
 
 def test_composite_no_outlook_and_single():
-    assert ratings.composite(_cur(("CARE", "AAA", None))) == "CARE AAA"
-    assert ratings.composite(_cur(("CARE", "AA", "No Outlook"))) == "CARE AA"
+    assert ratings.composite(_cur(("CARE", "AAA", None))) == "CARE: AAA"
+    assert ratings.composite(_cur(("CARE", "AA", "No Outlook"))) == "CARE: AA"
     assert ratings.composite([]) is None
 
 

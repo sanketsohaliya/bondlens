@@ -204,18 +204,21 @@ function Row({
           <span className="text-zinc-500">–</span>
         ) : (
           <>
-            {b.nse_turnover != null && (
-              <div className="text-zinc-400">
-                <span className="text-zinc-600">NSE </span>
-                {fmt.inr(b.nse_turnover)}
+            {(b.nse_turnover != null || b.bse_turnover != null) && (
+              <div className="text-zinc-300">
+                <span className="text-zinc-600">Retail </span>
+                {fmt.inr((b.nse_turnover ?? 0) + (b.bse_turnover ?? 0))}
               </div>
             )}
-            {b.bse_turnover != null && (
-              <div className="text-zinc-400">
-                <span className="text-zinc-600">BSE </span>
-                {fmt.inr(b.bse_turnover)}
+            {b.nse_turnover != null && b.bse_turnover != null ? (
+              <div className="text-[10px] text-zinc-500">
+                NSE {fmt.inr(b.nse_turnover)} · BSE {fmt.inr(b.bse_turnover)}
               </div>
-            )}
+            ) : b.nse_turnover != null || b.bse_turnover != null ? (
+              <div className="text-[10px] text-zinc-500">
+                {b.nse_turnover != null ? "NSE only" : "BSE only"}
+              </div>
+            ) : null}
             {b.otc_turnover != null && (
               <div className="text-zinc-400">
                 <span className="text-zinc-600">OTC </span>

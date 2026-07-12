@@ -122,6 +122,8 @@ export function describeFilters(p: ScreenerParams): string[] {
   if (p.frequency) parts.push(`pays ${p.frequency}`);
   if (p.sector) parts.push(`sector: ${p.sector}`);
   if (p.exchange) parts.push(`on ${p.exchange}`);
+  if (p.retail_only) parts.push("trades retail");
+  if (p.otc_only) parts.push("trades OTC");
   if (p.watchlist_only) parts.push("watchlist only");
   if (p.fresh_only) parts.push("fresh prices");
   if (p.exact_only) parts.push("exact YTM only");
@@ -344,6 +346,8 @@ export default function FilterBar({
             <div className="col-span-2 flex flex-wrap items-end gap-3 text-xs text-zinc-400">
               {(
                 [
+                  ["retail_only", "Trades retail"],
+                  ["otc_only", "Trades OTC"],
                   ["fresh_only", "Fresh prices"],
                   ["exact_only", "Exact YTM"],
                   ["secured_only", "Secured"],

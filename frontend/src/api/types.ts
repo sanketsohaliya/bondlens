@@ -27,6 +27,8 @@ export interface ScreenerParams {
   max_ltp?: number;
   min_turnover?: number;
   min_otc_turnover?: number;
+  retail_only?: boolean;
+  otc_only?: boolean;
   secured_only?: boolean;
   tax_free_only?: boolean;
   below_par?: boolean;
