@@ -7,6 +7,7 @@ job windows (scripts/healthcheck.py).
 """
 import os
 from datetime import UTC, date, datetime, timedelta
+from pathlib import Path
 
 import requests
 
@@ -17,6 +18,10 @@ NTFY_URL = os.environ.get("NTFY_URL", "https://ntfy.sh")
 
 # A run row whose ok is still NULL after this long crashed mid-way.
 STUCK_AFTER_HOURS = 3
+
+# Weekly backup (Sat 08:00) counts as stale after this many days.
+BACKUP_MAX_AGE_DAYS = 8
+BACKUP_FILE = Path(os.environ.get("BACKUP_DIR", "/desktop")) / "bondlens.dump"
 
 
 def _last_trading_day(today: date) -> date:
@@ -78,6 +83,16 @@ def check(now: datetime | None = None) -> list[str]:
                 "WHERE ok IS NULL AND run_at < %s", (cutoff,)).fetchone()
             if r and r["n"]:
                 problems.append(f"{table}: {r['n']} run(s) stuck mid-way")
+
+    # 6) Weekly backup landed recently (only where /desktop is mounted).
+    if BACKUP_FILE.parent.exists():
+        if not BACKUP_FILE.exists():
+            problems.append(f"backup: {BACKUP_FILE} missing")
+        else:
+            age = now - datetime.fromtimestamp(
+                BACKUP_FILE.stat().st_mtime, tz=UTC)
+            if age > timedelta(days=BACKUP_MAX_AGE_DAYS):
+                problems.append(f"backup: {age.days} days old")
 
     return problems
 

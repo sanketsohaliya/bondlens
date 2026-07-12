@@ -20,7 +20,7 @@ screener.
   - 05:30 Mon–Sat: universe build (`backend/universe.py`)
   - 07:00 daily: NSDL harvest + parse (`scripts/harvest_nsdl.py`, `parse_nsdl.py`)
   - 19:00 Mon–Fri (+07:15 retry): EOD trades (`scripts/harvest_eod.py`, `parse_eod.py`)
-  - 08:00 daily: DB backup to the Windows Desktop (`scripts/backup_db.py`)
+  - 08:00 Sat: weekly DB backup to the Windows Desktop (`scripts/backup_db.py`)
   - 08:45 daily + 19:45 Mon–Fri: healthcheck with ntfy alerts (`scripts/healthcheck.py`)
 
 ## Run
@@ -89,8 +89,8 @@ npm test          # vitest
   pushes only when something is wrong (job failed/missing, stale trades,
   stale analytics, stuck runs). Test the wiring:
   `docker compose exec jobs python scripts/healthcheck.py --ping`
-- **Backups**: `C:\Users\sanket.patel\Desktop\bondlens.dump` is a full
-  `pg_dump -Fc`, replaced atomically every morning. Restore with
+- **Backups**: `C:\Users\sanket.patel\OneDrive - FE fundinfo\Desktop\bondlens.dump is a
+  `full pg_dump -Fc, replaced atomically every Saturday morning. Restore with
   `pg_restore -d bondlens bondlens.dump`.
 - **Container logs** are capped at 10MB × 3 files per service
   (`docker compose logs jobs` to view).

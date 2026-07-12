@@ -59,8 +59,9 @@ services:
       NTFY_TOPIC: bondlens-sanket-x7k2m9   # subscribe to this in the ntfy app
       BACKUP_DIR: /desktop
     volumes:
-      # Nightly pg_dump lands on the Windows Desktop, replacing the last one.
-      - /mnt/c/Users/sanket.patel/Desktop:/desktop
+      # Weekly pg_dump lands on the (OneDrive-redirected) Windows Desktop,
+      # replacing the previous one. Bonus: OneDrive syncs it offsite.
+      - "/mnt/c/Users/sanket.patel/OneDrive - FE fundinfo/Desktop:/desktop"
     depends_on:
       db:
         condition: service_healthy

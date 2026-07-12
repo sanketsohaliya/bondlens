@@ -15,8 +15,8 @@
 # 4) EOD safety retry — 07:15 Tue-Sat (late publications; idempotent)
 15 7 * * 2-6 cd /app && python scripts/harvest_eod.py; python scripts/parse_eod.py; python scripts/compute_analytics.py
 
-# 5) Nightly backup — 08:00 daily, overwrites /desktop/bondlens.dump
-0 8 * * * cd /app && python scripts/backup_db.py
+# 5) Weekly backup — Saturday 08:00, overwrites /desktop/bondlens.dump
+0 8 * * 6 cd /app && python scripts/backup_db.py
 
 # 6) Healthcheck — after the morning window (08:45) and evening EOD (19:45);
 #    pushes to ntfy on problems, silent when healthy.
