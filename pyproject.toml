@@ -56,3 +56,7 @@ reportUnannotatedClassAttribute = false
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+    "e2e: live scrape->parse pipeline against a temporary DB (network, slow)",
+]
+addopts = '-m "not e2e"'
