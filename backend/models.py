@@ -45,6 +45,7 @@ class Bond(BaseModel):
     otc_yield: float | None
     otc_trade_date: date | None
     otc_days_since_traded: int | None
+    otc_turnover: float | None
     ytm: float | None
     ytm_method: YtmMethod | None
     ytm_reliable: bool | None

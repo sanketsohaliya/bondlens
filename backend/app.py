@@ -41,7 +41,10 @@ def bonds(
     min_years: float | None = Query(None),
     max_years: float | None = Query(None),
     max_ltp: float | None = Query(None, description="Max price per unit"),
-    min_turnover: float | None = Query(None, description="Min ₹ turnover on last trade day"),
+    min_turnover: float | None = Query(
+        None, description="Min ₹ retail turnover on last trade day"),
+    min_otc_turnover: float | None = Query(
+        None, description="Min ₹ OTC turnover on last OTC trade day"),
     secured_only: bool = Query(False),
     tax_free_only: bool = Query(False),
     below_par: bool = Query(False),
@@ -64,7 +67,8 @@ def bonds(
         "min_rating_rank": floor, "sector": sector, "industry": industry,
         "issuer": issuer, "exchange": exchange, "frequency": frequency,
         "min_years": min_years, "max_years": max_years, "max_ltp": max_ltp,
-        "min_turnover": min_turnover, "secured_only": secured_only,
+        "min_turnover": min_turnover, "min_otc_turnover": min_otc_turnover,
+        "secured_only": secured_only,
         "tax_free_only": tax_free_only, "below_par": below_par,
         "fresh_only": fresh_only, "exact_only": exact_only,
         "downgraded_only": downgraded_only,

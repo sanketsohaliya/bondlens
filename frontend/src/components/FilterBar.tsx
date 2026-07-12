@@ -117,7 +117,8 @@ export function describeFilters(p: ScreenerParams): string[] {
   if (p.min_years != null) parts.push(`maturity ≥ ${p.min_years}y`);
   if (p.max_years != null) parts.push(`maturity ≤ ${p.max_years}y`);
   if (p.max_ltp != null) parts.push(`price ≤ ₹${p.max_ltp.toLocaleString("en-IN")}`);
-  if (p.min_turnover != null) parts.push(`traded ≥ ${fmt.inr(p.min_turnover)}`);
+  if (p.min_turnover != null) parts.push(`retail traded ≥ ${fmt.inr(p.min_turnover)}`);
+  if (p.min_otc_turnover != null) parts.push(`OTC traded ≥ ${fmt.inr(p.min_otc_turnover)}`);
   if (p.frequency) parts.push(`pays ${p.frequency}`);
   if (p.sector) parts.push(`sector: ${p.sector}`);
   if (p.exchange) parts.push(`on ${p.exchange}`);
@@ -319,13 +320,24 @@ export default function FilterBar({
               />
             </label>
             <label className="text-xs text-zinc-400">
-              <span className={labelCls}>Min traded today ₹</span>
+              <span className={labelCls}>Retail traded ₹ (min)</span>
               <input
                 type="number"
                 className={inputCls}
                 value={params.min_turnover ?? ""}
                 onChange={(e) =>
                   set({ min_turnover: e.target.value ? +e.target.value : undefined })
+                }
+              />
+            </label>
+            <label className="text-xs text-zinc-400">
+              <span className={labelCls}>OTC traded ₹ (min)</span>
+              <input
+                type="number"
+                className={inputCls}
+                value={params.min_otc_turnover ?? ""}
+                onChange={(e) =>
+                  set({ min_otc_turnover: e.target.value ? +e.target.value : undefined })
                 }
               />
             </label>

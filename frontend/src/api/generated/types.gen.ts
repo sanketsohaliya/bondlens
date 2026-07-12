@@ -135,6 +135,10 @@ export type Bond = {
      */
     otc_days_since_traded: number | null;
     /**
+     * Otc Turnover
+     */
+    otc_turnover: number | null;
+    /**
      * Ytm
      */
     ytm: number | null;
@@ -908,9 +912,15 @@ export type BondsApiBondsGetData = {
         /**
          * Min Turnover
          *
-         * Min ₹ turnover on last trade day
+         * Min ₹ retail turnover on last trade day
          */
         min_turnover?: number | null;
+        /**
+         * Min Otc Turnover
+         *
+         * Min ₹ OTC turnover on last OTC trade day
+         */
+        min_otc_turnover?: number | null;
         /**
          * Secured Only
          */

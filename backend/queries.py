@@ -175,6 +175,9 @@ def screener(f: dict, stale_days: int) -> tuple[list[dict], int, float | None]:
         add("a.ltp <= %(max_ltp)s", max_ltp=f["max_ltp"])
     if f.get("min_turnover") is not None:
         add("a.turnover >= %(min_turnover)s", min_turnover=f["min_turnover"])
+    if f.get("min_otc_turnover") is not None:
+        add("a.otc_turnover >= %(min_otc_turnover)s",
+            min_otc_turnover=f["min_otc_turnover"])
     if f.get("secured_only"):
         add("a.secured")
     if f.get("tax_free_only"):

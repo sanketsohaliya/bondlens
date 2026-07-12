@@ -29,7 +29,7 @@ describe("describeFilters", () => {
     expect(describeFilters(DEFAULT_PRESET.params)).toEqual([
       "rating ≥ AA-",
       "YTM ≥ 8%",
-      "traded ≥ ₹1.00L",
+      "retail traded ≥ ₹1.00L",
     ]);
   });
 
@@ -56,6 +56,13 @@ describe("describeFilters", () => {
       "fresh prices",
       "exact YTM only",
       "below face value",
+    ]);
+  });
+
+  it("distinguishes retail and OTC turnover", () => {
+    expect(describeFilters({ min_turnover: 100000, min_otc_turnover: 10000000 })).toEqual([
+      "retail traded ≥ ₹1.00L",
+      "OTC traded ≥ ₹1.00Cr",
     ]);
   });
 
