@@ -36,6 +36,7 @@ ADMIN_URL = os.environ.get(
 E2E_DB = "bondlens_e2e"
 E2E_URL = ADMIN_URL.rsplit("/", 1)[0] + "/" + E2E_DB
 SCRIPT_TIMEOUT = 600
+NSDL_SAMPLE_SIZE = 10   # ISINs harvested in stage 3 (~15 calls each)
 
 # Stage progress: later stages skip (not fail) when a prerequisite failed.
 _done: dict[str, Any] = {}
@@ -187,11 +188,13 @@ def test_stage3_nsdl_scrape_and_parse():
         SELECT b.isin FROM bonds b
         JOIN eod_trades t ON t.isin = b.isin AND t.segment = 'retail'
         WHERE b.status = 'listed'
-        GROUP BY b.isin ORDER BY sum(t.turnover) DESC NULLS LAST LIMIT 3""")]
+        GROUP BY b.isin ORDER BY sum(t.turnover) DESC NULLS LAST
+        LIMIT %s""", (NSDL_SAMPLE_SIZE,))]
     if not picked:  # EOD skipped (holiday) — fall back to dual-listed names
         picked = [r["isin"] for r in q(
             "SELECT isin FROM bonds WHERE status = 'listed' "
-            "AND on_nse AND on_bse ORDER BY isin LIMIT 3")]
+            "AND on_nse AND on_bse ORDER BY isin LIMIT %s",
+            (NSDL_SAMPLE_SIZE,))]
     assert picked, "no candidate ISINs in scraped universe"
     print(f"  harvesting: {picked}")
 
@@ -205,8 +208,9 @@ def test_stage3_nsdl_scrape_and_parse():
     assert run["ok"] is True, f"nsdl_runs not ok: {run}"
     raw = one("SELECT count(DISTINCT isin) AS isins, count(*) AS rows "
               "FROM nsdl_raw WHERE http_status = 200")
-    assert raw["isins"] >= 2, (
-        f"NSDL returned data for only {raw['isins']}/3 ISINs")
+    min_ok = max(2, int(len(picked) * 0.7))  # NSDL misses ~17% of universe
+    assert raw["isins"] >= min_ok, (
+        f"NSDL returned data for only {raw['isins']}/{len(picked)} ISINs")
 
     res = run_script(["scripts/parse_nsdl.py"])
     assert res.returncode == 0, "parse_nsdl crashed"
@@ -243,8 +247,11 @@ def test_stage4_analytics():
     enriched = q("""
         SELECT isin, schedule_shape, coupon, ytm, ltp FROM bond_analytics
         WHERE isin = ANY(%s)""", (_done["nsdl"],))
-    assert all(r["schedule_shape"] != "empty" for r in enriched), (
-        f"harvested ISINs came out shapeless: {enriched}")
+    # NSDL has no schedule data for a slice of the universe (~17%, e.g.
+    # market-linked debentures) — require a majority, not all.
+    shaped = [r for r in enriched if r["schedule_shape"] != "empty"]
+    assert len(shaped) >= max(1, len(enriched) // 2), (
+        f"most harvested ISINs came out shapeless: {enriched}")
     if _done.get("eod"):
         priced = [r for r in enriched if r["ltp"] is not None]
         assert priced, "traded+parsed ISINs have no price in analytics"
