@@ -1,0 +1,37 @@
+@import "tailwindcss";
+
+/* Keep the original BondLens look: Inter on zinc-950, emerald accent. */
+@theme {
+  --font-sans: "Inter", system-ui, sans-serif;
+}
+
+html {
+  color-scheme: dark;
+}
+
+body {
+  @apply bg-zinc-950 text-zinc-100 font-sans antialiased;
+}
+
+select,
+input[type="number"],
+input[type="text"],
+input[type="date"] {
+  color-scheme: dark;
+}
+
+.scroll-slim {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(82 82 91) transparent;
+}
+.scroll-slim::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.scroll-slim::-webkit-scrollbar-thumb {
+  background: rgb(82 82 91);
+  border-radius: 9999px;
+}
+.scroll-slim::-webkit-scrollbar-track {
+  background: transparent;
+}

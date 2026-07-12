@@ -1,0 +1,16 @@
+# BondLens scheduled jobs — run by supercronic inside the `jobs` container.
+# Times are IST (TZ=Asia/Kolkata baked into the image). supercronic skips
+# a schedule if its previous run is still going, so no flock needed.
+
+# 1) Bond universe build — 05:30 Mon-Sat (after NSE's ~03:00 master regen)
+30 5 * * 1-6 cd /app && python -m bondlens.universe
+
+# 2) NSDL harvest + parse — 07:00 daily. ';' not '&&': parse what was
+#    fetched even if some calls failed.
+0 7 * * * cd /app && python scripts/harvest_nsdl.py --workers 8; python scripts/parse_nsdl.py
+
+# 3) EOD trades harvest + parse — 19:00 Mon-Fri (exchanges publish ~16-18h)
+0 19 * * 1-5 cd /app && python scripts/harvest_eod.py; python scripts/parse_eod.py
+
+# 4) EOD safety retry — 07:15 Tue-Sat (late publications; idempotent)
+15 7 * * 2-6 cd /app && python scripts/harvest_eod.py; python scripts/parse_eod.py

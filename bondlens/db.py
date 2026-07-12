@@ -1,9 +1,15 @@
-"""PostgreSQL storage for bond snapshots, NSDL cache, watchlist and holdings.
+"""PostgreSQL storage for the BondLens data platform.
 
-Connection comes from the DATABASE_URL env var (default: local dev database).
-Snapshots and the G-Sec curve are append-only — history is kept forever by
-design; nothing in the app prunes them.
+One database (``bondlens``), one pool. Connection comes from the
+DATABASE_URL env var (default: local dev database).
+
+The universe/harvest tables here are the ones the scheduled jobs write to;
+the NSDL parse layer (bond_info, bond_terms, bond_cashflows, ...) and the
+EOD trade tables define their schemas in their own scripts because they own
+those tables' lifecycles (truncate-rebuild / incremental append).
 """
+import gzip
+import hashlib
 import os
 from contextlib import contextmanager
 from datetime import datetime, timezone
@@ -17,151 +23,100 @@ DATABASE_URL = os.environ.get(
 )
 
 SCHEMA = """
-CREATE TABLE IF NOT EXISTS snapshots (
-    id BIGSERIAL PRIMARY KEY,
-    fetched_at TEXT NOT NULL,
-    isin TEXT,
-    symbol TEXT,
-    series TEXT,
-    coupon DOUBLE PRECISION,
-    face_value DOUBLE PRECISION,
-    ltp DOUBLE PRECISION,
-    open DOUBLE PRECISION,
-    high DOUBLE PRECISION,
-    low DOUBLE PRECISION,
-    close DOUBLE PRECISION,
-    pct_change DOUBLE PRECISION,
-    qty DOUBLE PRECISION,
-    traded_value DOUBLE PRECISION,
-    maturity_date TEXT,
-    next_interest_date TEXT,
-    credit_rating TEXT,
-    rating_agency TEXT,
-    ytm DOUBLE PRECISION
+-- The daily-tracked corporate-bond universe: union of the NSE (DEBT.csv)
+-- and BSE (ListofScripData Active+Suspended) listing masters. One row per
+-- ISIN ever seen; `status` flips to 'dropped' when an ISIN leaves both
+-- masters (matured/delisted) but the row is kept for history.
+--
+-- Deliberately stores ONLY data that cannot be re-fetched later from
+-- NSDL/CDSL: exchange-specific identifiers/status and point-in-time
+-- observations. Descriptive fields (coupon, face value, listing/maturity
+-- dates, security type) are NOT duplicated here -- they are joined on
+-- demand from the NSDL cache (or derived from the ISIN) at read time.
+-- issuer_name is the exception: NSDL misses ~17% of the listed universe,
+-- so the exchange-provided name is the only source for those bonds.
+CREATE TABLE IF NOT EXISTS bonds (
+    isin TEXT PRIMARY KEY,
+    status TEXT NOT NULL DEFAULT 'listed'
+        CHECK (status IN ('listed', 'dropped')),
+    on_nse BOOLEAN NOT NULL DEFAULT FALSE,
+    on_bse BOOLEAN NOT NULL DEFAULT FALSE,
+    bse_status TEXT,                         -- Active | Suspended | NULL
+    issuer_name TEXT,           -- NSE company name, else BSE issuer name
+    nse_symbol TEXT,
+    nse_series TEXT,
+    bse_scrip_code TEXT,
+    bse_scrip_id TEXT,
+    created_at TIMESTAMPTZ NOT NULL,  -- when the row was inserted; immutable
+    first_seen TIMESTAMPTZ NOT NULL,  -- first observed listed; immutable
+    last_seen TIMESTAMPTZ NOT NULL,   -- last observed in a master
+    updated_at TIMESTAMPTZ NOT NULL   -- last write to this row
 );
-CREATE INDEX IF NOT EXISTS idx_snapshots_isin ON snapshots (isin, fetched_at);
-CREATE INDEX IF NOT EXISTS idx_snapshots_fetched_at ON snapshots (fetched_at);
+CREATE INDEX IF NOT EXISTS idx_bonds_status
+    ON bonds (status);
 
+-- Append-only change log of universe membership/status transitions.
+-- One row per changed field: status_change / source_change /
+-- identifier_change carry (field, old_value, new_value); membership events
+-- (added/dropped/relisted) need no payload -- the row state captures it.
+CREATE TABLE IF NOT EXISTS bond_events (
+    id BIGSERIAL PRIMARY KEY,
+    event_date DATE NOT NULL,   -- observation day (matches the master files)
+    isin TEXT NOT NULL,
+    event_type TEXT NOT NULL
+        CHECK (event_type IN ('added', 'dropped', 'relisted',
+                              'status_change', 'source_change',
+                              'identifier_change')),
+    field TEXT,                 -- which column changed (NULL for membership)
+    old_value TEXT,
+    new_value TEXT,
+    created_at TIMESTAMPTZ NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_bond_events_isin
+    ON bond_events (isin);
+CREATE INDEX IF NOT EXISTS idx_bond_events_date
+    ON bond_events (event_date);
+
+-- One row per universe-build run. The row is INSERTed when the run
+-- starts and finalized (counts, ok, log) when it ends -- so a row left
+-- with ok IS NULL means the run crashed mid-way.
+CREATE TABLE IF NOT EXISTS bond_runs (
+    id BIGSERIAL PRIMARY KEY,
+    run_at TIMESTAMPTZ NOT NULL,
+    nse_corp INTEGER,
+    bse_active INTEGER,
+    bse_suspended INTEGER,
+    overlap INTEGER,
+    total INTEGER,
+    added INTEGER,
+    dropped INTEGER,
+    relisted INTEGER,
+    ok BOOLEAN,
+    notes TEXT,
+    log TEXT                    -- timestamped step-by-step run log
+);
+
+-- Verbatim archive of the raw master files each run was built from.
+-- Exchanges only publish today's file, so these are unrecoverable later.
+-- Content is gzip-compressed; deduped by content hash so re-runs on an
+-- unchanged master store nothing new.
+CREATE TABLE IF NOT EXISTS raw_files (
+    id BIGSERIAL PRIMARY KEY,
+    run_id BIGINT REFERENCES bond_runs(id),  -- run that captured this file
+    fetched_at TIMESTAMPTZ NOT NULL,
+    source TEXT NOT NULL,       -- 'nse_debt_csv' | 'bse_scrip_master'
+    sha256 TEXT NOT NULL,       -- hash of the uncompressed content
+    size_bytes INTEGER NOT NULL,-- uncompressed size
+    content BYTEA NOT NULL,     -- gzipped payload
+    UNIQUE (source, sha256)
+);
+
+-- User watchlist (the only user-writable table).
 CREATE TABLE IF NOT EXISTS watchlist (
-    isin TEXT PRIMARY KEY,
-    note TEXT
+    isin TEXT PRIMARY KEY REFERENCES bonds (isin),
+    added_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
-
-CREATE TABLE IF NOT EXISTS nsdl_meta (
-    isin TEXT PRIMARY KEY,
-    fetched_at TEXT,
-    status TEXT,
-    frequency TEXT,
-    frequency_text TEXT,
-    coupon_basis TEXT
-);
-ALTER TABLE nsdl_meta ADD COLUMN IF NOT EXISTS allotment_date TEXT;
-ALTER TABLE nsdl_meta ADD COLUMN IF NOT EXISTS listing_date TEXT;
-ALTER TABLE nsdl_meta ADD COLUMN IF NOT EXISTS issue_type TEXT;
-
-CREATE TABLE IF NOT EXISTS nsdl_cashflows (
-    isin TEXT,
-    due_date TEXT,
-    record_date TEXT,
-    event TEXT,
-    amount DOUBLE PRECISION
-);
-CREATE INDEX IF NOT EXISTS idx_nsdl_cashflows_isin ON nsdl_cashflows (isin);
-
-CREATE TABLE IF NOT EXISTS debt_master (
-    symbol TEXT PRIMARY KEY,
-    name TEXT,
-    series TEXT,
-    face_value DOUBLE PRECISION,
-    coupon DOUBLE PRECISION,
-    maturity_date TEXT
-);
-
-CREATE TABLE IF NOT EXISTS gsec_curve (
-    fetched_at TEXT,
-    tenor DOUBLE PRECISION,
-    yield DOUBLE PRECISION,
-    symbol TEXT,
-    traded_value DOUBLE PRECISION
-);
-
-CREATE TABLE IF NOT EXISTS nsdl_ratings (
-    isin TEXT NOT NULL,
-    agency TEXT,
-    rating TEXT,
-    outlook TEXT,
-    rating_action TEXT,
-    changed_at TEXT,
-    prev_rating TEXT,
-    press_release TEXT
-);
-CREATE INDEX IF NOT EXISTS idx_nsdl_ratings_isin ON nsdl_ratings (isin);
-
--- Append-only archive of every rating event NSDL has published for an ISIN
--- (current + earlier, per agency). Never deleted: builds a permanent local
--- rating history even if NSDL truncates theirs. COALESCE in the unique index
--- because Postgres treats NULLs as distinct in plain UNIQUE constraints.
-CREATE TABLE IF NOT EXISTS nsdl_rating_history (
-    isin TEXT NOT NULL,
-    agency TEXT,
-    rating TEXT,
-    outlook TEXT,
-    rating_action TEXT,
-    changed_at TEXT,
-    press_release TEXT,
-    first_seen_at TEXT NOT NULL
-);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_nsdl_rating_history_uni
-    ON nsdl_rating_history (isin, COALESCE(agency, ''), COALESCE(rating, ''),
-                            COALESCE(outlook, ''), COALESCE(rating_action, ''),
-                            COALESCE(changed_at, ''));
-CREATE INDEX IF NOT EXISTS idx_nsdl_rating_history_isin
-    ON nsdl_rating_history (isin);
-
--- Fetch log, separate from the rows: an ISIN with no current ratings still
--- counts as fetched (so staleness checks don't retry it forever).
-CREATE TABLE IF NOT EXISTS nsdl_ratings_meta (
-    isin TEXT PRIMARY KEY,
-    fetched_at TEXT
-);
-
--- BSE end-of-day quotes from the daily bhavcopy, one row per ISIN per
--- trading day (append-only — doubles as BSE price history). Corporate
--- bonds often trade on BSE when they don't on NSE, so this fills gaps.
-CREATE TABLE IF NOT EXISTS bse_quotes (
-    isin TEXT NOT NULL,
-    trade_date TEXT NOT NULL,
-    symbol TEXT,
-    series TEXT,
-    ltp DOUBLE PRECISION,
-    close DOUBLE PRECISION,
-    open DOUBLE PRECISION,
-    high DOUBLE PRECISION,
-    low DOUBLE PRECISION,
-    qty DOUBLE PRECISION,
-    traded_value DOUBLE PRECISION,
-    num_trades DOUBLE PRECISION,
-    fetched_at TEXT,
-    PRIMARY KEY (isin, trade_date)
-);
-CREATE INDEX IF NOT EXISTS idx_bse_quotes_isin ON bse_quotes (isin);
-
-CREATE TABLE IF NOT EXISTS holdings (
-    id BIGSERIAL PRIMARY KEY,
-    isin TEXT NOT NULL,
-    qty DOUBLE PRECISION NOT NULL,
-    buy_price DOUBLE PRECISION,
-    buy_date TEXT,
-    created_at TEXT
-);
-CREATE INDEX IF NOT EXISTS idx_holdings_isin ON holdings (isin);
 """
-
-COLUMNS = [
-    "isin", "symbol", "series", "coupon", "face_value", "ltp", "open", "high",
-    "low", "close", "pct_change", "qty", "traded_value", "maturity_date",
-    "next_interest_date", "credit_rating", "rating_agency", "ytm",
-]
 
 _pool: ConnectionPool = None
 
@@ -185,106 +140,31 @@ def _conn():
         yield conn
 
 
-def save_snapshot(records: List[Dict]) -> str:
-    """Insert a batch of bond records; returns the snapshot timestamp."""
-    ts = datetime.now(timezone.utc).isoformat()
-    with _conn() as conn:
-        conn.cursor().executemany(
-            f"INSERT INTO snapshots (fetched_at, {', '.join(COLUMNS)}) "
-            f"VALUES (%s, {', '.join(['%s'] * len(COLUMNS))})",
-            [[ts] + [r.get(c) for c in COLUMNS] for r in records],
-        )
-    return ts
+def close_pool():
+    """Close the connection pool cleanly. Call at the end of short-lived
+    scripts (e.g. the cron universe build) so worker threads shut down
+    without the 'couldn't stop thread' warnings."""
+    global _pool
+    if _pool is not None:
+        _pool.close()
+        _pool = None
 
 
-def latest_snapshot() -> List[Dict]:
-    """Return the most recent snapshot's rows."""
+# --- Watchlist --------------------------------------------------------------
+
+def get_watchlist() -> List[Dict]:
     with _conn() as conn:
-        row = conn.execute("SELECT MAX(fetched_at) AS ts FROM snapshots").fetchone()
-        if not row or not row["ts"]:
-            return []
-        rows = conn.execute(
-            "SELECT * FROM snapshots WHERE fetched_at = %s", (row["ts"],)
+        return conn.execute(
+            "SELECT isin, added_at FROM watchlist ORDER BY added_at DESC"
         ).fetchall()
-    return rows
 
 
-def save_bse_quotes(quotes: List[Dict]):
-    """Upsert one trading day's BSE quotes (idempotent per isin+date)."""
-    ts = datetime.now(timezone.utc).isoformat()
-    with _conn() as conn:
-        conn.cursor().executemany(
-            "INSERT INTO bse_quotes "
-            "(isin, trade_date, symbol, series, ltp, close, open, high, low, "
-            " qty, traded_value, num_trades, fetched_at) "
-            "VALUES (%(isin)s, %(trade_date)s, %(symbol)s, %(series)s, "
-            "        %(ltp)s, %(close)s, %(open)s, %(high)s, %(low)s, "
-            "        %(qty)s, %(traded_value)s, %(num_trades)s, %(ts)s) "
-            "ON CONFLICT (isin, trade_date) DO UPDATE SET "
-            "ltp = EXCLUDED.ltp, close = EXCLUDED.close, qty = EXCLUDED.qty, "
-            "traded_value = EXCLUDED.traded_value, "
-            "num_trades = EXCLUDED.num_trades, fetched_at = EXCLUDED.fetched_at",
-            [{**q, "ts": ts} for q in quotes],
-        )
-
-
-def bse_quote_map() -> Dict[str, Dict]:
-    """Latest BSE quote per ISIN (most recent trade_date wins)."""
-    with _conn() as conn:
-        rows = conn.execute(
-            "SELECT DISTINCT ON (isin) * FROM bse_quotes "
-            "ORDER BY isin, trade_date DESC"
-        ).fetchall()
-    return {r["isin"]: r for r in rows}
-
-
-def save_debt_master(records: List[Dict]):
-    with _conn() as conn:
-        conn.cursor().executemany(
-            "INSERT INTO debt_master "
-            "(symbol, name, series, face_value, coupon, maturity_date) "
-            "VALUES (%(symbol)s, %(name)s, %(series)s, %(face_value)s, "
-            "        %(coupon)s, %(maturity_date)s) "
-            "ON CONFLICT (symbol) DO UPDATE SET "
-            "name = EXCLUDED.name, series = EXCLUDED.series, "
-            "face_value = EXCLUDED.face_value, coupon = EXCLUDED.coupon, "
-            "maturity_date = EXCLUDED.maturity_date",
-            records,
-        )
-
-
-def debt_master() -> Dict[str, Dict]:
-    with _conn() as conn:
-        rows = conn.execute("SELECT * FROM debt_master").fetchall()
-    return {r["symbol"]: r for r in rows}
-
-
-def company_names() -> Dict[str, str]:
-    return {sym: r["name"] for sym, r in debt_master().items()}
-
-
-def price_history(isin: str) -> List[Dict]:
-    with _conn() as conn:
-        rows = conn.execute(
-            "SELECT fetched_at, ltp, ytm, qty, traded_value FROM snapshots "
-            "WHERE isin = %s ORDER BY fetched_at",
-            (isin,),
-        ).fetchall()
-    return rows
-
-
-def get_watchlist() -> List[str]:
-    with _conn() as conn:
-        rows = conn.execute("SELECT isin FROM watchlist").fetchall()
-    return [r["isin"] for r in rows]
-
-
-def add_to_watchlist(isin: str, note: str = ""):
+def add_to_watchlist(isin: str):
     with _conn() as conn:
         conn.execute(
-            "INSERT INTO watchlist (isin, note) VALUES (%s, %s) "
-            "ON CONFLICT (isin) DO UPDATE SET note = EXCLUDED.note",
-            (isin, note),
+            "INSERT INTO watchlist (isin) VALUES (%s) "
+            "ON CONFLICT (isin) DO NOTHING",
+            (isin,),
         )
 
 
@@ -293,267 +173,253 @@ def remove_from_watchlist(isin: str):
         conn.execute("DELETE FROM watchlist WHERE isin = %s", (isin,))
 
 
-def save_nsdl(isin: str, status: str, meta: Dict, flows: List[Dict]):
-    ts = datetime.now(timezone.utc).isoformat()
-    with _conn() as conn:
-        conn.execute(
-            "INSERT INTO nsdl_meta "
-            "(isin, fetched_at, status, frequency, frequency_text, coupon_basis) "
-            "VALUES (%s, %s, %s, %s, %s, %s) "
-            "ON CONFLICT (isin) DO UPDATE SET "
-            "fetched_at = EXCLUDED.fetched_at, status = EXCLUDED.status, "
-            "frequency = EXCLUDED.frequency, "
-            "frequency_text = EXCLUDED.frequency_text, "
-            "coupon_basis = EXCLUDED.coupon_basis",
-            (isin, ts, status, meta.get("frequency"),
-             meta.get("frequency_text"), meta.get("coupon_basis")),
-        )
-        conn.execute("DELETE FROM nsdl_cashflows WHERE isin = %s", (isin,))
-        conn.cursor().executemany(
-            "INSERT INTO nsdl_cashflows (isin, due_date, record_date, event, amount) "
-            "VALUES (%s, %s, %s, %s, %s)",
-            [(isin, f["due_date"], f["record_date"], f["event"], f["amount"])
-             for f in flows],
-        )
+# --- Bond universe (daily-tracked listed set) -----------------------------
+
+_UNIVERSE_COLS = [
+    "isin", "on_nse", "on_bse", "bse_status", "issuer_name",
+    "nse_symbol", "nse_series", "bse_scrip_code", "bse_scrip_id",
+]
 
 
-def nsdl_fetched_isins() -> Dict[str, str]:
-    """Map of isin -> status for all ISINs already attempted."""
-    with _conn() as conn:
-        rows = conn.execute("SELECT isin, status FROM nsdl_meta").fetchall()
-    return {r["isin"]: r["status"] for r in rows}
-
-
-def isins_with_flows() -> set:
-    with _conn() as conn:
-        rows = conn.execute("SELECT DISTINCT isin FROM nsdl_cashflows").fetchall()
-    return {r["isin"] for r in rows}
-
-
-def nsdl_meta_map() -> Dict[str, Dict]:
-    with _conn() as conn:
-        rows = conn.execute(
-            "SELECT isin, status, frequency, frequency_text, coupon_basis, "
-            "       allotment_date, listing_date, issue_type "
-            "FROM nsdl_meta"
-        ).fetchall()
-    return {r["isin"]: r for r in rows}
-
-
-def save_nsdl_listing(isin: str, listing: Dict):
-    """Merge allotment/listing dates into nsdl_meta (row may not exist yet
-    when the schedule fetch failed — keep the dates anyway)."""
-    with _conn() as conn:
-        conn.execute(
-            "INSERT INTO nsdl_meta (isin, allotment_date, listing_date, issue_type) "
-            "VALUES (%s, %s, %s, %s) "
-            "ON CONFLICT (isin) DO UPDATE SET "
-            "allotment_date = EXCLUDED.allotment_date, "
-            "listing_date = EXCLUDED.listing_date, "
-            "issue_type = EXCLUDED.issue_type",
-            (isin, listing.get("allotment_date"), listing.get("listing_date"),
-             listing.get("issue_type")),
-        )
-
-
-def isins_missing_listing() -> List[str]:
-    """Cached ISINs that don't have an allotment date yet (for backfill)."""
-    with _conn() as conn:
-        rows = conn.execute(
-            "SELECT isin FROM nsdl_meta WHERE allotment_date IS NULL"
-        ).fetchall()
-    return [r["isin"] for r in rows]
-
-
-def rating_changes() -> Dict[str, Dict]:
-    """Per ISIN: the previous distinct credit_rating (raw string) and the
-    timestamp when the current value first appeared. ISINs whose rating never
-    changed across snapshots are omitted.
-    """
-    with _conn() as conn:
-        rows = conn.execute(
-            "SELECT isin, credit_rating, fetched_at FROM snapshots "
-            "WHERE isin IS NOT NULL ORDER BY isin, fetched_at"
-        ).fetchall()
-    hist: Dict[str, List] = {}
-    for r in rows:
-        hist.setdefault(r["isin"], []).append((r["fetched_at"], r["credit_rating"]))
-    out = {}
-    for isin, seq in hist.items():
-        current = seq[-1][1]
-        previous = None
-        changed_at = seq[-1][0]
-        for ts, val in reversed(seq):
-            if val != current:
-                previous = val
-                break
-            changed_at = ts
-        if previous is not None:
-            out[isin] = {"previous": previous, "changed_at": changed_at}
-    return out
-
-
-def last_traded_map() -> Dict[str, str]:
-    """Per ISIN: timestamp of the most recent snapshot where it actually traded."""
-    with _conn() as conn:
-        rows = conn.execute(
-            "SELECT isin, MAX(fetched_at) AS ts FROM snapshots "
-            "WHERE traded_value > 0 GROUP BY isin"
-        ).fetchall()
-    return {r["isin"]: r["ts"] for r in rows}
-
-
-def save_gsec_curve(points: List[Dict]) -> str:
-    ts = datetime.now(timezone.utc).isoformat()
-    with _conn() as conn:
-        conn.cursor().executemany(
-            "INSERT INTO gsec_curve (fetched_at, tenor, yield, symbol, traded_value) "
-            "VALUES (%s, %s, %s, %s, %s)",
-            [(ts, p["tenor"], p["yield"], p["symbol"], p["traded_value"])
-             for p in points],
-        )
-    return ts
-
-
-def latest_gsec_curve() -> List[Dict]:
-    with _conn() as conn:
-        row = conn.execute("SELECT MAX(fetched_at) AS ts FROM gsec_curve").fetchone()
-        if not row or not row["ts"]:
-            return []
-        rows = conn.execute(
-            "SELECT tenor, yield, symbol, traded_value FROM gsec_curve "
-            "WHERE fetched_at = %s ORDER BY tenor",
-            (row["ts"],),
-        ).fetchall()
-    return rows
-
-
-def holdings() -> List[Dict]:
-    with _conn() as conn:
-        rows = conn.execute("SELECT * FROM holdings ORDER BY id").fetchall()
-    return rows
-
-
-def add_holding(isin: str, qty: float, buy_price=None, buy_date=None) -> int:
+def start_run() -> int:
+    """Open a bond_runs row at run start and return its id. The row is
+    finalized by save_universe or log_failed_run; if it stays ok IS NULL
+    the run crashed mid-way."""
     with _conn() as conn:
         row = conn.execute(
-            "INSERT INTO holdings (isin, qty, buy_price, buy_date, created_at) "
-            "VALUES (%s, %s, %s, %s, %s) RETURNING id",
-            (isin, qty, buy_price, buy_date,
-             datetime.now(timezone.utc).isoformat()),
+            "INSERT INTO bond_runs (run_at) VALUES (%s) RETURNING id",
+            (datetime.now(timezone.utc).isoformat(),),
         ).fetchone()
     return row["id"]
 
 
-def update_holding(holding_id: int, fields: Dict) -> bool:
-    allowed = {"qty", "buy_price", "buy_date"}
-    updates = {k: v for k, v in fields.items() if k in allowed}
-    if not updates:
-        return False
+def save_raw_file(source: str, content, run_id: int = None) -> Dict:
+    """Archive a raw fetched master file (gzipped bytea in raw_files),
+    linked to the run that captured it.
+
+    Dedupes on (source, sha256): an unchanged master is stored once, and
+    the existing row keeps the run_id of the run that FIRST captured it.
+    Returns {source, sha256, size, stored}.
+    """
+    data = content.encode() if isinstance(content, str) else content
+    sha = hashlib.sha256(data).hexdigest()
     with _conn() as conn:
-        cur = conn.execute(
-            f"UPDATE holdings SET {', '.join(f'{k} = %s' for k in updates)} "
-            "WHERE id = %s",
-            list(updates.values()) + [holding_id],
-        )
-        return cur.rowcount > 0
+        row = conn.execute(
+            "INSERT INTO raw_files "
+            "(run_id, fetched_at, source, sha256, size_bytes, content) "
+            "VALUES (%s, %s, %s, %s, %s, %s) "
+            "ON CONFLICT (source, sha256) DO NOTHING RETURNING id",
+            (run_id, datetime.now(timezone.utc).isoformat(), source, sha,
+             len(data), gzip.compress(data)),
+        ).fetchone()
+    return {"source": source, "sha256": sha, "size": len(data),
+            "stored": row is not None}
 
 
-def delete_holding(holding_id: int) -> bool:
-    with _conn() as conn:
-        cur = conn.execute("DELETE FROM holdings WHERE id = %s", (holding_id,))
-        return cur.rowcount > 0
+def log_failed_run(error: str, log: str = None,
+                   run_id: int = None) -> None:
+    """Record a failed universe run (fetch or write error) so bond_runs is
+    the complete run history, not just the successful ones. Count columns
+    stay NULL to distinguish 'failed' from 'ran with zero changes'.
 
-
-def save_nsdl_ratings(isin: str, ratings: List[Dict]):
-    with _conn() as conn:
-        conn.execute("DELETE FROM nsdl_ratings WHERE isin = %s", (isin,))
-        conn.cursor().executemany(
-            "INSERT INTO nsdl_ratings "
-            "(isin, agency, rating, outlook, rating_action, changed_at, "
-            " prev_rating, press_release) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
-            [(isin, x["agency"], x["rating"], x["outlook"], x["action"],
-              x["changed_at"], x["prev_rating"], x["press_release"])
-             for x in ratings],
-        )
-        conn.execute(
-            "INSERT INTO nsdl_ratings_meta (isin, fetched_at) VALUES (%s, %s) "
-            "ON CONFLICT (isin) DO UPDATE SET fetched_at = EXCLUDED.fetched_at",
-            (isin, datetime.now(timezone.utc).isoformat()),
-        )
-
-
-def nsdl_ratings_map() -> Dict[str, List[Dict]]:
-    with _conn() as conn:
-        rows = conn.execute(
-            "SELECT * FROM nsdl_ratings ORDER BY isin, agency"
-        ).fetchall()
-    out: Dict[str, List[Dict]] = {}
-    for r in rows:
-        out.setdefault(r["isin"], []).append(r)
-    return out
-
-
-def save_nsdl_rating_history(isin: str, events: List[Dict]):
-    """Append rating events, skipping ones already archived (append-only)."""
-    if not events:
-        return
+    Finalizes the open run row if run_id is given (failure after
+    start_run); otherwise inserts a fresh row (failure during fetch)."""
     now = datetime.now(timezone.utc).isoformat()
+    note = f"failed: {error}"
+    log_text = f"{log}\n{now} {note}" if log else note
     with _conn() as conn:
+        if run_id is not None:
+            conn.execute(
+                "UPDATE bond_runs SET ok = FALSE, notes = %s, log = %s "
+                "WHERE id = %s",
+                (note, log_text, run_id),
+            )
+        else:
+            conn.execute(
+                "INSERT INTO bond_runs (run_at, ok, notes, log) "
+                "VALUES (%s, FALSE, %s, %s)",
+                (now, note, log_text),
+            )
+
+
+def save_universe(records: List[Dict], run_stats: Dict,
+                  as_of: str = None, max_shrink: float = 0.05,
+                  log: str = None, run_id: int = None) -> Dict:
+    """Reconcile today's universe against the stored one in one transaction.
+
+    Upserts every incoming ISIN as 'listed' (preserving created_at and
+    first_seen), flips ISINs no longer in either master to 'dropped', logs
+    each transition to bond_events (one row per changed field),
+    and writes a bond_runs summary.
+
+    Guard: a truncated exchange fetch is indistinguishable from a mass
+    delisting, so if the incoming set is more than `max_shrink` smaller
+    than the stored listed set the run is aborted (logged with ok=false)
+    and nothing else is written.
+
+    Returns a dict of counts (added / dropped / relisted / status_change /
+    source_change / identifier_change / total), or {'aborted': True, ...}.
+    """
+    now = datetime.now(timezone.utc).isoformat()
+    day = as_of or now[:10]
+    incoming = {r["isin"]: r for r in records if r.get("isin")}
+    if run_id is None:
+        run_id = start_run()
+
+    with _conn() as conn:
+        existing = {
+            r["isin"]: r for r in conn.execute(
+                "SELECT isin, status, on_nse, on_bse, bse_status, "
+                "       nse_symbol, nse_series, bse_scrip_code, bse_scrip_id "
+                "FROM bonds"
+            ).fetchall()
+        }
+
+        listed_now = sum(1 for r in existing.values()
+                         if r["status"] == "listed")
+        if listed_now and len(incoming) < listed_now * (1 - max_shrink):
+            note = (f"aborted: incoming {len(incoming)} vs stored listed "
+                    f"{listed_now} exceeds max_shrink={max_shrink:.0%}")
+            log_text = f"{log}\n{now} {note}" if log else note
+            conn.execute(
+                "UPDATE bond_runs SET nse_corp = %s, bse_active = %s, "
+                " bse_suspended = %s, overlap = %s, total = %s, added = 0, "
+                " dropped = 0, relisted = 0, ok = FALSE, notes = %s, "
+                " log = %s WHERE id = %s",
+                (run_stats.get("nse_corp"), run_stats.get("bse_active"),
+                 run_stats.get("bse_suspended"), run_stats.get("overlap"),
+                 len(incoming), note, log_text, run_id),
+            )
+            return {"aborted": True, "reason": note, "total": len(incoming)}
+
+        counts = {"added": 0, "relisted": 0, "status_change": 0,
+                  "source_change": 0, "identifier_change": 0}
+        events = []  # (day, isin, event_type, field, old_value, new_value)
+
+        def _b(v):
+            return "true" if v else "false"
+
+        for isin, rec in incoming.items():
+            prev = existing.get(isin)
+            if prev is None:
+                counts["added"] += 1
+                events.append((day, isin, "added", None, None, None))
+                continue
+            if prev["status"] == "dropped":
+                counts["relisted"] += 1
+                events.append((day, isin, "relisted", None, None, None))
+            if (prev["bse_status"] or None) != (rec.get("bse_status")
+                                                or None):
+                counts["status_change"] += 1
+                events.append((day, isin, "status_change", "bse_status",
+                               prev["bse_status"], rec.get("bse_status")))
+            for f in ("on_nse", "on_bse"):
+                if prev[f] != rec[f]:
+                    counts["source_change"] += 1
+                    events.append((day, isin, "source_change", f,
+                                   _b(prev[f]), _b(rec[f])))
+            # Same ISIN, same exchange, but the exchange re-labeled it.
+            # None -> value transitions are already covered by source_change.
+            for f in ("nse_symbol", "nse_series",
+                      "bse_scrip_code", "bse_scrip_id"):
+                old, new = prev[f], rec.get(f)
+                if old and new and old != new:
+                    counts["identifier_change"] += 1
+                    events.append((day, isin, "identifier_change", f,
+                                   old, new))
+
+        gone = [isin for isin, prev in existing.items()
+                if prev["status"] == "listed" and isin not in incoming]
+        for isin in gone:
+            events.append((day, isin, "dropped", None, None, None))
+
+        # Upsert incoming rows (created_at and first_seen kept on conflict).
         conn.cursor().executemany(
-            "INSERT INTO nsdl_rating_history "
-            "(isin, agency, rating, outlook, rating_action, changed_at, "
-            " press_release, first_seen_at) "
-            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s) "
-            "ON CONFLICT (isin, COALESCE(agency, ''), COALESCE(rating, ''), "
-            "             COALESCE(outlook, ''), COALESCE(rating_action, ''), "
-            "             COALESCE(changed_at, '')) DO NOTHING",
-            [(isin, x["agency"], x["rating"], x["outlook"], x["action"],
-              x["changed_at"], x["press_release"], now)
-             for x in events],
+            "INSERT INTO bonds "
+            "(isin, status, on_nse, on_bse, bse_status, issuer_name, "
+            " nse_symbol, nse_series, bse_scrip_code, bse_scrip_id, "
+            " created_at, first_seen, last_seen, updated_at) "
+            "VALUES (%(isin)s, 'listed', %(on_nse)s, %(on_bse)s, "
+            " %(bse_status)s, %(issuer_name)s, %(nse_symbol)s, "
+            " %(nse_series)s, %(bse_scrip_code)s, %(bse_scrip_id)s, "
+            " %(now)s, %(now)s, %(now)s, %(now)s) "
+            "ON CONFLICT (isin) DO UPDATE SET "
+            " status = 'listed', on_nse = EXCLUDED.on_nse, "
+            " on_bse = EXCLUDED.on_bse, bse_status = EXCLUDED.bse_status, "
+            " issuer_name = COALESCE(EXCLUDED.issuer_name, "
+            "                        bonds.issuer_name), "
+            " nse_symbol = EXCLUDED.nse_symbol, "
+            " nse_series = EXCLUDED.nse_series, "
+            " bse_scrip_code = EXCLUDED.bse_scrip_code, "
+            " bse_scrip_id = EXCLUDED.bse_scrip_id, "
+            " last_seen = EXCLUDED.last_seen, updated_at = EXCLUDED.updated_at",
+            [{**{c: rec.get(c) for c in _UNIVERSE_COLS}, "now": now}
+             for rec in incoming.values()],
         )
 
+        if gone:
+            conn.cursor().executemany(
+                "UPDATE bonds SET status = 'dropped', "
+                "updated_at = %s WHERE isin = %s",
+                [(now, isin) for isin in gone],
+            )
 
-def nsdl_rating_history_map() -> Dict[str, List[Dict]]:
-    """All archived rating events keyed by ISIN, newest first per ISIN."""
+        if events:
+            conn.cursor().executemany(
+                "INSERT INTO bond_events "
+                "(event_date, isin, event_type, field, old_value, "
+                " new_value, created_at) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s)",
+                [(d, i, t, f, o, n, now) for (d, i, t, f, o, n) in events],
+            )
+
+        summary = {**counts, "dropped": len(gone), "total": len(incoming)}
+        change_line = (f"{now} reconciled: "
+                       + " ".join(f"{k}={v}" for k, v in summary.items()))
+        log_text = f"{log}\n{change_line}" if log else change_line
+        conn.execute(
+            "UPDATE bond_runs SET nse_corp = %s, bse_active = %s, "
+            " bse_suspended = %s, overlap = %s, total = %s, added = %s, "
+            " dropped = %s, relisted = %s, ok = TRUE, notes = %s, log = %s "
+            "WHERE id = %s",
+            (run_stats.get("nse_corp"), run_stats.get("bse_active"),
+             run_stats.get("bse_suspended"), run_stats.get("overlap"),
+             len(incoming), counts["added"], len(gone), counts["relisted"],
+             run_stats.get("notes"), log_text, run_id),
+        )
+    return summary
+
+
+def universe_counts() -> Dict:
+    """Current universe headline counts."""
     with _conn() as conn:
-        rows = conn.execute(
-            "SELECT isin, agency, rating, outlook, rating_action, changed_at, "
-            "       press_release FROM nsdl_rating_history "
-            "ORDER BY isin, changed_at DESC NULLS LAST, agency"
-        ).fetchall()
-    out: Dict[str, List[Dict]] = {}
-    for r in rows:
-        out.setdefault(r["isin"], []).append(r)
-    return out
+        row = conn.execute(
+            "SELECT "
+            " COUNT(*) FILTER (WHERE status='listed') AS listed, "
+            " COUNT(*) FILTER (WHERE status='listed' AND on_nse) AS on_nse, "
+            " COUNT(*) FILTER (WHERE status='listed' AND on_bse) AS on_bse, "
+            " COUNT(*) FILTER (WHERE status='listed' AND on_nse AND on_bse) "
+            "   AS both, "
+            " COUNT(*) FILTER (WHERE status='dropped') AS dropped "
+            "FROM bonds"
+        ).fetchone()
+    return dict(row) if row else {}
 
 
-def nsdl_rating_history(isin: str) -> List[Dict]:
-    """Archived rating events for one ISIN, newest first (undated last)."""
+def universe_isins(listed_only: bool = True) -> List[str]:
+    """ISINs in the tracked universe (listed only by default)."""
+    with _conn() as conn:
+        q = "SELECT isin FROM bonds"
+        if listed_only:
+            q += " WHERE status = 'listed'"
+        return [r["isin"] for r in conn.execute(q + " ORDER BY isin").fetchall()]
+
+
+def recent_universe_events(limit: int = 50) -> List[Dict]:
     with _conn() as conn:
         return conn.execute(
-            "SELECT agency, rating, outlook, rating_action, changed_at, "
-            "       press_release FROM nsdl_rating_history WHERE isin = %s "
-            "ORDER BY changed_at DESC NULLS LAST, agency",
-            (isin,),
+            "SELECT event_date, isin, event_type, field, old_value, "
+            "       new_value FROM bond_events "
+            "ORDER BY id DESC LIMIT %s",
+            (limit,),
         ).fetchall()
-
-
-def nsdl_ratings_fetched() -> Dict[str, str]:
-    """Map of isin -> fetched_at ISO timestamp for staleness checks."""
-    with _conn() as conn:
-        rows = conn.execute(
-            "SELECT isin, fetched_at FROM nsdl_ratings_meta"
-        ).fetchall()
-    return {r["isin"]: r["fetched_at"] for r in rows}
-
-
-def nsdl_all_cashflows() -> Dict[str, List[Dict]]:
-    with _conn() as conn:
-        rows = conn.execute(
-            "SELECT isin, due_date, record_date, event, amount FROM nsdl_cashflows"
-        ).fetchall()
-    out: Dict[str, List[Dict]] = {}
-    for r in rows:
-        out.setdefault(r["isin"], []).append(r)
-    return out

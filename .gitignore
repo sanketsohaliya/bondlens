@@ -15,3 +15,6 @@ bonds.db-journal
 .idea/
 .DS_Store
 nohup.out
+frontend/node_modules/
+frontend/dist/
+data/

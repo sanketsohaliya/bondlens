@@ -1,0 +1,11 @@
+.git
+.venv
+.venv-py38-backup
+logs
+__pycache__
+**/__pycache__
+*.pyc
+frontend
+docker-compose.yml
+Dockerfile
+NOTES.md

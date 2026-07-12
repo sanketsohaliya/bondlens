@@ -1,0 +1,51 @@
+services:
+  db:
+    image: postgres:18
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: bondlens
+      POSTGRES_PASSWORD: bondlens
+      POSTGRES_DB: bondlens
+    volumes:
+      - pgdata:/var/lib/postgresql
+      - ~/backups:/backups
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bondlens"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build: .
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://bondlens:bondlens@db:5432/bondlens
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  web:
+    build: ./frontend
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    depends_on:
+      - api
+
+  jobs:
+    build: .
+    restart: unless-stopped
+    init: true   # tini as PID 1; supercronic's own reaper crashes as PID 1
+    command: ["supercronic", "-passthrough-logs", "/app/crontab"]
+    environment:
+      DATABASE_URL: postgresql://bondlens:bondlens@db:5432/bondlens
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  pgdata:

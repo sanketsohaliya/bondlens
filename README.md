@@ -1,53 +1,60 @@
 # BondLens
 
-Personal analytics dashboard for screening corporate bonds traded on NSE.
+Personal data platform and screener for Indian listed corporate bonds.
 
-## Features
+Scheduled jobs track the full NSE+BSE corporate-bond universe, enrich it
+with NSDL's issue data (terms, cashflow schedules, credit ratings,
+defaults) and capture end-of-day trade data from all four exchange
+streams (NSE/BSE × retail order book / OTC reported) back to 2010.
+A FastAPI backend computes schedule-exact YTMs, accrued interest,
+durations and rating signals on top; a React frontend serves the
+screener.
 
-- Fetches live bond data (price, coupon, rating, volume) from NSE's website API
-- Computes YTM (annual-coupon approximation, actual/365)
-- Stores daily snapshots in PostgreSQL (append-only, full history kept) for price history — set `DATABASE_URL`, default `postgresql://bondlens:bondlens@localhost:5432/bondlens`
-- Web dashboard: filter by rating / YTM / maturity / traded value, sortable columns, watchlist
+## Stack
 
-## Setup
-
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-```
+- **db** — PostgreSQL 18, single `bondlens` database
+- **api** — Python 3.14, FastAPI, psycopg 3 (port 8000)
+- **web** — React 19 + TypeScript, Vite 7, Tailwind 4, lightweight-charts,
+  served by nginx which proxies `/api` (port 3000)
+- **jobs** — supercronic running the scheduled harvesters (IST):
+  - 05:30 Mon–Sat: universe build (`bondlens/universe.py`)
+  - 07:00 daily: NSDL harvest + parse (`scripts/harvest_nsdl.py`, `parse_nsdl.py`)
+  - 19:00 Mon–Fri (+07:15 retry): EOD trades (`scripts/harvest_eod.py`, `parse_eod.py`)
 
 ## Run
 
-```bash
-uvicorn bondlens.app:app --reload
+```sh
+docker compose up -d --build
+# app:  http://localhost:3000
+# api:  http://localhost:8000/docs
 ```
 
-Open http://127.0.0.1:8000 and click **Refresh from NSE**.
+## Development
 
-## Exact YTM via NSDL
+```sh
+# backend (uv-managed venv against the container DB)
+uv sync
+.venv/bin/python -m pytest tests/ -q
+.venv/bin/uvicorn bondlens.app:app --reload
 
-Click **Fetch NSDL data** to bulk-download exact cash-flow schedules from
-NSDL India Bond Info (public API) for all ISINs in the latest snapshot that
-aren't cached yet. Requests are spaced 10 seconds apart (a full first run of
-~1,400 ISINs takes ~4 hours in the background; it is resumable and later runs
-only fetch new ISINs).
+# frontend (vite dev server proxies /api to :8000)
+cd frontend && npm install && npm run dev
 
-Bonds with a cached schedule show an exact YTM (marked with a filled dot):
-XIRR over the actual dated cash flows, record-date aware, solved against the
-last traded price. Uncached bonds fall back to the annual-coupon
-approximation (hollow dot, roughly ±0.5%).
+# schedule-engine coverage report
+.venv/bin/python scripts/validate_schedules.py -v
+```
 
-## Notes / Caveats
+## Architecture notes
 
-- NSE endpoints are unofficial and may change or rate-limit; the fetcher does a
-  cookie handshake with a browser User-Agent.
-- Approximate YTM assumes annual coupons with estimated accrued interest.
-- Exact YTM is exact for the last traded price; stale prices on illiquid bonds
-  remain the main source of real-world deviation. Floating-rate bonds use
-  provisional future amounts.
-- `coupon` is null for zero-coupon/discount bonds; YTM still computes from
-  price vs face value.
-- Snapshots accumulate each time you refresh — history per ISIN is available at
-  `/api/bonds/{isin}/history`.
-- `scripts/seed_one.py <ISIN>` fetches a single NSDL schedule for testing.
+- **Raw-first**: every fetched file/API response is archived verbatim
+  (`raw_files`, `nsdl_raw`, `eod_raw`) before parsing, so parsers can be
+  rewritten and re-run over history without refetching.
+- **Parse layers are disposable**: `parse_nsdl.py` truncate-rebuilds the
+  `bond_*` tables; `parse_eod.py` appends to `eod_trades` incrementally.
+- **Analytics** (`bondlens/analytics/`): `schedule.py` normalizes NSDL
+  cashflow schedules (staggered redemptions, zero-coupon accretion,
+  issue-level rescaling, estimated amounts); `yields.py` does day-count-
+  aware YTM/YTW/accrued/duration; `ratings.py` derives composite grades,
+  change flags and default status from agency rating trails.
+- **Prices**: retail trades are dirty ₹ per unit (headline LTP); OTC
+  trades are clean % of face and shown/charted separately.

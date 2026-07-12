@@ -1,416 +1,191 @@
-"""FastAPI app: refresh NSE data, query/screen bonds, serve the dashboard."""
+"""BondLens API — read-side over the scheduled data platform.
+
+No fetch endpoints: the jobs container keeps the database current
+(universe daily, NSDL daily, EOD trades nightly). The API computes
+analytics (schedules, yields, ratings) on top and serves the screener,
+bond detail, trade history, watchlist and data-freshness status.
+
+The screener core (universe x terms x ratings x latest trades x schedule
+analytics) is rebuilt at most every CORE_TTL_SECONDS and cached — the
+underlying data only changes when a job runs.
+"""
 import re
 import threading
 import time
 from datetime import date, datetime
-from pathlib import Path
 from typing import Dict, List, Optional
 
 from fastapi import FastAPI, HTTPException, Query
-from fastapi.responses import FileResponse
-from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
 
-from . import bse, db, gsec, kite, nsdl, nse, pnl
-from .ytm import (accrued_interest, exact_ytm, modified_duration, parse_date,
-                  xirr, years_to_maturity, ytm)
+from . import db, kite, queries
+from .analytics import ratings, schedule, yields
 
-STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
+app = FastAPI(title="BondLens", version="2.0")
 
-app = FastAPI(title="BondLens")
+CORE_TTL_SECONDS = 600
+STALE_AFTER_DAYS = 7   # retail price older than this is flagged stale
 
-# Best (lowest index) to worst. Outlooks like "/Stable" are stripped before lookup.
-RATING_ORDER = [
-    "AAA", "AA+", "AA", "AA-", "A+", "A", "A-",
-    "BBB+", "BBB", "BBB-", "BB+", "BB", "BB-", "B+", "B", "B-", "C", "D",
-]
-RATING_RANK = {r: i for i, r in enumerate(RATING_ORDER)}
+_core_lock = threading.Lock()
+_core: Dict = {"built_at": 0.0, "bonds": []}
 
 
-def rating_rank(credit_rating: Optional[str]) -> Optional[int]:
-    """Best rank among possibly multiple agency ratings, e.g. 'AA/Stable, AA+/Negative'."""
-    if not credit_rating:
-        return None
-    ranks = []
-    for part in credit_rating.split(","):
-        grade = part.strip().split("/")[0].strip().upper()
-        if grade in RATING_RANK:
-            ranks.append(RATING_RANK[grade])
-    return min(ranks) if ranks else None
+# --------------------------------------------------------------------------
+# Screener core
+# --------------------------------------------------------------------------
 
-
-def coupon_from_symbol(symbol: Optional[str]) -> Optional[float]:
-    """NSE bond symbols encode the coupon: 94SFL28=9.4%, 1015SCL29B=10.15%.
-    Used only when NSE's coupon field is blank."""
-    m = re.match(r"^(\d{2,4})[A-Z]", symbol or "")
-    if not m:
-        return None
-    digits = m.group(1)
-    value = int(digits) / (10 ** (len(digits) - 1))
-    return value if 0 < value < 20 else None
-
-
-def apply_nsdl_rating(r: Dict, nr: Optional[List[Dict]],
-                      history: Optional[List[Dict]] = None):
-    """Override NSE's rating fields with NSDL's agency-verified data in place.
-
-    NSDL's ratings are current; NSE's rating field is often stale at-issuance
-    data (e.g. AAA shown for years after a downgrade). Also exposes `ratings`,
-    one entry per agency — each with that agency's own press release and its
-    archived rating trail — so the UI can show per-agency links and history.
-    """
-    if nr:
-        r["credit_rating"] = ", ".join(
-            x["rating"] + (f"/{x['outlook']}" if x["outlook"] else "")
-            for x in nr)
-        r["rating_agency"] = ", ".join(x["agency"] or "" for x in nr)
-        r["rating_source"] = "NSDL"
-        r["rating_url"] = next(
-            (x["press_release"] for x in nr if x["press_release"]), None)
-        by_agency: Dict[str, List[Dict]] = {}
-        for h in history or []:
-            by_agency.setdefault(h["agency"], []).append(
-                {"rating": h["rating"], "outlook": h["outlook"],
-                 "action": h["rating_action"], "changed_at": h["changed_at"],
-                 "press_release": h["press_release"]})
-        r["ratings"] = [
-            {"agency": x["agency"],
-             "rating": x["rating"] + (f"/{x['outlook']}" if x["outlook"] else ""),
-             "press_release": x["press_release"],
-             "history": by_agency.get(x["agency"], [])}
-            for x in nr]
-    else:
-        r["rating_source"] = "NSE"
-        r["rating_url"] = None
-        r["ratings"] = None
-
-
-RATING_FLAG_DAYS = 30  # how long an up/downgrade marker stays visible
-
-
-def apply_bse_quote(r: Dict, bq: Optional[Dict], nse_last_traded: Optional[str]):
-    """Attach BSE quote fields and, when BSE traded more recently than NSE,
-    use its price as the bond's LTP (recomputing the approx YTM to match).
-
-    BSE data is end-of-day, so on a trading day NSE's live feed wins whenever
-    the bond traded there today; BSE only fills staleness gaps.
-    """
-    r["bse_ltp"] = r["bse_trade_date"] = r["bse_traded_value"] = None
-    r["price_source"] = "NSE" if r.get("ltp") else None
-    if not bq:
-        return
-    bse_price = bq["ltp"] or bq["close"]
-    if not bse_price:
-        return
-    r["bse_ltp"] = bse_price
-    r["bse_trade_date"] = bq["trade_date"]
-    r["bse_traded_value"] = bq["traded_value"]
-    nse_traded_today = (r.get("traded_value") or 0) > 0
-    nse_date = (nse_last_traded or "")[:10]
-    if nse_traded_today or (nse_date and nse_date >= bq["trade_date"]):
-        return
-    r["ltp"] = bse_price
-    r["price_source"] = "BSE"
-    r["ytm"] = ytm(bse_price, r.get("coupon") or coupon_from_symbol(r.get("symbol")),
-                   r.get("face_value"), r.get("maturity_date"))
-
-
-def merge_bse_freshness(r: Dict):
-    """Fold the BSE trade date into days_since_traded (after annotate_signals)."""
-    if not r.get("bse_trade_date"):
-        return
-    bse_days = (date.today() - date.fromisoformat(r["bse_trade_date"])).days
-    if r.get("days_since_traded") is None or bse_days < r["days_since_traded"]:
-        r["days_since_traded"] = bse_days
-
-
-STALE_AFTER_DAYS = 3   # LTP considered stale after this many days without trades
-
-
-def annotate_signals(r: Dict, changes: Dict, last_traded: Dict,
-                     nsdl_ratings: Optional[Dict] = None):
-    """Attach rating-change and stale-price signals to a bond row in place.
-
-    NSDL's agency-verified rating actions are preferred; snapshot diffing of
-    NSE's rating string is the fallback (NSE often never updates it).
-    """
+def _build_core() -> List[Dict]:
+    """Join everything once and compute per-bond analytics."""
     today = date.today()
-    r["rating_change"] = None
-    r["rating_prev"] = None
-    r["rating_changed_at"] = None
-    nr = (nsdl_ratings or {}).get(r["isin"]) or []
-    recent = [
-        x for x in nr
-        if x["changed_at"] and x["rating_action"]
-        and (today - date.fromisoformat(x["changed_at"])).days <= RATING_FLAG_DAYS
-        and ("UPGRADE" in x["rating_action"].upper()
-             or "DOWNGRADE" in x["rating_action"].upper())
-    ]
-    ch = changes.get(r["isin"])
-    if recent:
-        downs = [x for x in recent if "DOWN" in x["rating_action"].upper()]
-        pick = downs[0] if downs else recent[0]
-        r["rating_change"] = "down" if downs else "up"
-        r["rating_prev"] = pick["prev_rating"]
-        r["rating_changed_at"] = pick["changed_at"]
-    elif not nr and ch:
-        prev_rank = rating_rank(ch["previous"])
-        cur_rank = rating_rank(r["credit_rating"])
-        age = (today - date.fromisoformat(ch["changed_at"][:10])).days
-        if (prev_rank is not None and cur_rank is not None
-                and prev_rank != cur_rank and age <= RATING_FLAG_DAYS):
-            r["rating_change"] = "up" if cur_rank < prev_rank else "down"
-            r["rating_prev"] = ch["previous"]
-            r["rating_changed_at"] = ch["changed_at"][:10]
-    lt = last_traded.get(r["isin"])
-    r["days_since_traded"] = (
-        (today - date.fromisoformat(lt[:10])).days if lt else None
-    )
+    core = queries.screener_core()
+    cashflows = queries.all_cashflows()
+    terms_map = queries.all_terms()
+    current = queries.current_ratings()
+    history = queries.rating_history()
+    defaulted = queries.defaulted_isins()
+    watch = {w["isin"] for w in db.get_watchlist()}
+
+    out = []
+    for isin, r in core.items():
+        sched = schedule.build(isin, cashflows.get(isin, []),
+                               terms_map.get(isin), today=today)
+        cur = current.get(isin, [])
+        hist = history.get(isin, [])
+        retail = r.get("retail_trade")
+        otc = r.get("otc_trade")
+
+        price = retail and (retail.get("close") or retail.get("last_price"))
+        price = float(price) if price else None
+        coupon = float(r["coupon_rate"]) if r.get("coupon_rate") else None
+        face = float(r["face_value"]) if r.get("face_value") else None
+
+        ytm = ytm_method = None
+        if price:
+            exact = yields.exact_ytm(price, sched, today)
+            if exact is not None:
+                ytm, ytm_method = exact, (
+                    "estimated" if sched.amounts_estimated else "exact")
+            else:
+                approx = yields.approx_ytm(
+                    price, coupon, face, r.get("redemption_date"),
+                    sched.periods_per_year or 1, today)
+                if approx is not None:
+                    ytm, ytm_method = approx, "approx"
+
+        change = ratings.recent_change(hist, today)
+        days_since = ((today - retail["trade_date"]).days if retail else None)
+        otc_days_since = ((today - otc["trade_date"]).days if otc else None)
+
+        out.append({
+            "isin": isin,
+            "issuer_name": r.get("issuer_name"),
+            "sector": r.get("sector"),
+            "industry": r.get("industry"),
+            "on_nse": r["on_nse"], "on_bse": r["on_bse"],
+            "nse_symbol": r.get("nse_symbol"), "nse_series": r.get("nse_series"),
+            "bse_scrip_id": r.get("bse_scrip_id"),
+            "coupon": coupon,
+            "face_value": face,
+            "coupon_basis": r.get("coupon_basis"),
+            "frequency": sched.frequency,
+            "secured": _yn(r.get("secured")),
+            "tax_free": _yn(r.get("tax_free")),
+            "perpetual": bool(r.get("perpetual")),
+            "maturity_date": r.get("redemption_date"),
+            "years_to_maturity": _years(r.get("redemption_date"), today),
+            "schedule_shape": sched.shape,
+            "ltp": price,
+            "trade_date": retail["trade_date"] if retail else None,
+            "exchange": retail["exchange"] if retail else None,
+            "volume": _f(retail and retail.get("volume")),
+            "turnover": _f(retail and retail.get("turnover")),
+            "num_trades": retail.get("num_trades") if retail else None,
+            "days_since_traded": days_since,
+            "stale": days_since is None or days_since > STALE_AFTER_DAYS,
+            "otc_price_pct": _f(otc and (otc.get("wap") or otc.get("last_price"))),
+            "otc_yield": _f(otc and (otc.get("wap_yield") or otc.get("last_yield"))),
+            "otc_trade_date": otc["trade_date"] if otc else None,
+            "otc_days_since_traded": otc_days_since,
+            "ytm": ytm,
+            "ytm_method": ytm_method,
+            "current_yield": yields.current_yield(price, coupon, face),
+            "duration": yields.modified_duration(price, sched, ytm, today)
+                        if ytm_method in ("exact", "estimated") else None,
+            "credit_rating": ratings.composite(cur),
+            "rating_rank": ratings.best_rank(cur),
+            "rating_change": change["direction"] if change else None,
+            "rating_prev": change["prev_rating"] if change else None,
+            "rating_changed_at": change["rating_date"] if change else None,
+            "in_default": isin in defaulted or ratings.in_default(cur),
+            "in_watchlist": isin in watch,
+        })
+    out.sort(key=lambda b: b["turnover"] or 0, reverse=True)
+    return out
 
 
-NSDL_DELAY_SECONDS = 10
-
-# Ratings change over time (unlike payment schedules), so re-fetch them
-# once they're older than this.
-RATINGS_MAX_AGE_DAYS = 30
-
-_nsdl_state = {"running": False, "done": 0, "total": 0, "errors": 0, "current": None}
-_nsdl_lock = threading.Lock()
+def _get_core(force: bool = False) -> List[Dict]:
+    with _core_lock:
+        if force or time.time() - _core["built_at"] > CORE_TTL_SECONDS:
+            _core["bonds"] = _build_core()
+            _core["built_at"] = time.time()
+        return _core["bonds"]
 
 
-def _nsdl_worker(isins):
-    complete = _nsdl_complete_isins()
-    missing_listing = set(db.isins_missing_listing())
-    have_meta = set(db.nsdl_fetched_isins())
-    for isin in isins:
-        _nsdl_state["current"] = isin
-        if isin not in complete:  # schedules are static; don't refetch good ones
-            try:
-                meta, flows = nsdl.fetch_schedule(isin)
-                db.save_nsdl(isin, "ok" if flows else "empty", meta, flows)
-            except Exception:  # noqa: BLE001 - record and continue
-                db.save_nsdl(isin, "error", {}, [])
-                _nsdl_state["errors"] += 1
-        if isin in missing_listing or isin not in have_meta:
-            try:  # allotment/listing dates are static; fetch once
-                db.save_nsdl_listing(isin, nsdl.fetch_listing(isin))
-            except Exception:  # noqa: BLE001 - retried on the next run
-                pass
-        try:
-            current, history = nsdl.fetch_rating_data(isin)
-            db.save_nsdl_ratings(isin, current)
-            db.save_nsdl_rating_history(isin, history)
-        except Exception:  # noqa: BLE001 - keep whatever we had
-            pass
-        _nsdl_state["done"] += 1
-        time.sleep(NSDL_DELAY_SECONDS)
-    _nsdl_state["running"] = False
-    _nsdl_state["current"] = None
+def _yn(v: Optional[str]) -> Optional[bool]:
+    if v is None:
+        return None
+    s = str(v).strip().lower()
+    return True if s in ("yes", "true", "t", "y") else False if s in ("no", "false", "f", "n") else None
 
 
-def _nsdl_complete_isins() -> set:
-    """ISINs fetched OK with an actual schedule. Everything else (never
-    tried, errored, or schedule came back empty) is worth (re)trying."""
-    fetched = db.nsdl_fetched_isins()
-    have_flows = db.isins_with_flows()
-    return {i for i, s in fetched.items() if s == "ok" and i in have_flows}
+def _f(v) -> Optional[float]:
+    return float(v) if v is not None else None
 
 
-def _fetch_nsdl_async(isin: str):
-    """One-off background fetch for a single ISIN. Holdings outside the NSE
-    snapshot would otherwise stay uncached forever. A transient failure must
-    not clobber a previously good cache entry."""
-    def run():
-        try:
-            meta, flows = nsdl.fetch_schedule(isin)
-            db.save_nsdl(isin, "ok" if flows else "empty", meta, flows)
-        except Exception:  # noqa: BLE001 - record and move on
-            if db.nsdl_fetched_isins().get(isin) != "ok":
-                db.save_nsdl(isin, "error", {}, [])
-        try:
-            db.save_nsdl_listing(isin, nsdl.fetch_listing(isin))
-        except Exception:  # noqa: BLE001 - retried on the next run
-            pass
-        try:
-            current, history = nsdl.fetch_rating_data(isin)
-            db.save_nsdl_ratings(isin, current)
-            db.save_nsdl_rating_history(isin, history)
-        except Exception:  # noqa: BLE001 - keep whatever we had
-            pass
-    threading.Thread(target=run, daemon=True).start()
+def _years(maturity: Optional[date], today: date) -> Optional[float]:
+    if maturity is None or maturity <= today:
+        return None
+    return round((maturity - today).days / 365.0, 2)
 
 
-def _ratings_stale_isins(universe: set) -> set:
-    fetched = db.nsdl_ratings_fetched()
-    cutoff = time.time() - RATINGS_MAX_AGE_DAYS * 86400
-    stale = set()
-    for isin in universe:
-        ts = fetched.get(isin)
-        if ts is None:
-            stale.add(isin)
-            continue
-        if datetime.fromisoformat(ts).timestamp() < cutoff:
-            stale.add(isin)
-    return stale
-
-
-@app.post("/api/nsdl/fetch")
-def nsdl_fetch():
-    """Start background fetch of NSDL schedules for ISINs not yet cached.
-    Covers the NSE snapshot plus any portfolio holdings outside it."""
-    with _nsdl_lock:
-        if _nsdl_state["running"]:
-            return {"started": False, "reason": "already running", **_nsdl_state}
-        universe = {r["isin"] for r in db.latest_snapshot() if r["isin"]}
-        universe |= {h["isin"] for h in db.holdings()}
-        pending = sorted(
-            (universe - _nsdl_complete_isins())
-            | _ratings_stale_isins(universe)
-            | (universe & set(db.isins_missing_listing()))
-        )
-        if not pending:
-            return {"started": False, "reason": "nothing to fetch", **_nsdl_state}
-        _nsdl_state.update(
-            {"running": True, "done": 0, "total": len(pending), "errors": 0}
-        )
-        threading.Thread(target=_nsdl_worker, args=(pending,), daemon=True).start()
-    return {"started": True, **_nsdl_state}
-
-
-@app.get("/api/nsdl/status")
-def nsdl_status():
-    fetched = db.nsdl_fetched_isins()
-    have_flows = db.isins_with_flows()
-    complete = {i for i, s in fetched.items() if s == "ok" and i in have_flows}
-    snapshot_isins = {r["isin"] for r in db.latest_snapshot() if r["isin"]}
-    return {
-        **_nsdl_state,
-        "cached_ok": len(complete),
-        "cached_error": len(fetched) - len(complete),
-        "snapshot_isins": len(snapshot_isins),
-        "missing": len(snapshot_isins - complete),
-    }
-
-
-@app.post("/api/refresh")
-def refresh():
-    """Fetch live data from NSE, compute YTM, store a snapshot."""
-    try:
-        payload = nse.fetch_bonds()
-    except Exception as exc:  # noqa: BLE001
-        raise HTTPException(status_code=502, detail=f"NSE fetch failed: {exc}")
-    records = nse.normalize(payload)
-    for r in records:
-        r["ytm"] = ytm(r["ltp"], r["coupon"], r["face_value"], r["maturity_date"])
-    ts = db.save_snapshot(records)
-    # Company-name master and G-Sec curve alongside; both best-effort.
-    try:
-        master = nse.fetch_debt_master()
-        if master:
-            db.save_debt_master(master)
-    except Exception:  # noqa: BLE001
-        pass
-    gsec_points = 0
-    try:
-        curve = gsec.fetch_curve()
-        if curve:
-            db.save_gsec_curve(curve)
-            gsec_points = len(curve)
-    except Exception:  # noqa: BLE001
-        pass
-    bse_count = 0
-    try:
-        universe = {r["isin"] for r in records if r.get("isin")}
-        universe |= {h["isin"] for h in db.holdings()}
-        _, quotes = bse.fetch_bhavcopy()
-        quotes = [q for q in quotes if q["isin"] in universe]
-        if quotes:
-            db.save_bse_quotes(quotes)
-            bse_count = len(quotes)
-    except Exception:  # noqa: BLE001 - BSE is best-effort enrichment
-        pass
-    return {"fetched_at": ts, "count": len(records),
-            "gsec_points": gsec_points, "bse_quotes": bse_count}
-
+# --------------------------------------------------------------------------
+# Screener
+# --------------------------------------------------------------------------
 
 @app.get("/api/bonds")
 def bonds(
     min_ytm: Optional[float] = Query(None),
     max_ytm: Optional[float] = Query(None),
     rating: Optional[str] = Query(None, description="Substring match, e.g. AA"),
-    min_rating: Optional[str] = Query(None, description="Quality floor, e.g. AA- includes AAA..AA-"),
-    max_years: Optional[float] = Query(None),
+    min_rating: Optional[str] = Query(None, description="Quality floor, e.g. AA-"),
+    sector: Optional[str] = Query(None),
+    industry: Optional[str] = Query(None),
+    issuer: Optional[str] = Query(None, description="Issuer name substring"),
+    exchange: Optional[str] = Query(None, description="NSE or BSE"),
+    frequency: Optional[str] = Query(None, description="monthly|quarterly|semiannual|annual"),
     min_years: Optional[float] = Query(None),
-    min_spread: Optional[float] = Query(None, description="Min spread over G-Sec, pp"),
-    max_ltp: Optional[float] = Query(None, description="Max price per unit (ticket size)"),
-    min_traded_value: Optional[float] = Query(None),
+    max_years: Optional[float] = Query(None),
+    max_ltp: Optional[float] = Query(None, description="Max price per unit"),
+    min_turnover: Optional[float] = Query(None, description="Min ₹ turnover on last trade day"),
+    secured_only: bool = Query(False),
+    tax_free_only: bool = Query(False),
+    below_par: bool = Query(False),
+    fresh_only: bool = Query(False, description="Exclude stale retail prices"),
+    exact_only: bool = Query(False, description="Only exact-schedule YTMs"),
+    downgraded_only: bool = Query(False),
+    exclude_defaulted: bool = Query(True),
     watchlist_only: bool = Query(False),
-    below_par: bool = Query(False, description="Only bonds trading below face value"),
-    fresh_only: bool = Query(False, description="Exclude stale prices"),
-    exact_only: bool = Query(False, description="Only bonds with exact (NSDL) YTM"),
-    downgraded_only: bool = Query(False, description="Only recently downgraded bonds"),
-    frequency: Optional[str] = Query(None, description="Coupon frequency, e.g. monthly"),
+    q: Optional[str] = Query(None, description="Search ISIN / symbol / issuer"),
+    limit: int = Query(500, le=5000),
+    offset: int = Query(0, ge=0),
 ):
-    rows = db.latest_snapshot()
-    watch = set(db.get_watchlist())
-    meta_map = db.nsdl_meta_map()
-    flows_map = db.nsdl_all_cashflows()
-    curve = db.latest_gsec_curve()
-    changes = db.rating_changes()
-    last_traded = db.last_traded_map()
-    names = db.company_names()
-    nsdl_ratings = db.nsdl_ratings_map()
-    rating_history = db.nsdl_rating_history_map()
-    bse_quotes = db.bse_quote_map()
+    rows = _get_core()
+    floor = ratings.RATING_RANK.get((min_rating or "").strip().upper())
+    needle = (q or "").strip().upper()
     out = []
     for r in rows:
-        r["company_name"] = names.get(r["symbol"])
-        apply_nsdl_rating(r, nsdl_ratings.get(r["isin"]),
-                          rating_history.get(r["isin"]))
-        apply_bse_quote(r, bse_quotes.get(r["isin"]), last_traded.get(r["isin"]))
-        maturity = parse_date(r["maturity_date"])
-        r["years_to_maturity"] = (
-            round(years_to_maturity(maturity), 2) if maturity else None
-        )
-        r["in_watchlist"] = r["isin"] in watch
-        r["kite_url"] = kite.kite_url(r["symbol"], r["series"])
-        r["rating_rank"] = rating_rank(r["credit_rating"])
-        r["current_yield"] = (
-            round(r["coupon"] * r["face_value"] / r["ltp"], 2)
-            if r["coupon"] and r["face_value"] and r["ltp"] else None
-        )
-        meta = meta_map.get(r["isin"])
-        r["frequency"] = (
-            nsdl.classify_frequency(meta["frequency_text"]) if meta else None
-        )
-        flows, _ = nsdl.fill_amounts(
-            flows_map.get(r["isin"], []),
-            r["coupon"] or coupon_from_symbol(r["symbol"]),
-            r["face_value"],
-            r["frequency"],
-        )
-        flows = nsdl.normalize_flows(flows, r["face_value"])
-        flows_ok = nsdl.redemption_matches_face(flows, r["face_value"])
-        exact = None
-        if meta and meta["status"] == "ok" and flows_ok:
-            exact = exact_ytm(r["ltp"], flows)
-        if exact is not None:
-            r["ytm"] = exact
-            r["ytm_method"] = "exact"
-        else:
-            r["ytm_method"] = "approx" if r["ytm"] is not None else None
-        r["duration"] = (
-            modified_duration(r["ltp"], flows, r["ytm"])
-            if meta and meta["status"] == "ok" and flows_ok else None
-        )
-        gy = gsec.interpolate(curve, r["years_to_maturity"])
-        r["spread"] = (
-            round(r["ytm"] - gy, 2) if r["ytm"] is not None and gy is not None
-            else None
-        )
-        annotate_signals(r, changes, last_traded, nsdl_ratings)
-        merge_bse_freshness(r)
         if watchlist_only and not r["in_watchlist"]:
+            continue
+        if exclude_defaulted and r["in_default"] and not watchlist_only:
             continue
         if min_ytm is not None and (r["ytm"] is None or r["ytm"] < min_ytm):
             continue
@@ -418,362 +193,242 @@ def bonds(
             continue
         if rating and rating.upper() not in (r["credit_rating"] or "").upper():
             continue
-        if min_rating is not None:
-            floor = RATING_RANK.get(min_rating.strip().upper())
-            rank = rating_rank(r["credit_rating"])
-            if floor is None or rank is None or rank > floor:
+        if min_rating is not None and (
+                floor is None or r["rating_rank"] is None
+                or r["rating_rank"] > floor):
+            continue
+        if sector and sector.lower() not in (r["sector"] or "").lower():
+            continue
+        if industry and industry.lower() not in (r["industry"] or "").lower():
+            continue
+        if issuer and issuer.lower() not in (r["issuer_name"] or "").lower():
+            continue
+        if exchange:
+            if exchange.upper() == "NSE" and not r["on_nse"]:
                 continue
-        if max_years is not None and (
-            r["years_to_maturity"] is None or r["years_to_maturity"] > max_years
-        ):
+            if exchange.upper() == "BSE" and not r["on_bse"]:
+                continue
+        if frequency and r["frequency"] != frequency.lower():
             continue
-        if min_years is not None and (
-            r["years_to_maturity"] is None or r["years_to_maturity"] < min_years
-        ):
+        if min_years is not None and (r["years_to_maturity"] is None
+                                      or r["years_to_maturity"] < min_years):
             continue
-        if min_spread is not None and (
-            r["spread"] is None or r["spread"] < min_spread
-        ):
+        if max_years is not None and (r["years_to_maturity"] is None
+                                      or r["years_to_maturity"] > max_years):
             continue
         if max_ltp is not None and (r["ltp"] is None or r["ltp"] > max_ltp):
             continue
-        if fresh_only and not (
-            (r["traded_value"] or 0) > 0
-            or (r["days_since_traded"] is not None
-                and r["days_since_traded"] <= STALE_AFTER_DAYS)
-        ):
+        if min_turnover is not None and (r["turnover"] is None
+                                         or r["turnover"] < min_turnover):
+            continue
+        if secured_only and r["secured"] is not True:
+            continue
+        if tax_free_only and r["tax_free"] is not True:
+            continue
+        if below_par and not (r["ltp"] and r["face_value"]
+                              and r["ltp"] < r["face_value"]):
+            continue
+        if fresh_only and r["stale"]:
             continue
         if exact_only and r["ytm_method"] != "exact":
             continue
         if downgraded_only and r["rating_change"] != "down":
             continue
-        if min_traded_value is not None and (
-            r["traded_value"] is None or r["traded_value"] < min_traded_value
-        ):
-            continue
-        if below_par and not (
-            r["ltp"] is not None and r["face_value"] and r["ltp"] < r["face_value"]
-        ):
-            continue
-        if frequency and r["frequency"] != frequency.lower():
+        if needle and needle not in r["isin"] and needle not in (
+                (r["nse_symbol"] or "") + " " + (r["issuer_name"] or "")).upper():
             continue
         out.append(r)
-    out.sort(key=lambda r: r["traded_value"] or 0, reverse=True)
-    return {"count": len(out), "bonds": out}
+    return {"count": len(out), "bonds": out[offset:offset + limit],
+            "as_of": _core["built_at"]}
 
 
-@app.get("/api/bonds/{isin}/detail")
+@app.get("/api/filters")
+def filters():
+    """Distinct values for filter dropdowns."""
+    rows = _get_core()
+    return {
+        "sectors": sorted({r["sector"] for r in rows if r["sector"]}),
+        "frequencies": sorted({r["frequency"] for r in rows if r["frequency"]}),
+        "ratings": [g for g in ratings.RATING_ORDER],
+    }
+
+
+# --------------------------------------------------------------------------
+# Bond detail
+# --------------------------------------------------------------------------
+
+@app.get("/api/bonds/{isin}")
 def bond_detail(isin: str, price: Optional[float] = Query(None, gt=0)):
-    """Everything known about one bond: snapshot, NSDL meta, dated cash flows.
-
-    Flows are flagged `future` when a buyer today would still receive them
-    (record date, falling back to due date, is after today).
-
-    ``price`` overrides the last traded price for what-if analysis: every
-    price-derived figure (exact/approx YTM, clean price, duration, spread,
-    and the invest projection inputs) is recomputed at that price. Market
-    facts (pct_change, traded value, history) are left untouched.
-    """
-    snapshot = db.latest_snapshot()
-    row = next((r for r in snapshot if r["isin"] == isin), None)
+    """Everything known about one bond. ``price`` reprices every
+    price-derived figure for what-if analysis."""
+    isin = isin.strip().upper()
+    row = queries.bond_row(isin)
     if row is None:
-        raise HTTPException(status_code=404, detail="ISIN not in latest snapshot")
-    custom_price = price is not None
-    apply_bse_quote(row, db.bse_quote_map().get(isin),
-                    db.last_traded_map().get(isin))
-    if custom_price:
-        row["ltp"] = price
-        row["price_source"] = None
-        row["ytm"] = ytm(
-            price,
-            row["coupon"] or coupon_from_symbol(row["symbol"]),
-            row["face_value"],
-            row["maturity_date"],
-        ) if row["face_value"] and row["maturity_date"] else None
-    maturity = parse_date(row["maturity_date"])
-    row["years_to_maturity"] = (
-        round(years_to_maturity(maturity), 2) if maturity else None
-    )
-    row["kite_url"] = kite.kite_url(row["symbol"], row["series"])
-    nsdl_ratings = db.nsdl_ratings_map()
-    apply_nsdl_rating(row, nsdl_ratings.get(isin), db.nsdl_rating_history(isin))
-    row["rating_rank"] = rating_rank(row["credit_rating"])
-    annotate_signals(row, db.rating_changes(), db.last_traded_map(), nsdl_ratings)
-    merge_bse_freshness(row)
-
-    meta = db.nsdl_meta_map().get(isin)
-    flows, amounts_estimated = nsdl.fill_amounts(
-        db.nsdl_all_cashflows().get(isin, []),
-        row["coupon"] or coupon_from_symbol(row["symbol"]),
-        row["face_value"],
-        nsdl.classify_frequency(meta["frequency_text"]) if meta else None,
-    )
-    flows = nsdl.normalize_flows(flows, row["face_value"])
-    flows_ok = nsdl.redemption_matches_face(flows, row["face_value"])
+        raise HTTPException(status_code=404, detail="Unknown ISIN")
     today = date.today()
-    out_flows = []
+    terms = queries.bond_terms(isin)
+    raw_flows = queries.bond_cashflows(isin)
+    sched = schedule.build(isin, raw_flows, terms, today=today)
+    hist = queries.rating_history(isin).get(isin, [])
+    cur = [h for h in hist if h.get("is_current")]
+    extras = queries.bond_extras(isin)
+
+    core = {b["isin"]: b for b in _get_core()}.get(isin, {})
+    custom_price = price is not None
+    ltp = price if custom_price else core.get("ltp")
+    coupon = core.get("coupon") or (
+        float(terms["coupon_rate"]) if terms and terms.get("coupon_rate") else None)
+    face = core.get("face_value") or (
+        float(terms["face_value"]) if terms and terms.get("face_value") else None)
+
+    exact = yields.exact_ytm(ltp, sched, today) if ltp else None
+    approx = yields.approx_ytm(ltp, coupon, face,
+                               terms.get("redemption_date") if terms else None,
+                               sched.periods_per_year or 1, today) if ltp else None
+    best = exact if exact is not None else approx
+    accrued = yields.accrued_interest(sched, today)
+    call_dates = _parse_call_dates(terms)
+    ytw = (yields.yield_to_worst(ltp, sched, call_dates, today)
+           if ltp and call_dates else None)
+
+    flows_out = []
     future_total = 0.0
-    for f in sorted(flows, key=lambda f: parse_date(f["due_date"]) or today):
-        due = parse_date(f["due_date"])
-        record = parse_date(f.get("record_date"))
-        future = bool(due and due > today) and not (record and record <= today)
-        if future:
-            future_total += f["amount"] or 0.0
-        out_flows.append({**f, "future": future})
-
-    exact = (
-        exact_ytm(row["ltp"], flows)
-        if meta and meta["status"] == "ok" and flows_ok else None
-    )
-    accrued = (
-        accrued_interest(flows) if meta and meta["status"] == "ok" else None
-    )
-    best_ytm = exact if exact is not None else row["ytm"]
-    duration = (
-        modified_duration(row["ltp"], flows, best_ytm)
-        if meta and meta["status"] == "ok" and flows_ok else None
-    )
-    gy = gsec.interpolate(db.latest_gsec_curve(), row["years_to_maturity"])
-    next_payment = next((f for f in out_flows if f["future"]), None)
-
-    # Sibling series from the same issuer: traded ones from the snapshot,
-    # plus listed-but-untraded ones from NSE's debt master.
-    master = db.debt_master()
-    issuer = (master.get(row["symbol"]) or {}).get("name")
-    issuer_bonds = []
-    if issuer:
-        snap_by_symbol = {r["symbol"]: r for r in snapshot if r["symbol"]}
-        for sym, m in master.items():
-            if m["name"] != issuer or sym == row["symbol"]:
-                continue
-            s = snap_by_symbol.get(sym)
-            mat = (s or m).get("maturity_date")
-            mat_d = parse_date(mat) if mat else None
-            issuer_bonds.append({
-                "symbol": sym,
-                "isin": s["isin"] if s else None,
-                "coupon": (s or m).get("coupon"),
-                "maturity_date": mat,
-                "years_to_maturity": (
-                    round(years_to_maturity(mat_d), 2) if mat_d else None
-                ),
-                "ltp": s["ltp"] if s else None,
-                "ytm": s["ytm"] if s else None,
-                "traded_value": s["traded_value"] if s else None,
-                "in_feed": s is not None,
-            })
-        issuer_bonds.sort(
-            key=lambda b: (b["years_to_maturity"] is None,
-                           b["years_to_maturity"] or 0)
-        )
+    for f in sched.flows:
+        fut = f.receivable_by_buyer(today)
+        if fut and f.amount:
+            future_total += f.amount
+        flows_out.append({
+            "event": f.event, "due_date": f.due_date,
+            "record_date": f.record_date, "amount": f.amount,
+            "estimated": f.estimated, "future": fut,
+        })
+    next_payment = next((f for f in flows_out if f["future"]), None)
 
     return {
         **row,
-        "frequency": nsdl.classify_frequency(meta["frequency_text"]) if meta else None,
-        "frequency_text": meta["frequency_text"] if meta else None,
-        "coupon_basis": meta["coupon_basis"] if meta else None,
-        "allotment_date": meta["allotment_date"] if meta else None,
-        "listing_date": meta["listing_date"] if meta else None,
-        "issue_type": meta["issue_type"] if meta else None,
-        "nsdl_status": meta["status"] if meta else None,
-        "ytm_exact": exact,
-        "ytm_approx": row["ytm"],
-        "accrued": accrued,
-        "clean_price": (
-            round(row["ltp"] - accrued, 2)
-            if accrued is not None and row["ltp"] else None
-        ),
-        "duration": duration,
-        "gsec_yield": gy,
-        "spread": (
-            round(best_ytm - gy, 2)
-            if best_ytm is not None and gy is not None else None
-        ),
-        "cashflows": out_flows,
-        "amounts_estimated": amounts_estimated,
-        "schedule_mismatch": not flows_ok,
+        "terms": terms,
+        "kite_url": kite.kite_url(row.get("nse_symbol"), row.get("nse_series")),
+        "ltp": ltp,
         "custom_price": custom_price,
+        "trade_date": core.get("trade_date"),
+        "days_since_traded": core.get("days_since_traded"),
+        "otc_price_pct": core.get("otc_price_pct"),
+        "otc_yield": core.get("otc_yield"),
+        "otc_trade_date": core.get("otc_trade_date"),
+        "coupon": coupon,
+        "face_value": face,
+        "frequency": sched.frequency,
+        "schedule_shape": sched.shape,
+        "schedule_usable": sched.usable,
+        "schedule_warnings": sched.warnings,
+        "amounts_estimated": sched.amounts_estimated,
+        "years_to_maturity": _years(
+            terms.get("redemption_date") if terms else None, today),
+        "ytm_exact": exact,
+        "ytm_approx": approx,
+        "ytm": best,
+        "yield_to_worst": ytw,
+        "call_dates": call_dates,
+        "current_yield": yields.current_yield(ltp, coupon, face),
+        "accrued": accrued,
+        "clean_price": yields.clean_price(ltp, sched, today) if ltp else None,
+        "duration": yields.modified_duration(ltp, sched, best, today),
+        "credit_rating": ratings.composite(cur),
+        "rating_rank": ratings.best_rank(cur),
+        "in_default": ratings.in_default(cur) or bool(extras["defaults"])
+                      or bool(extras["technical_defaults"]),
+        "rating_timeline": ratings.timeline(hist),
+        "cashflows": flows_out,
         "future_total_per_unit": round(future_total, 2),
         "next_payment": next_payment,
-        "issuer_name": issuer,
-        "issuer_bonds": issuer_bonds,
+        **extras,
+        "issuer_bonds": queries.issuer_siblings(isin, row["issuer_name"])
+                        if row.get("issuer_name") else [],
+        "in_watchlist": isin in {w["isin"] for w in db.get_watchlist()},
     }
 
 
-# ---- Portfolio P&L ---------------------------------------------------------
-
-class HoldingIn(BaseModel):
-    isin: str
-    qty: float
-    buy_price: Optional[float] = None
-    buy_date: Optional[str] = None  # YYYY-MM-DD or DD-Mon-YYYY
-
-
-class HoldingPatch(BaseModel):
-    qty: Optional[float] = None
-    buy_price: Optional[float] = None
-    buy_date: Optional[str] = None
-
-
-def _validated_buy_date(value: Optional[str]) -> Optional[str]:
-    if value in (None, ""):
-        return None
-    d = parse_date(value)
-    if d is None:
-        raise HTTPException(status_code=422, detail=f"Unparseable date: {value}")
-    if d > date.today():
-        raise HTTPException(status_code=422, detail="Buy date is in the future")
-    return d.isoformat()
+def _parse_call_dates(terms: Optional[Dict]) -> List[date]:
+    """Extract usable call dates from bond_terms' free-text fields."""
+    if not terms or (terms.get("call_indicator") or "").lower() != "yes":
+        return []
+    text = terms.get("call_specified_dates") or terms.get("call_deadline") or ""
+    dates = []
+    for m in re.finditer(r"(\d{1,2})[-/](\d{1,2}|\w{3})[-/](\d{4})", str(text)):
+        d, mth, y = m.groups()
+        try:
+            if mth.isdigit():
+                dates.append(date(int(y), int(mth), int(d)))
+            else:
+                dates.append(datetime.strptime(
+                    f"{d}-{mth}-{y}", "%d-%b-%Y").date())
+        except ValueError:
+            continue
+    return sorted(set(dates))
 
 
-@app.get("/api/portfolio")
-def portfolio():
-    """All holdings with per-holding and aggregate P&L.
+# --------------------------------------------------------------------------
+# Trade history
+# --------------------------------------------------------------------------
 
-    Accuracy caveats ride along as `warnings` per holding: schedule quality,
-    stale prices, estimated amounts, missing buy dates. TDS (~10% on
-    interest) is NOT modelled — realized income is gross.
-    """
-    snap = {r["isin"]: r for r in db.latest_snapshot() if r["isin"]}
-    meta_map = db.nsdl_meta_map()
-    flows_map = db.nsdl_all_cashflows()
-    last_traded = db.last_traded_map()
-    names = db.company_names()
-    today = date.today()
-    out = []
-    all_flows = []          # combined dated flows for portfolio XIRR
-    xirr_complete = True    # only meaningful if every holding contributed
-    for h in db.holdings():
-        r = snap.get(h["isin"])
-        meta = meta_map.get(h["isin"])
-        coupon = face = None
-        if r:
-            coupon = r["coupon"] or coupon_from_symbol(r["symbol"])
-            face = r["face_value"]
-        flows, amounts_estimated = nsdl.fill_amounts(
-            flows_map.get(h["isin"], []), coupon, face,
-            nsdl.classify_frequency(meta["frequency_text"]) if meta else None,
-        )
-        flows = nsdl.normalize_flows(flows, face)
-        nsdl_ok = bool(meta and meta["status"] == "ok" and flows)
-        schedule_ok = nsdl_ok and nsdl.redemption_matches_face(flows, face)
-        figs = pnl.holding_pnl(h, r, flows if nsdl_ok else [], schedule_ok)
-        if amounts_estimated and nsdl_ok:
-            figs["warnings"].append(
-                "payment amounts estimated from the coupon rate")
-        lt = last_traded.get(h["isin"])
-        days_since = (today - date.fromisoformat(lt[:10])).days if lt else None
-        if (days_since is not None and days_since >= STALE_AFTER_DAYS
-                and not figs["closed"]):
-            figs["warnings"].append(
-                f"price is {days_since} days old — market value and XIRR may be off")
-        buy_d = parse_date(h["buy_date"] or "")
-        if buy_d and figs["invested"] and figs["market_value"] is not None:
-            all_flows.append((buy_d, -figs["invested"]))
-            all_flows += [
-                (parse_date(f["due_date"]), h["qty"] * f["amount"])
-                for f in pnl.received_flows(flows if nsdl_ok else [], buy_d)
-            ]
-            if not figs["closed"]:
-                all_flows.append((today, figs["market_value"]))
-        else:
-            xirr_complete = False
-        out.append({
-            **h,
-            **figs,
-            "symbol": r["symbol"] if r else None,
-            "company_name": names.get(r["symbol"]) if r else None,
-            "ltp": r["ltp"] if r else None,
-            "face_value": face,
-            "maturity_date": r["maturity_date"] if r else None,
-            "days_since_traded": days_since,
-            "in_feed": r is not None,
-        })
-
-    def total(key):
-        vals = [x[key] for x in out if x[key] is not None]
-        return round(sum(vals), 2) if vals else None
-
-    return {
-        "holdings": out,
-        "totals": {
-            "invested": total("invested"),
-            "market_value": total("market_value"),
-            "realized": total("realized"),
-            "unrealized": total("unrealized"),
-            "total_pnl": total("total_pnl"),
-            "xirr": xirr(all_flows) if all_flows and xirr_complete else None,
-            "xirr_complete": xirr_complete,
-        },
-    }
+@app.get("/api/bonds/{isin}/trades")
+def bond_trades(
+    isin: str,
+    date_from: Optional[date] = Query(None, alias="from"),
+    date_to: Optional[date] = Query(None, alias="to"),
+    exchange: Optional[str] = Query(None),
+    segment: Optional[str] = Query(None),
+):
+    rows = queries.trades(isin.strip().upper(), date_from, date_to,
+                          exchange, segment)
+    return {"isin": isin, "count": len(rows), "trades": rows}
 
 
-@app.post("/api/portfolio/holdings")
-def add_holding(body: HoldingIn):
-    if body.qty <= 0:
-        raise HTTPException(status_code=422, detail="Quantity must be positive")
-    isin = body.isin.strip().upper()
-    rowid = db.add_holding(
-        isin, body.qty, body.buy_price, _validated_buy_date(body.buy_date),
-    )
-    # Holdings need their payment schedule for realized income; fetch it now
-    # if it isn't cached (the bond may not be in the NSE snapshot at all).
-    if isin not in _nsdl_complete_isins():
-        _fetch_nsdl_async(isin)
-    return {"id": rowid}
+# --------------------------------------------------------------------------
+# Watchlist
+# --------------------------------------------------------------------------
 
-
-@app.patch("/api/portfolio/holdings/{holding_id}")
-def edit_holding(holding_id: int, body: HoldingPatch):
-    fields = {}
-    if body.qty is not None:
-        if body.qty <= 0:
-            raise HTTPException(status_code=422, detail="Quantity must be positive")
-        fields["qty"] = body.qty
-    if body.buy_price is not None:
-        fields["buy_price"] = body.buy_price
-    if body.buy_date is not None:
-        fields["buy_date"] = _validated_buy_date(body.buy_date)
-    if not fields:
-        raise HTTPException(status_code=422, detail="Nothing to update")
-    if not db.update_holding(holding_id, fields):
-        raise HTTPException(status_code=404, detail="Holding not found")
-    return {"id": holding_id, "updated": sorted(fields)}
-
-
-@app.delete("/api/portfolio/holdings/{holding_id}")
-def remove_holding(holding_id: int):
-    if not db.delete_holding(holding_id):
-        raise HTTPException(status_code=404, detail="Holding not found")
-    return {"id": holding_id, "deleted": True}
-
-
-@app.get("/api/gsec")
-def gsec_curve():
-    """Latest stored G-Sec yield curve (for the scatter overlay)."""
-    return {"curve": db.latest_gsec_curve()}
-
-
-@app.get("/api/bonds/{isin}/history")
-def history(isin: str):
-    return {"isin": isin, "history": db.price_history(isin)}
+@app.get("/api/watchlist")
+def watchlist():
+    return {"watchlist": db.get_watchlist()}
 
 
 @app.post("/api/watchlist/{isin}")
 def watch(isin: str):
-    db.add_to_watchlist(isin)
+    isin = isin.strip().upper()
+    try:
+        db.add_to_watchlist(isin)
+    except Exception:  # noqa: BLE001 - FK violation = unknown ISIN
+        raise HTTPException(status_code=404, detail="Unknown ISIN")
+    _invalidate_watch(isin, True)
     return {"isin": isin, "watched": True}
 
 
 @app.delete("/api/watchlist/{isin}")
 def unwatch(isin: str):
+    isin = isin.strip().upper()
     db.remove_from_watchlist(isin)
+    _invalidate_watch(isin, False)
     return {"isin": isin, "watched": False}
 
 
+def _invalidate_watch(isin: str, watched: bool):
+    """Patch the cached core in place instead of a full rebuild."""
+    with _core_lock:
+        for b in _core["bonds"]:
+            if b["isin"] == isin:
+                b["in_watchlist"] = watched
+
+
+# --------------------------------------------------------------------------
+# Status
+# --------------------------------------------------------------------------
+
+@app.get("/api/status")
+def status():
+    return queries.status()
+
+
 @app.get("/")
-def index():
-    return FileResponse(STATIC_DIR / "index.html")
-
-
-app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+def health():
+    return {"app": "BondLens", "version": "2.0"}

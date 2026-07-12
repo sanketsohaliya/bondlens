@@ -1,40 +1,27 @@
-"""Fetch BSE end-of-day bond prices from the daily bhavcopy CSV.
+"""BSE listed-securities master (list-of-scrips API).
 
-BSE's website is an Angular SPA whose data APIs are awkward to discover and
-rate-limited, but the exchange publishes a daily "common format" bhavcopy —
-a plain CSV covering every instrument traded on the capital-market segment,
-including F-group (debt) series:
-https://www.bseindia.com/download/BhavCopy/Equity/BhavCopy_BSE_CM_0_0_0_YYYYMMDD_F_0000.CSV
-
-Corporate bonds often trade on BSE's retail debt segment on days they don't
-trade on NSE, so this fills staleness gaps. EOD only — no intraday quotes.
+Reconstructed from bytecode after the source was lost in the v2 cleanup —
+only the functions the universe builder uses.
 """
-import csv
-import io
-from datetime import date, timedelta
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List
 
 import requests
 
-BHAVCOPY_URL = (
-    "https://www.bseindia.com/download/BhavCopy/Equity/"
-    "BhavCopy_BSE_CM_0_0_0_{day}_F_0000.CSV"
-)
+BSE_HOME = "https://www.bseindia.com/"
+SCRIP_MASTER_URL = "https://api.bseindia.com/BseIndiaAPI/api/ListofScripData/w"
 
 HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
-        "(KHTML, like Gecko) Chrome/120.0 Safari/537.36"
-    ),
-    "Accept": "*/*",
-    "Referer": "https://www.bseindia.com/",
+    "User-Agent": ("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+                   "(KHTML, like Gecko) Chrome/120.0 Safari/537.36"),
+    "Referer": BSE_HOME,
 }
 
-# Bhavcopy exists only for trading days; walk back at most this many days.
-MAX_LOOKBACK_DAYS = 7
+# Suspended bonds still matter: they carry ratings/default history and may
+# resume trading.
+LISTED_STATUSES = ("Active", "Suspended")
 
 
-def _to_float(value) -> Optional[float]:
+def _to_float(value):
     if value in (None, "", "-"):
         return None
     try:
@@ -43,57 +30,58 @@ def _to_float(value) -> Optional[float]:
         return None
 
 
-def parse_bhavcopy(text: str) -> List[Dict]:
-    """Normalize bhavcopy rows to one quote per debt-looking ISIN.
+def fetch_scrip_master_raw(statuses=LISTED_STATUSES, timeout: int = 60) -> Dict:
+    """Fetch BSE's raw list-of-securities payload per status.
 
-    Keeps every row with an ISIN — the caller joins against its own bond
-    universe, which is a cleaner filter than second-guessing BSE's series
-    codes (F-group also contains a few ETFs).
+    Returns {status: [rows...]} exactly as the API delivered it (all debt
+    segments, unfiltered) so the payload can be archived verbatim.
+    Requires the homepage handshake for cookies.
     """
-    out = []
-    for row in csv.DictReader(io.StringIO(text)):
-        isin = (row.get("ISIN") or "").strip()
-        if not isin:
-            continue
-        out.append({
-            "isin": isin,
-            "symbol": (row.get("TckrSymb") or "").strip() or None,
-            "series": (row.get("SctySrs") or "").strip() or None,
-            "trade_date": (row.get("TradDt") or "").strip() or None,
-            "ltp": _to_float(row.get("LastPric")),
-            "close": _to_float(row.get("ClsPric")),
-            "open": _to_float(row.get("OpnPric")),
-            "high": _to_float(row.get("HghPric")),
-            "low": _to_float(row.get("LwPric")),
-            "qty": _to_float(row.get("TtlTradgVol")),
-            "traded_value": _to_float(row.get("TtlTrfVal")),
-            "num_trades": _to_float(row.get("TtlNbOfTxsExctd")),
-        })
-    return out
+    session = requests.Session()
+    session.headers.update({**HEADERS,
+                            "Accept": "application/json, text/plain, */*"})
+    try:
+        session.get(BSE_HOME, timeout=30)
+    except requests.RequestException:
+        pass  # cookies are nice-to-have; the API often works without
+
+    raw = {}
+    for status in statuses:
+        params = {"Group": "", "Scripcode": "", "industry": "",
+                  "segment": "Debt", "status": status}
+        resp = session.get(SCRIP_MASTER_URL, params=params, timeout=timeout)
+        resp.raise_for_status()
+        rows = resp.json()
+        if isinstance(rows, list):
+            raw[status] = rows
+    return raw
 
 
-def fetch_bhavcopy(timeout: int = 60) -> Tuple[Optional[str], List[Dict]]:
-    """Fetch the most recent bhavcopy, walking back over non-trading days.
+def parse_scrip_master(raw: Dict) -> List[Dict]:
+    """Normalize the raw payload to one 'Debentures and Bonds' record per
+    ISIN, deduped so an ISIN seen in multiple statuses keeps the first
+    (Active before Suspended, per fetch order)."""
+    out = {}
+    for status, rows in raw.items():
+        for row in rows:
+            if row.get("Segment") != "Debentures and Bonds":
+                continue
+            isin = (row.get("ISIN_NUMBER") or "").strip()
+            if not isin or isin in out:
+                continue
+            out[isin] = {
+                "isin": isin,
+                "bse_status": (row.get("Status") or status).strip(),
+                "bse_scrip_code": (str(row.get("SCRIP_CD"))
+                                   if row.get("SCRIP_CD") else None),
+                "bse_scrip_id": (row.get("scrip_id") or "").strip() or None,
+                "issuer_name": (row.get("Issuer_Name")
+                                or row.get("Scrip_Name") or "").strip() or None,
+                "face_value": _to_float(row.get("FACE_VALUE")),
+            }
+    return list(out.values())
 
-    Returns (trade_date_iso, quotes). Raises only if every day in the
-    lookback window fails.
-    """
-    last_error: Optional[Exception] = None
-    for back in range(MAX_LOOKBACK_DAYS):
-        day = date.today() - timedelta(days=back)
-        url = BHAVCOPY_URL.format(day=day.strftime("%Y%m%d"))
-        try:
-            resp = requests.get(url, headers=HEADERS, timeout=timeout)
-        except requests.RequestException as exc:
-            last_error = exc
-            continue
-        # Missing files come back as an HTML error page with status 200.
-        if not resp.ok or resp.text.lstrip().startswith("<"):
-            continue
-        quotes = parse_bhavcopy(resp.text)
-        if quotes:
-            return day.isoformat(), quotes
-    if last_error:
-        raise last_error
-    raise RuntimeError(
-        f"No BSE bhavcopy found in the last {MAX_LOOKBACK_DAYS} days")
+
+def fetch_scrip_master(statuses=LISTED_STATUSES, timeout: int = 60) -> List[Dict]:
+    """Fetch and parse the listed 'Debentures and Bonds' set in one step."""
+    return parse_scrip_master(fetch_scrip_master_raw(statuses, timeout=timeout))

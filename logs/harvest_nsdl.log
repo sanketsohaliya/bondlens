@@ -1,0 +1,665 @@
+run=1 universe=6453 isins, tiers=['monthly', 'quarterly', 'static', 'weekly'], known rows=0
+[25/6453] INE00V208132 fetched=454 unchanged=0 skipped=0 failed=0 elapsed=0.6m eta=165m
+  INE011Z07013/redemptions: http=503 retry
+  INE011Z07021/redemptions: http=503 retry
+  INE011Z07021/redemptions: http=503 retry
+  INE011Z07013/redemptions: http=503 retry
+  INE011Z07021/redemptions: http=503 retry
+  INE011Z07013/redemptions: http=503 retry
+[50/6453] INE015L07477 fetched=766 unchanged=0 skipped=0 failed=0 elapsed=1.2m eta=153m
+  INE011Z07021/redemptions: http=503 retry
+  INE011Z07013/redemptions: http=503 retry
+[75/6453] INE018E08334 fetched=1149 unchanged=0 skipped=0 failed=2 elapsed=1.8m eta=153m
+[100/6453] INE01AI07017 fetched=1512 unchanged=0 skipped=0 failed=2 elapsed=2.3m eta=149m
+[125/6453] INE01CY078F6 fetched=1874 unchanged=0 skipped=0 failed=2 elapsed=2.8m eta=143m
+[150/6453] INE01CY079I8 fetched=2240 unchanged=0 skipped=0 failed=2 elapsed=3.3m eta=139m
+[175/6453] INE01HV07379 fetched=2616 unchanged=0 skipped=0 failed=2 elapsed=3.8m eta=137m
+[200/6453] INE01I507752 fetched=3068 unchanged=0 skipped=0 failed=2 elapsed=4.4m eta=137m
+[225/6453] INE01I507AK7 fetched=3441 unchanged=0 skipped=0 failed=2 elapsed=4.9m eta=134m
+[250/6453] INE01W207017 fetched=3802 unchanged=0 skipped=0 failed=2 elapsed=5.3m eta=132m
+[275/6453] INE01YL07441 fetched=4158 unchanged=0 skipped=0 failed=2 elapsed=5.8m eta=130m
+[300/6453] INE01ZK08661 fetched=4515 unchanged=0 skipped=0 failed=2 elapsed=6.3m eta=129m
+[325/6453] INE020B08AC9 fetched=4878 unchanged=0 skipped=0 failed=2 elapsed=6.8m eta=128m
+[350/6453] INE020B08CO0 fetched=5241 unchanged=0 skipped=0 failed=2 elapsed=7.3m eta=127m
+[375/6453] INE020B08EH0 fetched=5607 unchanged=0 skipped=0 failed=2 elapsed=7.7m eta=125m
+[400/6453] INE020B08FH7 fetched=5965 unchanged=0 skipped=0 failed=2 elapsed=8.2m eta=124m
+[425/6453] INE021T07015 fetched=6426 unchanged=0 skipped=0 failed=2 elapsed=8.8m eta=124m
+[450/6453] INE028A08315 fetched=6787 unchanged=0 skipped=0 failed=2 elapsed=9.3m eta=124m
+[475/6453] INE02KN07071 fetched=7143 unchanged=0 skipped=0 failed=2 elapsed=9.7m eta=123m
+[500/6453] INE031A07AM9 fetched=7509 unchanged=0 skipped=0 failed=2 elapsed=10.8m eta=129m
+[525/6453] INE031A08962 fetched=7868 unchanged=0 skipped=0 failed=2 elapsed=11.3m eta=128m
+[550/6453] INE039A09LL7 fetched=8222 unchanged=0 skipped=0 failed=2 elapsed=11.8m eta=127m
+[575/6453] INE039A09OW8 fetched=8582 unchanged=0 skipped=0 failed=2 elapsed=12.3m eta=126m
+[600/6453] INE03UZ07015 fetched=8937 unchanged=0 skipped=0 failed=2 elapsed=12.8m eta=125m
+[625/6453] INE040A08542 fetched=9395 unchanged=0 skipped=0 failed=2 elapsed=13.4m eta=125m
+[650/6453] INE040A08872 fetched=9753 unchanged=0 skipped=0 failed=2 elapsed=13.9m eta=124m
+[675/6453] INE046W07263 fetched=10120 unchanged=0 skipped=0 failed=2 elapsed=14.4m eta=123m
+[700/6453] INE04HY07161 fetched=10478 unchanged=0 skipped=0 failed=2 elapsed=14.8m eta=122m
+[725/6453] INE04Q907090 fetched=10847 unchanged=0 skipped=0 failed=2 elapsed=15.3m eta=121m
+[750/6453] INE04VS07370 fetched=11198 unchanged=0 skipped=0 failed=2 elapsed=15.8m eta=120m
+[775/6453] INE051307AQ6 fetched=11559 unchanged=0 skipped=0 failed=2 elapsed=16.3m eta=119m
+[800/6453] INE051307BZ5 fetched=11924 unchanged=0 skipped=0 failed=2 elapsed=16.7m eta=118m
+[825/6453] INE053F07819 fetched=12287 unchanged=0 skipped=0 failed=2 elapsed=17.2m eta=117m
+[850/6453] INE053F07BW9 fetched=12652 unchanged=0 skipped=0 failed=2 elapsed=17.7m eta=117m
+[875/6453] INE053F08296 fetched=13024 unchanged=0 skipped=0 failed=2 elapsed=18.2m eta=116m
+[900/6453] INE053F09HU6 fetched=13390 unchanged=0 skipped=0 failed=2 elapsed=18.7m eta=115m
+  INE059B07096/listings: http=503 retry
+  INE059B07104/listings: http=503 retry
+  INE059B07096/listings: http=503 retry
+  INE059B07104/listings: http=503 retry
+  INE059B07104/listings: http=503 retry
+  INE059B07096/listings: http=503 retry
+[925/6453] INE05F407CL3 fetched=13801 unchanged=0 skipped=0 failed=2 elapsed=19.4m eta=116m
+  INE059B07104/listings: http=503 retry
+  INE059B07096/listings: http=503 retry
+[950/6453] INE05F407DK3 fetched=14210 unchanged=0 skipped=0 failed=4 elapsed=20.1m eta=116m
+[975/6453] INE062A08348 fetched=14565 unchanged=0 skipped=0 failed=4 elapsed=20.5m eta=115m
+  INE065507340/redemptions: http=503 retry
+  INE065507423/redemptions: http=503 retry
+  INE065507340/redemptions: http=503 retry
+  INE065507423/redemptions: http=503 retry
+[1000/6453] INE065507AN2 fetched=14882 unchanged=0 skipped=0 failed=4 elapsed=21.0m eta=115m
+  INE065507423/redemptions: http=503 retry
+  INE065507340/redemptions: http=503 retry
+  INE065507423/redemptions: http=503 retry
+  INE065507340/redemptions: http=503 retry
+[1025/6453] INE065507BM2 fetched=15283 unchanged=0 skipped=0 failed=6 elapsed=21.7m eta=115m
+[1050/6453] INE071G07603 fetched=15648 unchanged=0 skipped=0 failed=6 elapsed=22.2m eta=114m
+[1075/6453] INE071G08AH0 fetched=16038 unchanged=0 skipped=0 failed=6 elapsed=22.7m eta=114m
+[1100/6453] INE07UF07042 fetched=16385 unchanged=0 skipped=0 failed=6 elapsed=23.2m eta=113m
+[1125/6453] INE087H07102 fetched=16782 unchanged=0 skipped=0 failed=6 elapsed=23.7m eta=112m
+[1150/6453] INE08BR07029 fetched=17133 unchanged=0 skipped=0 failed=6 elapsed=24.2m eta=112m
+[1175/6453] INE08XA07045 fetched=17484 unchanged=0 skipped=0 failed=6 elapsed=24.7m eta=111m
+[1200/6453] INE08XP07464 fetched=17829 unchanged=0 skipped=0 failed=6 elapsed=25.1m eta=110m
+[1225/6453] INE090W07725 fetched=18199 unchanged=0 skipped=0 failed=6 elapsed=25.6m eta=109m
+[1250/6453] INE09T907035 fetched=18588 unchanged=0 skipped=0 failed=6 elapsed=26.1m eta=109m
+[1275/6453] INE0BNQ07121 fetched=18970 unchanged=0 skipped=0 failed=6 elapsed=26.6m eta=108m
+[1300/6453] INE0BUS07BQ9 fetched=19347 unchanged=0 skipped=0 failed=6 elapsed=27.0m eta=107m
+[1325/6453] INE0BUS08047 fetched=19730 unchanged=0 skipped=0 failed=6 elapsed=27.5m eta=106m
+[1350/6453] INE0CYK07020 fetched=20079 unchanged=0 skipped=0 failed=6 elapsed=28.0m eta=106m
+[1375/6453] INE0E2B08013 fetched=20449 unchanged=0 skipped=0 failed=6 elapsed=28.4m eta=105m
+[1400/6453] INE0I1007011 fetched=20803 unchanged=0 skipped=0 failed=6 elapsed=28.9m eta=104m
+[1425/6453] INE0IX207205 fetched=21163 unchanged=0 skipped=0 failed=6 elapsed=29.4m eta=104m
+[1450/6453] INE0K4K07030 fetched=21494 unchanged=0 skipped=0 failed=6 elapsed=29.8m eta=103m
+[1475/6453] INE0KXY07026 fetched=21865 unchanged=0 skipped=0 failed=6 elapsed=30.3m eta=102m
+[1500/6453] INE0L6807310 fetched=22211 unchanged=0 skipped=0 failed=6 elapsed=30.8m eta=102m
+[1525/6453] INE0M2307099 fetched=22573 unchanged=0 skipped=0 failed=6 elapsed=31.3m eta=101m
+[1550/6453] INE0MIZ07046 fetched=22934 unchanged=0 skipped=0 failed=6 elapsed=31.7m eta=100m
+[1575/6453] INE0NES07121 fetched=23312 unchanged=0 skipped=0 failed=6 elapsed=32.2m eta=100m
+[1600/6453] INE0NF907023 fetched=23753 unchanged=0 skipped=0 failed=6 elapsed=32.7m eta=99m
+[1625/6453] INE0PCH07016 fetched=24096 unchanged=0 skipped=0 failed=6 elapsed=33.1m eta=98m
+[1650/6453] INE0RU307189 fetched=24473 unchanged=0 skipped=0 failed=6 elapsed=33.6m eta=98m
+[1675/6453] INE0TLC07085 fetched=24810 unchanged=0 skipped=0 failed=6 elapsed=34.1m eta=97m
+[1700/6453] INE101Q07615 fetched=25185 unchanged=0 skipped=0 failed=6 elapsed=34.5m eta=97m
+[1725/6453] INE101Q07BK8 fetched=25588 unchanged=0 skipped=0 failed=6 elapsed=35.1m eta=96m
+[1750/6453] INE103A08050 fetched=25939 unchanged=0 skipped=0 failed=6 elapsed=35.5m eta=95m
+[1775/6453] INE104W07203 fetched=26300 unchanged=0 skipped=0 failed=6 elapsed=36.0m eta=95m
+[1800/6453] INE115A07QT1 fetched=26668 unchanged=0 skipped=0 failed=6 elapsed=36.5m eta=94m
+[1825/6453] INE121A07QZ6 fetched=27032 unchanged=0 skipped=0 failed=6 elapsed=36.9m eta=94m
+[1850/6453] INE121A07SK4 fetched=27393 unchanged=0 skipped=0 failed=6 elapsed=38.1m eta=95m
+[1875/6453] INE121A08PS1 fetched=27746 unchanged=0 skipped=0 failed=6 elapsed=38.5m eta=94m
+[1900/6453] INE121H07BM1 fetched=28102 unchanged=0 skipped=0 failed=6 elapsed=39.0m eta=94m
+[1925/6453] INE124N07747 fetched=28555 unchanged=0 skipped=0 failed=6 elapsed=39.6m eta=93m
+  INE126D07073/listings: http=503 retry
+  INE126D07073/listings: http=503 retry
+[1950/6453] INE128M08078 fetched=28904 unchanged=0 skipped=0 failed=6 elapsed=40.1m eta=93m
+  INE126D07073/listings: http=503 retry
+  INE126D07073/listings: http=503 retry
+[1975/6453] INE134E07448 fetched=29227 unchanged=0 skipped=0 failed=6 elapsed=40.6m eta=92m
+  INE126D07073/defaultdetail: http=503 retry
+  INE126D07073/defaultdetail: http=503 retry
+  INE126D07073/defaultdetail: http=503 retry
+[2000/6453] INE134E07DO3 fetched=29649 unchanged=0 skipped=0 failed=7 elapsed=41.2m eta=92m
+  INE126D07073/defaultdetail: http=503 retry
+[2025/6453] INE134E08IO0 fetched=29972 unchanged=0 skipped=0 failed=8 elapsed=41.7m eta=91m
+[2050/6453] INE134E08KQ1 fetched=30339 unchanged=0 skipped=0 failed=8 elapsed=42.2m eta=91m
+[2075/6453] INE134E08MB9 fetched=30741 unchanged=0 skipped=0 failed=8 elapsed=42.7m eta=90m
+[2100/6453] INE134E08NB7 fetched=31137 unchanged=0 skipped=0 failed=8 elapsed=43.2m eta=90m
+[2125/6453] INE134E08OA7 fetched=31538 unchanged=0 skipped=0 failed=8 elapsed=43.7m eta=89m
+[2150/6453] INE146O07532 fetched=31916 unchanged=0 skipped=0 failed=8 elapsed=44.2m eta=88m
+[2175/6453] INE146O08340 fetched=32280 unchanged=0 skipped=0 failed=8 elapsed=44.7m eta=88m
+  INE148I07JF9/listings: http=503 retry
+[2200/6453] INE148I07KP6 fetched=32633 unchanged=0 skipped=0 failed=8 elapsed=45.1m eta=87m
+  INE148I07JF9/listings: http=503 retry
+  INE148I07JF9/listings: http=503 retry
+  INE148I07JF9/listings: http=503 retry
+[2225/6453] INE148I07NY2 fetched=32955 unchanged=0 skipped=0 failed=8 elapsed=45.7m eta=87m
+  INE148I07OH5/isins: http=503 retry
+  INE148I07OH5/isins: http=503 retry
+  INE148I07OH5/isins: http=503 retry
+[2250/6453] INE148I07PZ4 fetched=33352 unchanged=0 skipped=0 failed=9 elapsed=46.3m eta=86m
+  INE148I07OH5/isins: http=503 retry
+[2275/6453] INE148I07RM8 fetched=33770 unchanged=0 skipped=0 failed=10 elapsed=46.9m eta=86m
+[2300/6453] INE148I07SR5 fetched=34151 unchanged=0 skipped=0 failed=10 elapsed=47.4m eta=86m
+[2325/6453] INE148I07TO0 fetched=34491 unchanged=0 skipped=0 failed=10 elapsed=47.9m eta=85m
+[2350/6453] INE148I07UX9 fetched=34874 unchanged=0 skipped=0 failed=10 elapsed=48.3m eta=84m
+[2375/6453] INE148I07VY5 fetched=35231 unchanged=0 skipped=0 failed=10 elapsed=48.8m eta=84m
+[2400/6453] INE148I07WB1 fetched=35568 unchanged=0 skipped=0 failed=10 elapsed=49.3m eta=83m
+[2425/6453] INE148I07YD3 fetched=35990 unchanged=0 skipped=0 failed=10 elapsed=49.9m eta=83m
+  INE148I08306/listings: http=503 retry
+  INE148I08306/listings: http=503 retry
+  INE148I08306/listings: http=503 retry
+[2450/6453] INE14LE08014 fetched=36366 unchanged=0 skipped=0 failed=10 elapsed=50.5m eta=82m
+  INE148I08306/listings: http=503 retry
+[2475/6453] INE157D07EJ4 fetched=36750 unchanged=0 skipped=0 failed=11 elapsed=51.0m eta=82m
+[2500/6453] INE160A08324 fetched=37119 unchanged=0 skipped=0 failed=11 elapsed=51.5m eta=81m
+[2525/6453] INE179P07597 fetched=37494 unchanged=0 skipped=0 failed=11 elapsed=52.0m eta=81m
+[2550/6453] INE180C07254 fetched=37851 unchanged=0 skipped=0 failed=11 elapsed=52.4m eta=80m
+[2575/6453] INE192U07350 fetched=38197 unchanged=0 skipped=0 failed=11 elapsed=52.9m eta=80m
+[2600/6453] INE1BEC07011 fetched=38546 unchanged=0 skipped=0 failed=11 elapsed=53.4m eta=79m
+[2625/6453] INE1QWF07055 fetched=38905 unchanged=0 skipped=0 failed=11 elapsed=53.8m eta=79m
+  INE201P08209/isins: http=503 retry
+  INE201P08209/isins: http=503 retry
+[2650/6453] INE202B07JT0 fetched=39278 unchanged=0 skipped=0 failed=11 elapsed=54.4m eta=78m
+  INE201P08209/isins: http=503 retry
+  INE201P08209/isins: http=503 retry
+[2675/6453] INE202E08094 fetched=39677 unchanged=0 skipped=0 failed=11 elapsed=55.0m eta=78m
+[2700/6453] INE205A07196 fetched=40035 unchanged=0 skipped=0 failed=12 elapsed=55.5m eta=77m
+[2725/6453] INE216P07241 fetched=40395 unchanged=0 skipped=0 failed=12 elapsed=55.9m eta=77m
+[2750/6453] INE219X07355 fetched=40760 unchanged=0 skipped=0 failed=12 elapsed=56.4m eta=76m
+[2775/6453] INE225R08014 fetched=41196 unchanged=0 skipped=0 failed=12 elapsed=57.0m eta=75m
+[2800/6453] INE235P07142 fetched=41566 unchanged=0 skipped=0 failed=12 elapsed=57.4m eta=75m
+[2825/6453] INE235P07AJ0 fetched=41922 unchanged=0 skipped=0 failed=12 elapsed=57.9m eta=74m
+[2850/6453] INE242A08528 fetched=42286 unchanged=0 skipped=0 failed=12 elapsed=58.4m eta=74m
+  INE244L08018/listings: http=503 retry
+[2875/6453] INE244L07606 fetched=42634 unchanged=0 skipped=0 failed=12 elapsed=58.9m eta=73m
+  INE244L08018/listings: http=503 retry
+  INE244L08042/listings: http=503 retry
+  INE244L08042/listings: http=503 retry
+  INE244L08018/listings: http=503 retry
+  INE244L08042/listings: http=503 retry
+  INE244L08018/listings: http=503 retry
+  INE244L08042/listings: http=503 retry
+[2900/6453] INE246R07814 fetched=43003 unchanged=0 skipped=0 failed=12 elapsed=59.5m eta=73m
+[2925/6453] INE248U07FH6 fetched=43369 unchanged=0 skipped=0 failed=14 elapsed=60.1m eta=72m
+[2950/6453] INE248U07GK8 fetched=43754 unchanged=0 skipped=0 failed=14 elapsed=60.6m eta=72m
+[2975/6453] INE261F08AR8 fetched=44130 unchanged=0 skipped=0 failed=14 elapsed=61.0m eta=71m
+[3000/6453] INE261F08DV4 fetched=44487 unchanged=0 skipped=0 failed=14 elapsed=61.5m eta=71m
+[3025/6453] INE267A08020 fetched=44862 unchanged=0 skipped=0 failed=14 elapsed=62.0m eta=70m
+[3050/6453] INE290W08018 fetched=45197 unchanged=0 skipped=0 failed=14 elapsed=62.4m eta=70m
+[3075/6453] INE296A07SU3 fetched=45568 unchanged=0 skipped=0 failed=14 elapsed=62.9m eta=69m
+[3100/6453] INE296A07TT3 fetched=45933 unchanged=0 skipped=0 failed=14 elapsed=63.4m eta=69m
+[3125/6453] INE296G07218 fetched=46294 unchanged=0 skipped=0 failed=14 elapsed=63.9m eta=68m
+[3150/6453] INE296Q07167 fetched=46694 unchanged=0 skipped=0 failed=14 elapsed=64.5m eta=68m
+[3175/6453] INE2T2Q07196 fetched=47066 unchanged=0 skipped=0 failed=14 elapsed=64.9m eta=67m
+[3200/6453] INE302E07441 fetched=47402 unchanged=0 skipped=0 failed=14 elapsed=65.4m eta=66m
+[3225/6453] INE302E07821 fetched=47763 unchanged=0 skipped=0 failed=14 elapsed=65.9m eta=66m
+[3250/6453] INE310A07020 fetched=48123 unchanged=0 skipped=0 failed=14 elapsed=66.3m eta=65m
+[3275/6453] INE312X08042 fetched=48491 unchanged=0 skipped=0 failed=14 elapsed=66.8m eta=65m
+[3300/6453] INE321N07558 fetched=48848 unchanged=0 skipped=0 failed=14 elapsed=67.3m eta=64m
+[3325/6453] INE331A07281 fetched=49195 unchanged=0 skipped=0 failed=14 elapsed=67.7m eta=64m
+[3350/6453] INE342T07403 fetched=49557 unchanged=0 skipped=0 failed=14 elapsed=68.1m eta=63m
+[3375/6453] INE342T08070 fetched=50007 unchanged=0 skipped=0 failed=14 elapsed=68.7m eta=63m
+[3400/6453] INE348L07381 fetched=50320 unchanged=0 skipped=0 failed=14 elapsed=69.1m eta=62m
+[3425/6453] INE365D08075 fetched=50686 unchanged=0 skipped=0 failed=14 elapsed=69.6m eta=62m
+[3450/6453] INE377Y07433 fetched=51052 unchanged=0 skipped=0 failed=14 elapsed=70.1m eta=61m
+[3475/6453] INE385W07034 fetched=51399 unchanged=0 skipped=0 failed=14 elapsed=70.6m eta=60m
+[3500/6453] INE403D08231 fetched=51753 unchanged=0 skipped=0 failed=14 elapsed=71.0m eta=60m
+[3525/6453] INE403Q07CU5 fetched=52180 unchanged=0 skipped=0 failed=14 elapsed=71.5m eta=59m
+[3550/6453] INE403Q07EL0 fetched=52564 unchanged=0 skipped=0 failed=14 elapsed=72.0m eta=59m
+[3575/6453] INE403Q07FG7 fetched=52930 unchanged=0 skipped=0 failed=14 elapsed=72.5m eta=58m
+[3600/6453] INE403Q07GI1 fetched=53298 unchanged=0 skipped=0 failed=14 elapsed=73.0m eta=58m
+[3625/6453] INE403Q08183 fetched=53653 unchanged=0 skipped=0 failed=14 elapsed=73.4m eta=57m
+[3650/6453] INE411H08011 fetched=54014 unchanged=0 skipped=0 failed=14 elapsed=73.9m eta=57m
+[3675/6453] INE413U08044 fetched=54377 unchanged=0 skipped=0 failed=14 elapsed=74.3m eta=56m
+[3700/6453] INE414G07GP4 fetched=54742 unchanged=0 skipped=0 failed=14 elapsed=74.8m eta=56m
+[3725/6453] INE414G07IO3 fetched=55103 unchanged=0 skipped=0 failed=14 elapsed=75.3m eta=55m
+[3750/6453] INE414G07JQ6 fetched=55472 unchanged=0 skipped=0 failed=14 elapsed=75.8m eta=55m
+[3775/6453] INE420C07155 fetched=55853 unchanged=0 skipped=0 failed=14 elapsed=76.3m eta=54m
+[3800/6453] INE423A07518 fetched=56288 unchanged=0 skipped=0 failed=14 elapsed=76.8m eta=54m
+[3825/6453] INE432R07505 fetched=56647 unchanged=0 skipped=0 failed=14 elapsed=77.2m eta=53m
+[3850/6453] INE448U07281 fetched=57010 unchanged=0 skipped=0 failed=14 elapsed=77.7m eta=53m
+[3875/6453] INE457A08183 fetched=57371 unchanged=0 skipped=0 failed=14 elapsed=78.2m eta=52m
+[3900/6453] INE468N07BI2 fetched=57739 unchanged=0 skipped=0 failed=14 elapsed=78.6m eta=51m
+[3925/6453] INE477L07BG1 fetched=58110 unchanged=0 skipped=0 failed=14 elapsed=79.1m eta=51m
+[3950/6453] INE484J08089 fetched=58476 unchanged=0 skipped=0 failed=14 elapsed=79.7m eta=50m
+[3975/6453] INE501X07620 fetched=58854 unchanged=0 skipped=0 failed=14 elapsed=80.2m eta=50m
+[4000/6453] INE507T07195 fetched=59216 unchanged=0 skipped=0 failed=14 elapsed=80.6m eta=49m
+[4025/6453] INE511C07987 fetched=59570 unchanged=0 skipped=0 failed=14 elapsed=81.1m eta=49m
+[4050/6453] INE514Q07338 fetched=59944 unchanged=0 skipped=0 failed=14 elapsed=81.6m eta=48m
+[4075/6453] INE516Q08331 fetched=60301 unchanged=0 skipped=0 failed=14 elapsed=82.1m eta=48m
+[4100/6453] INE519Q08186 fetched=60662 unchanged=0 skipped=0 failed=14 elapsed=82.5m eta=47m
+[4125/6453] INE523H07CC7 fetched=61029 unchanged=0 skipped=0 failed=14 elapsed=83.0m eta=47m
+[4150/6453] INE528G08386 fetched=61392 unchanged=0 skipped=0 failed=14 elapsed=83.5m eta=46m
+[4175/6453] INE530B07369 fetched=61771 unchanged=0 skipped=0 failed=14 elapsed=83.9m eta=46m
+[4200/6453] INE530B07666 fetched=62121 unchanged=0 skipped=0 failed=14 elapsed=84.4m eta=45m
+[4225/6453] INE530L07616 fetched=62575 unchanged=0 skipped=0 failed=14 elapsed=85.0m eta=45m
+[4250/6453] INE530L07897 fetched=62950 unchanged=0 skipped=0 failed=14 elapsed=85.5m eta=44m
+[4275/6453] INE530L07AP0 fetched=63316 unchanged=0 skipped=0 failed=14 elapsed=86.0m eta=44m
+[4300/6453] INE532F07BX0 fetched=63669 unchanged=0 skipped=0 failed=14 elapsed=86.5m eta=43m
+[4325/6453] INE532F07DS6 fetched=64032 unchanged=0 skipped=0 failed=14 elapsed=87.0m eta=43m
+[4350/6453] INE532F07EU0 fetched=64406 unchanged=0 skipped=0 failed=14 elapsed=87.5m eta=42m
+[4375/6453] INE532F07FS1 fetched=64773 unchanged=0 skipped=0 failed=14 elapsed=87.9m eta=42m
+[4400/6453] INE532F07GQ3 fetched=65120 unchanged=0 skipped=0 failed=14 elapsed=88.4m eta=41m
+[4425/6453] INE532F07HU3 fetched=65514 unchanged=0 skipped=0 failed=14 elapsed=88.9m eta=41m
+[4450/6453] INE532F07IQ9 fetched=65872 unchanged=0 skipped=0 failed=14 elapsed=89.4m eta=40m
+[4475/6453] INE535H07CJ6 fetched=66208 unchanged=0 skipped=0 failed=14 elapsed=89.8m eta=40m
+[4500/6453] INE537P07638 fetched=66620 unchanged=0 skipped=0 failed=14 elapsed=90.4m eta=39m
+[4525/6453] INE537P07893 fetched=66952 unchanged=0 skipped=0 failed=14 elapsed=90.8m eta=39m
+[4550/6453] INE539K07346 fetched=67395 unchanged=0 skipped=0 failed=14 elapsed=91.4m eta=38m
+[4575/6453] INE540P07418 fetched=67775 unchanged=0 skipped=0 failed=14 elapsed=91.9m eta=38m
+  INE549A07213/isins: http=503 retry
+  INE549A08963/isins: http=503 retry
+  INE549A08963/isins: http=503 retry
+  INE549A07213/isins: http=503 retry
+[4600/6453] INE549K07BB0 fetched=68077 unchanged=0 skipped=0 failed=14 elapsed=92.3m eta=37m
+  INE549A08963/isins: http=503 retry
+  INE549A07213/isins: http=503 retry
+  INE549A08963/isins: http=503 retry
+  INE549A07213/isins: http=503 retry
+[4625/6453] INE549K07CN3 fetched=68438 unchanged=0 skipped=0 failed=14 elapsed=93.0m eta=37m
+[4650/6453] INE549K07DV4 fetched=68883 unchanged=0 skipped=0 failed=16 elapsed=93.6m eta=36m
+[4675/6453] INE549K07ER0 fetched=69240 unchanged=0 skipped=0 failed=16 elapsed=94.0m eta=36m
+[4700/6453] INE549K07FQ9 fetched=69619 unchanged=0 skipped=0 failed=16 elapsed=94.6m eta=35m
+[4725/6453] INE549K07GO2 fetched=69987 unchanged=0 skipped=0 failed=16 elapsed=95.1m eta=35m
+[4750/6453] INE549K07HO0 fetched=70352 unchanged=0 skipped=0 failed=16 elapsed=95.6m eta=34m
+[4775/6453] INE549K07IN0 fetched=70678 unchanged=0 skipped=0 failed=16 elapsed=96.0m eta=34m
+[4800/6453] INE549K08202 fetched=71001 unchanged=0 skipped=0 failed=16 elapsed=96.5m eta=33m
+[4825/6453] INE549K08582 fetched=71373 unchanged=0 skipped=0 failed=16 elapsed=97.0m eta=33m
+[4850/6453] INE556F08KZ3 fetched=71751 unchanged=0 skipped=0 failed=16 elapsed=97.5m eta=32m
+[4875/6453] INE557F08GD6 fetched=72124 unchanged=0 skipped=0 failed=16 elapsed=98.0m eta=32m
+[4900/6453] INE572E07266 fetched=72533 unchanged=0 skipped=0 failed=16 elapsed=98.5m eta=31m
+[4925/6453] INE583D07208 fetched=72869 unchanged=0 skipped=0 failed=16 elapsed=98.9m eta=31m
+[4950/6453] INE583D08081 fetched=73233 unchanged=0 skipped=0 failed=16 elapsed=99.4m eta=30m
+[4975/6453] INE605Y07197 fetched=73608 unchanged=0 skipped=0 failed=16 elapsed=99.8m eta=30m
+[5000/6453] INE623B07917 fetched=73992 unchanged=0 skipped=0 failed=16 elapsed=100.3m eta=29m
+[5025/6453] INE651J07721 fetched=74343 unchanged=0 skipped=0 failed=16 elapsed=100.7m eta=29m
+[5050/6453] INE657N07431 fetched=74709 unchanged=0 skipped=0 failed=16 elapsed=101.2m eta=28m
+[5075/6453] INE658F08227 fetched=75091 unchanged=0 skipped=0 failed=16 elapsed=101.7m eta=28m
+[5100/6453] INE658F08474 fetched=75526 unchanged=0 skipped=0 failed=16 elapsed=102.2m eta=27m
+[5125/6453] INE660A08CI7 fetched=75891 unchanged=0 skipped=0 failed=16 elapsed=102.7m eta=27m
+[5150/6453] INE670K07364 fetched=76249 unchanged=0 skipped=0 failed=16 elapsed=103.1m eta=26m
+[5175/6453] INE681R08109 fetched=76631 unchanged=0 skipped=0 failed=16 elapsed=103.6m eta=26m
+[5200/6453] INE691I08511 fetched=76974 unchanged=0 skipped=0 failed=16 elapsed=104.1m eta=25m
+[5225/6453] INE712W08029 fetched=77333 unchanged=0 skipped=0 failed=16 elapsed=104.5m eta=25m
+[5250/6453] INE721A07QU4 fetched=77688 unchanged=0 skipped=0 failed=16 elapsed=105.0m eta=24m
+[5275/6453] INE721A07SH7 fetched=78045 unchanged=0 skipped=0 failed=16 elapsed=105.8m eta=24m
+[5300/6453] INE722A07BA6 fetched=78406 unchanged=0 skipped=0 failed=16 elapsed=106.3m eta=23m
+[5325/6453] INE725H08204 fetched=78822 unchanged=0 skipped=0 failed=16 elapsed=106.8m eta=23m
+[5350/6453] INE733E07JW2 fetched=79183 unchanged=0 skipped=0 failed=16 elapsed=107.3m eta=22m
+[5375/6453] INE734I07107 fetched=79551 unchanged=0 skipped=0 failed=16 elapsed=107.8m eta=22m
+[5400/6453] INE742F07437 fetched=79904 unchanged=0 skipped=0 failed=16 elapsed=108.2m eta=21m
+[5425/6453] INE752E07MU0 fetched=80286 unchanged=0 skipped=0 failed=16 elapsed=108.7m eta=21m
+[5450/6453] INE752E08528 fetched=80644 unchanged=0 skipped=0 failed=16 elapsed=109.2m eta=20m
+[5475/6453] INE753F07038 fetched=81024 unchanged=0 skipped=0 failed=16 elapsed=109.7m eta=20m
+[5500/6453] INE756I07FD2 fetched=81375 unchanged=0 skipped=0 failed=16 elapsed=110.1m eta=19m
+[5525/6453] INE756I08231 fetched=81810 unchanged=0 skipped=0 failed=16 elapsed=110.7m eta=19m
+[5550/6453] INE774D07UG8 fetched=82173 unchanged=0 skipped=0 failed=16 elapsed=111.2m eta=18m
+[5575/6453] INE774D08MJ7 fetched=82521 unchanged=0 skipped=0 failed=16 elapsed=111.7m eta=18m
+[5600/6453] INE787D08054 fetched=82856 unchanged=0 skipped=0 failed=16 elapsed=112.1m eta=17m
+[5625/6453] INE787H07370 fetched=83261 unchanged=0 skipped=0 failed=16 elapsed=112.7m eta=17m
+[5650/6453] INE790Z07053 fetched=83647 unchanged=0 skipped=0 failed=16 elapsed=113.2m eta=16m
+[5675/6453] INE804I08734 fetched=84027 unchanged=0 skipped=0 failed=16 elapsed=113.7m eta=16m
+[5700/6453] INE813H07408 fetched=84385 unchanged=0 skipped=0 failed=16 elapsed=114.1m eta=15m
+[5725/6453] INE815R07022 fetched=84740 unchanged=0 skipped=0 failed=16 elapsed=114.6m eta=15m
+[5750/6453] INE818F07328 fetched=85101 unchanged=0 skipped=0 failed=16 elapsed=115.1m eta=14m
+[5775/6453] INE831R07482 fetched=85472 unchanged=0 skipped=0 failed=16 elapsed=115.5m eta=14m
+[5800/6453] INE831R08100 fetched=85835 unchanged=0 skipped=0 failed=16 elapsed=116.0m eta=13m
+[5825/6453] INE836B08301 fetched=86204 unchanged=0 skipped=0 failed=16 elapsed=116.5m eta=13m
+[5850/6453] INE848E07559 fetched=86582 unchanged=0 skipped=0 failed=16 elapsed=117.0m eta=12m
+[5875/6453] INE848E07BQ7 fetched=86950 unchanged=0 skipped=0 failed=16 elapsed=117.5m eta=12m
+[5900/6453] INE848E08318 fetched=87297 unchanged=0 skipped=0 failed=16 elapsed=118.0m eta=11m
+[5925/6453] INE848E08565 fetched=87698 unchanged=0 skipped=0 failed=16 elapsed=118.5m eta=11m
+[5950/6453] INE859C07253 fetched=88070 unchanged=0 skipped=0 failed=16 elapsed=119.0m eta=10m
+[5975/6453] INE860H07IR8 fetched=88440 unchanged=0 skipped=0 failed=16 elapsed=119.5m eta=10m
+[6000/6453] INE860H08ED5 fetched=88803 unchanged=0 skipped=0 failed=16 elapsed=119.9m eta=9m
+[6025/6453] INE882Z08031 fetched=89163 unchanged=0 skipped=0 failed=16 elapsed=120.4m eta=9m
+[6050/6453] INE884Q07848 fetched=89523 unchanged=0 skipped=0 failed=16 elapsed=120.8m eta=8m
+[6075/6453] INE891K07853 fetched=89874 unchanged=0 skipped=0 failed=16 elapsed=121.3m eta=8m
+[6100/6453] INE891K07AM5 fetched=90232 unchanged=0 skipped=0 failed=16 elapsed=121.7m eta=7m
+[6125/6453] INE896L07975 fetched=90603 unchanged=0 skipped=0 failed=16 elapsed=122.2m eta=7m
+[6150/6453] INE905Y07050 fetched=90989 unchanged=0 skipped=0 failed=16 elapsed=122.7m eta=6m
+[6175/6453] INE906B07FW8 fetched=91354 unchanged=0 skipped=0 failed=16 elapsed=123.2m eta=6m
+[6200/6453] INE906B08021 fetched=91783 unchanged=0 skipped=0 failed=16 elapsed=123.8m eta=5m
+[6225/6453] INE918K07PH4 fetched=92152 unchanged=0 skipped=0 failed=16 elapsed=124.2m eta=5m
+[6250/6453] INE918K07QE9 fetched=92477 unchanged=0 skipped=0 failed=16 elapsed=124.7m eta=4m
+[6275/6453] INE926R07027 fetched=92872 unchanged=0 skipped=0 failed=16 elapsed=125.2m eta=4m
+[6300/6453] INE939X07200 fetched=93229 unchanged=0 skipped=0 failed=16 elapsed=125.6m eta=3m
+[6325/6453] INE950O07248 fetched=93607 unchanged=0 skipped=0 failed=16 elapsed=126.2m eta=3m
+[6350/6453] INE950O08121 fetched=93972 unchanged=0 skipped=0 failed=16 elapsed=126.6m eta=2m
+[6375/6453] INE957N07864 fetched=94341 unchanged=0 skipped=0 failed=16 elapsed=127.1m eta=2m
+[6400/6453] INE975F07IS6 fetched=94702 unchanged=0 skipped=0 failed=16 elapsed=127.5m eta=1m
+[6425/6453] INE976I07DF6 fetched=95040 unchanged=0 skipped=0 failed=16 elapsed=127.9m eta=1m
+[6450/6453] INE999H07033 fetched=95409 unchanged=0 skipped=0 failed=16 elapsed=128.4m eta=0m
+[6453/6453] INE999H07074 fetched=95429 unchanged=0 skipped=0 failed=16 elapsed=128.4m eta=0m
+DONE {"fetched": 95429, "unchanged": 0, "skipped": 0, "failed": 16}
+run=2 universe=6453 isins, tiers=['monthly', 'quarterly', 'static', 'weekly'], known rows=95429
+[25/6453] INE05F407CQ2 fetched=0 unchanged=0 skipped=11902 failed=0 elapsed=0.0m eta=0m
+[50/6453] INE020B08CU7 fetched=0 unchanged=0 skipped=21146 failed=0 elapsed=0.0m eta=0m
+[75/6453] INE046W07354 fetched=0 unchanged=0 skipped=26324 failed=0 elapsed=0.0m eta=0m
+[100/6453] INE01MM08012 fetched=0 unchanged=0 skipped=26324 failed=0 elapsed=0.0m eta=0m
+[125/6453] INE039A09MD2 fetched=0 unchanged=0 skipped=26324 failed=0 elapsed=0.0m eta=0m
+[150/6453] INE053F08288 fetched=0 unchanged=0 skipped=26324 failed=0 elapsed=0.0m eta=0m
+[175/6453] INE05F407CX8 fetched=0 unchanged=0 skipped=26324 failed=0 elapsed=0.0m eta=0m
+[200/6453] INE01I507752 fetched=0 unchanged=0 skipped=26324 failed=0 elapsed=0.0m eta=0m
+[225/6453] INE028A08364 fetched=0 unchanged=0 skipped=26324 failed=0 elapsed=0.0m eta=0m
+[250/6453] INE053F08122 fetched=0 unchanged=0 skipped=26324 failed=0 elapsed=0.0m eta=0m
+[275/6453] INE053F08098 fetched=0 unchanged=0 skipped=26324 failed=0 elapsed=0.0m eta=0m
+[300/6453] INE053F07CT3 fetched=0 unchanged=0 skipped=26324 failed=0 elapsed=0.0m eta=0m
+[325/6453] INE01CY078D1 fetched=0 unchanged=0 skipped=26324 failed=0 elapsed=0.0m eta=0m
+[350/6453] INE015L07493 fetched=0 unchanged=0 skipped=26324 failed=0 elapsed=0.0m eta=0m
+[375/6453] INE04HY07286 fetched=0 unchanged=0 skipped=26324 failed=0 elapsed=0.0m eta=0m
+[400/6453] INE015L07261 fetched=0 unchanged=0 skipped=26324 failed=0 elapsed=0.0m eta=0m
+[425/6453] INE062A08470 fetched=0 unchanged=0 skipped=26324 failed=0 elapsed=0.0m eta=0m
+[450/6453] INE01EQ07111 fetched=0 unchanged=0 skipped=26324 failed=0 elapsed=0.0m eta=0m
+[475/6453] INE00V208140 fetched=0 unchanged=0 skipped=26324 failed=0 elapsed=0.0m eta=0m
+[500/6453] INE04UP07196 fetched=0 unchanged=0 skipped=26324 failed=0 elapsed=0.0m eta=0m
+[525/6453] INE04SE07160 fetched=0 unchanged=0 skipped=26324 failed=0 elapsed=0.0m eta=0m
+[550/6453] INE040A08567 fetched=0 unchanged=0 skipped=26324 failed=0 elapsed=0.0m eta=0m
+[575/6453] INE01YL07383 fetched=0 unchanged=0 skipped=26324 failed=0 elapsed=0.0m eta=0m
+[600/6453] INE020B08GB8 fetched=0 unchanged=0 skipped=26324 failed=0 elapsed=0.0m eta=0m
+[625/6453] INE01YL07318 fetched=0 unchanged=0 skipped=26324 failed=0 elapsed=0.0m eta=0m
+[650/6453] INE020B07HQ6 fetched=0 unchanged=0 skipped=26324 failed=0 elapsed=0.0m eta=0m
+[675/6453] INE018E08169 fetched=0 unchanged=0 skipped=26324 failed=0 elapsed=0.0m eta=0m
+[700/6453] INE01E708057 fetched=0 unchanged=0 skipped=26324 failed=0 elapsed=0.0m eta=0m
+[725/6453] INE02JD07066 fetched=0 unchanged=0 skipped=26324 failed=0 elapsed=0.0m eta=0m
+[750/6453] INE01I507968 fetched=0 unchanged=0 skipped=26324 failed=0 elapsed=0.0m eta=0m
+[775/6453] INE028U08057 fetched=0 unchanged=0 skipped=26324 failed=0 elapsed=0.0m eta=0m
+[800/6453] INE01ZK07GO8 fetched=0 unchanged=0 skipped=26324 failed=0 elapsed=0.0m eta=0m
+[825/6453] INE01YL07433 fetched=0 unchanged=0 skipped=26324 failed=0 elapsed=0.0m eta=0m
+[850/6453] INE053F07645 fetched=0 unchanged=0 skipped=26324 failed=0 elapsed=0.0m eta=0m
+[875/6453] INE031A07865 fetched=0 unchanged=0 skipped=26324 failed=0 elapsed=0.0m eta=0m
+[900/6453] INE033L07IG7 fetched=0 unchanged=0 skipped=26324 failed=0 elapsed=0.0m eta=0m
+[925/6453] INE05F407DU2 fetched=0 unchanged=0 skipped=26324 failed=0 elapsed=0.0m eta=0m
+[950/6453] INE040A08823 fetched=0 unchanged=0 skipped=26324 failed=0 elapsed=0.0m eta=0m
+[975/6453] INE020B08EZ2 fetched=0 unchanged=0 skipped=26324 failed=0 elapsed=0.0m eta=0m
+[1000/6453] INE065507AR3 fetched=0 unchanged=0 skipped=26324 failed=0 elapsed=0.0m eta=0m
+[1025/6453] INE065507BQ3 fetched=0 unchanged=0 skipped=26324 failed=0 elapsed=0.0m eta=0m
+[1050/6453] INE071G07686 fetched=0 unchanged=0 skipped=26324 failed=0 elapsed=0.0m eta=0m
+[1075/6453] INE076I07038 fetched=0 unchanged=0 skipped=26324 failed=0 elapsed=0.0m eta=0m
+[1100/6453] INE081A08223 fetched=0 unchanged=0 skipped=26324 failed=0 elapsed=0.0m eta=0m
+[1125/6453] INE087P07311 fetched=0 unchanged=0 skipped=26324 failed=0 elapsed=0.0m eta=0m
+[1150/6453] INE08E807092 fetched=0 unchanged=0 skipped=26324 failed=0 elapsed=0.0m eta=0m
+[1175/6453] INE08XP07274 fetched=0 unchanged=0 skipped=26324 failed=0 elapsed=0.0m eta=0m
+[1200/6453] INE08YT07027 fetched=0 unchanged=0 skipped=26324 failed=0 elapsed=0.0m eta=0m
+[1225/6453] INE093I07082 fetched=0 unchanged=0 skipped=26324 failed=0 elapsed=0.0m eta=0m
+[1250/6453] INE0AD507143 fetched=0 unchanged=0 skipped=26324 failed=0 elapsed=0.0m eta=0m
+[1275/6453] INE0BUS07577 fetched=0 unchanged=0 skipped=26324 failed=0 elapsed=0.0m eta=0m
+[1300/6453] INE0BUS07BW7 fetched=0 unchanged=0 skipped=26324 failed=0 elapsed=0.0m eta=0m
+[1325/6453] INE0BWS07045 fetched=0 unchanged=0 skipped=26324 failed=0 elapsed=0.0m eta=0m
+[1350/6453] INE0D4Z07011 fetched=0 unchanged=0 skipped=26324 failed=0 elapsed=0.0m eta=0m
+[1375/6453] INE0EZ108058 fetched=0 unchanged=0 skipped=26324 failed=0 elapsed=0.0m eta=0m
+[1400/6453] INE0IID07629 fetched=0 unchanged=0 skipped=26324 failed=0 elapsed=0.0m eta=0m
+[1425/6453] INE0IX207247 fetched=0 unchanged=0 skipped=26324 failed=0 elapsed=0.0m eta=0m
+[1450/6453] INE0KIS07011 fetched=0 unchanged=0 skipped=26324 failed=0 elapsed=0.0m eta=0m
+[1475/6453] INE0L6807146 fetched=0 unchanged=0 skipped=26324 failed=0 elapsed=0.0m eta=0m
+[1500/6453] INE0LLO07012 fetched=0 unchanged=0 skipped=26324 failed=0 elapsed=0.0m eta=0m
+[1525/6453] INE0M2307180 fetched=0 unchanged=0 skipped=26324 failed=0 elapsed=0.0m eta=0m
+[1550/6453] INE0MYJ07138 fetched=0 unchanged=0 skipped=26324 failed=0 elapsed=0.0m eta=0m
+[1575/6453] INE0NES07188 fetched=0 unchanged=0 skipped=26324 failed=0 elapsed=0.0m eta=0m
+[1600/6453] INE0NR607017 fetched=0 unchanged=0 skipped=26324 failed=0 elapsed=0.0m eta=0m
+[1625/6453] INE0Q3B07027 fetched=0 unchanged=0 skipped=26324 failed=0 elapsed=0.0m eta=0m
+[1650/6453] INE0RU307247 fetched=0 unchanged=0 skipped=26324 failed=0 elapsed=0.0m eta=0m
+[1675/6453] INE0TV208079 fetched=0 unchanged=0 skipped=26324 failed=0 elapsed=0.0m eta=0m
+[1700/6453] INE101Q07AL8 fetched=0 unchanged=0 skipped=26324 failed=0 elapsed=0.0m eta=0m
+[1725/6453] INE101Q07BO0 fetched=0 unchanged=0 skipped=26324 failed=0 elapsed=0.0m eta=0m
+[1750/6453] INE103C07066 fetched=0 unchanged=0 skipped=26324 failed=0 elapsed=0.0m eta=0m
+[1775/6453] INE104W08078 fetched=0 unchanged=0 skipped=26324 failed=0 elapsed=0.0m eta=0m
+[1800/6453] INE115A07RA9 fetched=0 unchanged=0 skipped=26324 failed=0 elapsed=0.0m eta=0m
+[1825/6453] INE121A07RO8 fetched=0 unchanged=0 skipped=26324 failed=0 elapsed=0.0m eta=0m
+[1850/6453] INE121A07SP3 fetched=0 unchanged=0 skipped=26324 failed=0 elapsed=0.0m eta=0m
+[1875/6453] INE121A08PZ6 fetched=0 unchanged=0 skipped=26324 failed=0 elapsed=0.0m eta=0m
+[1900/6453] INE121H08016 fetched=0 unchanged=0 skipped=26324 failed=0 elapsed=0.0m eta=0m
+[1925/6453] INE125T07279 fetched=0 unchanged=0 skipped=26324 failed=0 elapsed=0.0m eta=0m
+[1950/6453] INE128S07606 fetched=0 unchanged=0 skipped=26324 failed=0 elapsed=0.0m eta=0m
+[1975/6453] INE134E07588 fetched=0 unchanged=0 skipped=26324 failed=0 elapsed=0.0m eta=0m
+[2000/6453] INE134E07DS4 fetched=0 unchanged=0 skipped=26324 failed=0 elapsed=0.0m eta=0m
+[2025/6453] INE134E08JG4 fetched=0 unchanged=0 skipped=26324 failed=0 elapsed=0.0m eta=0m
+[2050/6453] INE134E08LC9 fetched=0 unchanged=0 skipped=26324 failed=0 elapsed=0.0m eta=0m
+[2075/6453] INE134E08MI4 fetched=0 unchanged=0 skipped=26324 failed=0 elapsed=0.0m eta=0m
+[2100/6453] INE134E08NI2 fetched=0 unchanged=0 skipped=26324 failed=0 elapsed=0.0m eta=0m
+[2125/6453] INE138I08117 fetched=0 unchanged=0 skipped=26324 failed=0 elapsed=0.0m eta=0m
+[2150/6453] INE146O07599 fetched=0 unchanged=0 skipped=26324 failed=0 elapsed=0.0m eta=0m
+[2175/6453] INE146O08407 fetched=0 unchanged=0 skipped=26324 failed=0 elapsed=0.0m eta=0m
+  INE126D07073/listings: ('Connection aborted.', ConnectionResetError(104, 'Connectio retry
+  INE059B07104/listings: ('Connection aborted.', ConnectionResetError(104, 'Connectio retry
+  INE059B07096/listings: ('Connection aborted.', ConnectionResetError(104, 'Connectio retry
+  INE065507340/redemptions: ('Connection aborted.', ConnectionResetError(104, 'Connectio retry
+  INE011Z07013/redemptions: ('Connection aborted.', ConnectionResetError(104, 'Connectio retry
+  INE011Z07021/redemptions: ('Connection aborted.', ConnectionResetError(104, 'Connectio retry
+  INE148I07JF9/listings: ('Connection aborted.', ConnectionResetError(104, 'Connectio retry
+  INE065507423/redemptions: ('Connection aborted.', ConnectionResetError(104, 'Connectio retry
+  INE011Z07021/redemptions: ('Connection aborted.', ConnectionResetError(104, 'Connectio retry
+  INE065507423/redemptions: ('Connection aborted.', ConnectionResetError(104, 'Connectio retry
+  INE065507340/redemptions: ('Connection aborted.', ConnectionResetError(104, 'Connectio retry
+  INE126D07073/listings: ('Connection aborted.', ConnectionResetError(104, 'Connectio retry
+  INE148I07JF9/listings: ('Connection aborted.', ConnectionResetError(104, 'Connectio retry
+  INE011Z07013/redemptions: ('Connection aborted.', ConnectionResetError(104, 'Connectio retry
+  INE059B07104/listings: ('Connection aborted.', ConnectionResetError(104, 'Connectio retry
+  INE059B07096/listings: ('Connection aborted.', ConnectionResetError(104, 'Connectio retry
+  INE059B07104/listings: ('Connection aborted.', ConnectionResetError(104, 'Connectio retry
+  INE059B07096/listings: ('Connection aborted.', ConnectionResetError(104, 'Connectio retry
+  INE126D07073/listings: ('Connection aborted.', ConnectionResetError(104, 'Connectio retry
+  INE065507423/redemptions: ('Connection aborted.', ConnectionResetError(104, 'Connectio retry
+  INE065507340/redemptions: ('Connection aborted.', ConnectionResetError(104, 'Connectio retry
+  INE011Z07021/redemptions: ('Connection aborted.', ConnectionResetError(104, 'Connectio retry
+  INE148I07JF9/listings: ('Connection aborted.', ConnectionResetError(104, 'Connectio retry
+  INE011Z07013/redemptions: ('Connection aborted.', ConnectionResetError(104, 'Connectio retry
+  INE059B07104/listings: ('Connection aborted.', ConnectionResetError(104, 'Connectio retry
+  INE148I07JF9/listings: ('Connection aborted.', ConnectionResetError(104, 'Connectio retry
+  INE065507423/redemptions: ('Connection aborted.', ConnectionResetError(104, 'Connectio retry
+  INE011Z07013/redemptions: ('Connection aborted.', ConnectionResetError(104, 'Connectio retry
+  INE065507340/redemptions: ('Connection aborted.', ConnectionResetError(104, 'Connectio retry
+  INE059B07096/listings: ('Connection aborted.', ConnectionResetError(104, 'Connectio retry
+  INE126D07073/listings: ('Connection aborted.', ConnectionResetError(104, 'Connectio retry
+  INE011Z07021/redemptions: ('Connection aborted.', ConnectionResetError(104, 'Connectio retry
+[2200/6453] INE148I07LD0 fetched=0 unchanged=0 skipped=26678 failed=1 elapsed=0.9m eta=2m
+[2225/6453] INE148I07OQ6 fetched=0 unchanged=0 skipped=29187 failed=2 elapsed=0.9m eta=2m
+[2250/6453] INE148I07QI8 fetched=0 unchanged=0 skipped=31677 failed=3 elapsed=0.9m eta=2m
+[2275/6453] INE148I07RV9 fetched=0 unchanged=0 skipped=34448 failed=4 elapsed=0.9m eta=2m
+[2300/6453] INE148I07SW5 fetched=0 unchanged=0 skipped=42225 failed=7 elapsed=0.9m eta=2m
+[2325/6453] INE148I07TZ6 fetched=0 unchanged=0 skipped=46485 failed=8 elapsed=0.9m eta=2m
+[2350/6453] INE148I07VC1 fetched=0 unchanged=0 skipped=50706 failed=8 elapsed=0.9m eta=2m
+[2375/6453] INE148I07WE5 fetched=0 unchanged=0 skipped=55065 failed=8 elapsed=0.9m eta=2m
+[2400/6453] INE148I07XK0 fetched=0 unchanged=0 skipped=55082 failed=8 elapsed=0.9m eta=2m
+[2425/6453] INE148I08215 fetched=0 unchanged=0 skipped=55082 failed=8 elapsed=0.9m eta=2m
+[2450/6453] INE153A08113 fetched=0 unchanged=0 skipped=55082 failed=8 elapsed=0.9m eta=2m
+[2475/6453] INE157D07EP1 fetched=0 unchanged=0 skipped=55082 failed=8 elapsed=0.9m eta=2m
+[2500/6453] INE163N08289 fetched=0 unchanged=0 skipped=55082 failed=8 elapsed=0.9m eta=1m
+[2525/6453] INE179P08074 fetched=0 unchanged=0 skipped=55082 failed=8 elapsed=0.9m eta=1m
+[2550/6453] INE180C07338 fetched=0 unchanged=0 skipped=55082 failed=8 elapsed=0.9m eta=1m
+[2575/6453] INE196P07252 fetched=0 unchanged=0 skipped=55082 failed=8 elapsed=0.9m eta=1m
+[2600/6453] INE1C3207073 fetched=0 unchanged=0 skipped=55082 failed=8 elapsed=0.9m eta=1m
+[2625/6453] INE1TAE08049 fetched=0 unchanged=0 skipped=55082 failed=8 elapsed=0.9m eta=1m
+[2650/6453] INE202E07120 fetched=0 unchanged=0 skipped=55082 failed=8 elapsed=0.9m eta=1m
+[2675/6453] INE202E08151 fetched=0 unchanged=0 skipped=55082 failed=8 elapsed=0.9m eta=1m
+[2700/6453] INE205A08095 fetched=0 unchanged=0 skipped=55082 failed=8 elapsed=0.9m eta=1m
+[2725/6453] INE217K08198 fetched=0 unchanged=0 skipped=55082 failed=8 elapsed=0.9m eta=1m
+[2750/6453] INE219X07454 fetched=0 unchanged=0 skipped=55082 failed=8 elapsed=0.9m eta=1m
+[2775/6453] INE229U07137 fetched=0 unchanged=0 skipped=55082 failed=8 elapsed=0.9m eta=1m
+[2800/6453] INE235P07431 fetched=0 unchanged=0 skipped=55082 failed=8 elapsed=0.9m eta=1m
+[2825/6453] INE237A08957 fetched=0 unchanged=0 skipped=55082 failed=8 elapsed=0.9m eta=1m
+[2850/6453] INE244L07150 fetched=0 unchanged=0 skipped=55082 failed=8 elapsed=0.9m eta=1m
+[2875/6453] INE244P07037 fetched=0 unchanged=0 skipped=55082 failed=8 elapsed=0.9m eta=1m
+[2900/6453] INE246R07863 fetched=0 unchanged=0 skipped=55082 failed=8 elapsed=0.9m eta=1m
+[2925/6453] INE248U07FR5 fetched=0 unchanged=0 skipped=55082 failed=8 elapsed=0.9m eta=1m
+[2950/6453] INE261F08683 fetched=0 unchanged=0 skipped=55082 failed=8 elapsed=0.9m eta=1m
+[2975/6453] INE261F08BP0 fetched=0 unchanged=0 skipped=55082 failed=8 elapsed=0.9m eta=1m
+[3000/6453] INE261F08EG3 fetched=0 unchanged=0 skipped=55082 failed=8 elapsed=0.9m eta=1m
+[3025/6453] INE274E07012 fetched=0 unchanged=0 skipped=55082 failed=8 elapsed=0.9m eta=1m
+[3050/6453] INE296A07RJ8 fetched=0 unchanged=0 skipped=55082 failed=8 elapsed=0.9m eta=1m
+[3075/6453] INE296A07TA3 fetched=0 unchanged=0 skipped=55082 failed=8 elapsed=0.9m eta=1m
+[3100/6453] INE296A07UA1 fetched=0 unchanged=0 skipped=55082 failed=8 elapsed=0.9m eta=1m
+[3125/6453] INE296G07283 fetched=0 unchanged=0 skipped=55082 failed=8 elapsed=0.9m eta=1m
+[3150/6453] INE2GLH07020 fetched=0 unchanged=0 skipped=55082 failed=8 elapsed=0.9m eta=1m
+[3175/6453] INE2T2Q07212 fetched=0 unchanged=0 skipped=55082 failed=8 elapsed=0.9m eta=1m
+[3200/6453] INE302E07540 fetched=0 unchanged=0 skipped=55082 failed=8 elapsed=0.9m eta=1m
+[3225/6453] INE302E07847 fetched=0 unchanged=0 skipped=55082 failed=8 elapsed=0.9m eta=1m
+[3250/6453] INE310L07928 fetched=0 unchanged=0 skipped=55082 failed=8 elapsed=0.9m eta=1m
+[3275/6453] INE321N07368 fetched=0 unchanged=0 skipped=55082 failed=8 elapsed=0.9m eta=1m
+[3300/6453] INE321N07624 fetched=0 unchanged=0 skipped=55082 failed=8 elapsed=0.9m eta=1m
+[3325/6453] INE331M07112 fetched=0 unchanged=0 skipped=55082 failed=8 elapsed=0.9m eta=1m
+[3350/6453] INE342T07510 fetched=0 unchanged=0 skipped=55082 failed=8 elapsed=0.9m eta=1m
+[3375/6453] INE348L07159 fetched=0 unchanged=0 skipped=55082 failed=8 elapsed=0.9m eta=1m
+[3400/6453] INE357L07473 fetched=0 unchanged=0 skipped=55082 failed=8 elapsed=0.9m eta=1m
+[3425/6453] INE368Y08018 fetched=0 unchanged=0 skipped=55082 failed=8 elapsed=0.9m eta=1m
+[3450/6453] INE377Y07524 fetched=0 unchanged=0 skipped=55082 failed=8 elapsed=0.9m eta=1m
+[3475/6453] INE389Z07070 fetched=0 unchanged=0 skipped=55082 failed=8 elapsed=0.9m eta=1m
+[3500/6453] INE403D08306 fetched=0 unchanged=0 skipped=55082 failed=8 elapsed=0.9m eta=1m
+[3525/6453] INE403Q07DF4 fetched=0 unchanged=0 skipped=55082 failed=8 elapsed=0.9m eta=1m
+[3550/6453] INE403Q07EO4 fetched=0 unchanged=0 skipped=55082 failed=8 elapsed=0.9m eta=1m
+[3575/6453] INE403Q07FN3 fetched=0 unchanged=0 skipped=55082 failed=8 elapsed=0.9m eta=1m
+[3600/6453] INE403Q07GO9 fetched=0 unchanged=0 skipped=55082 failed=8 elapsed=0.9m eta=1m
+[3625/6453] INE403Q08225 fetched=0 unchanged=0 skipped=55082 failed=8 elapsed=0.9m eta=1m
+[3650/6453] INE413U07301 fetched=0 unchanged=0 skipped=55082 failed=8 elapsed=0.9m eta=1m
+[3675/6453] INE413U08184 fetched=0 unchanged=0 skipped=55082 failed=8 elapsed=0.9m eta=1m
+[3700/6453] INE414G07HL1 fetched=0 unchanged=0 skipped=55082 failed=8 elapsed=0.9m eta=1m
+[3725/6453] INE414G07IY2 fetched=0 unchanged=0 skipped=55082 failed=8 elapsed=0.9m eta=1m
+[3750/6453] INE414G07JX2 fetched=0 unchanged=0 skipped=55082 failed=8 elapsed=0.9m eta=1m
+[3775/6453] INE423A07328 fetched=0 unchanged=0 skipped=55082 failed=8 elapsed=0.9m eta=1m
+[3800/6453] INE423Y07096 fetched=0 unchanged=0 skipped=55082 failed=8 elapsed=0.9m eta=1m
+[3825/6453] INE441Q07011 fetched=0 unchanged=0 skipped=55082 failed=8 elapsed=0.9m eta=1m
+[3850/6453] INE448U07315 fetched=0 unchanged=0 skipped=55082 failed=8 elapsed=0.9m eta=1m
+[3875/6453] INE465A08038 fetched=0 unchanged=0 skipped=55082 failed=8 elapsed=0.9m eta=1m
+[3900/6453] INE476A08233 fetched=0 unchanged=0 skipped=55082 failed=8 elapsed=0.9m eta=1m
+[3925/6453] INE477L08147 fetched=0 unchanged=0 skipped=55082 failed=8 elapsed=0.9m eta=1m
+[3950/6453] INE498L07046 fetched=0 unchanged=0 skipped=55082 failed=8 elapsed=0.9m eta=1m
+[3975/6453] INE501X07679 fetched=0 unchanged=0 skipped=55082 failed=8 elapsed=0.9m eta=1m
+[4000/6453] INE511C07821 fetched=0 unchanged=0 skipped=55082 failed=8 elapsed=0.9m eta=1m
+[4025/6453] INE511C08AD3 fetched=0 unchanged=0 skipped=55082 failed=8 elapsed=0.9m eta=1m
+[4050/6453] INE514Q07395 fetched=0 unchanged=0 skipped=55082 failed=8 elapsed=0.9m eta=1m
+[4075/6453] INE516Q08497 fetched=0 unchanged=0 skipped=55082 failed=8 elapsed=0.9m eta=1m
+[4100/6453] INE522D07CK1 fetched=0 unchanged=0 skipped=55082 failed=8 elapsed=0.9m eta=1m
+[4125/6453] INE523L07AM2 fetched=0 unchanged=0 skipped=55082 failed=8 elapsed=0.9m eta=1m
+[4150/6453] INE528L07123 fetched=0 unchanged=0 skipped=55082 failed=8 elapsed=0.9m eta=1m
+[4175/6453] INE530B07484 fetched=0 unchanged=0 skipped=55082 failed=8 elapsed=0.9m eta=1m
+[4200/6453] INE530B08227 fetched=0 unchanged=0 skipped=55082 failed=8 elapsed=0.9m eta=1m
+[4225/6453] INE461R07017 fetched=0 unchanged=0 skipped=55082 failed=8 elapsed=0.9m eta=0m
+[4250/6453] INE530L07954 fetched=0 unchanged=0 skipped=55082 failed=8 elapsed=0.9m eta=0m
+[4275/6453] INE530L07AU0 fetched=0 unchanged=0 skipped=55082 failed=8 elapsed=0.9m eta=0m
+[4300/6453] INE532F07CG3 fetched=0 unchanged=0 skipped=55082 failed=8 elapsed=0.9m eta=0m
+[4325/6453] INE532F07DX6 fetched=0 unchanged=0 skipped=55082 failed=8 elapsed=0.9m eta=0m
+[4350/6453] INE532F07FC5 fetched=0 unchanged=0 skipped=55082 failed=8 elapsed=0.9m eta=0m
+[4375/6453] INE532F07GB5 fetched=0 unchanged=0 skipped=55082 failed=8 elapsed=0.9m eta=0m
+[4400/6453] INE532F07HA5 fetched=0 unchanged=0 skipped=55082 failed=8 elapsed=0.9m eta=0m
+[4425/6453] INE532F07HZ2 fetched=0 unchanged=0 skipped=55082 failed=8 elapsed=0.9m eta=0m
+[4450/6453] INE532F07IY3 fetched=0 unchanged=0 skipped=55082 failed=8 elapsed=0.9m eta=0m
+[4475/6453] INE535H07CP3 fetched=0 unchanged=0 skipped=55082 failed=8 elapsed=0.9m eta=0m
+[4500/6453] INE537P07695 fetched=0 unchanged=0 skipped=55082 failed=8 elapsed=0.9m eta=0m
+[4525/6453] INE538L07528 fetched=0 unchanged=0 skipped=55082 failed=8 elapsed=0.9m eta=0m
+[4550/6453] INE539K07353 fetched=0 unchanged=0 skipped=55082 failed=8 elapsed=0.9m eta=0m
+[4575/6453] INE540P07459 fetched=0 unchanged=0 skipped=55082 failed=8 elapsed=0.9m eta=0m
+  INE244L08018/listings: ('Connection aborted.', ConnectionResetError(104, 'Connectio retry
+  INE201P08209/isins: ('Connection aborted.', ConnectionResetError(104, 'Connectio retry
+  INE148I08306/listings: ('Connection aborted.', ConnectionResetError(104, 'Connectio retry
+  INE549A07213/isins: ('Connection aborted.', ConnectionResetError(104, 'Connectio retry
+  INE549A08963/isins: ('Connection aborted.', ConnectionResetError(104, 'Connectio retry
+  INE126D07073/defaultdetail: ('Connection aborted.', ConnectionResetError(104, 'Connectio retry
+  INE244L08042/listings: ('Connection aborted.', ConnectionResetError(104, 'Connectio retry
+  INE148I07OH5/isins: ('Connection aborted.', ConnectionResetError(104, 'Connectio retry
+  INE244L08018/listings: ('Connection aborted.', ConnectionResetError(104, 'Connectio retry
+  INE201P08209/isins: ('Connection aborted.', ConnectionResetError(104, 'Connectio retry
+  INE549A08963/isins: ('Connection aborted.', ConnectionResetError(104, 'Connectio retry
+  INE549A07213/isins: ('Connection aborted.', ConnectionResetError(104, 'Connectio retry
+  INE148I08306/listings: ('Connection aborted.', ConnectionResetError(104, 'Connectio retry
+  INE126D07073/defaultdetail: ('Connection aborted.', ConnectionResetError(104, 'Connectio retry
+  INE244L08042/listings: ('Connection aborted.', ConnectionResetError(104, 'Connectio retry
+  INE148I07OH5/isins: ('Connection aborted.', ConnectionResetError(104, 'Connectio retry
+  INE244L08018/listings: ('Connection aborted.', ConnectionResetError(104, 'Connectio retry
+  INE126D07073/defaultdetail: ('Connection aborted.', ConnectionResetError(104, 'Connectio retry
+  INE148I07OH5/isins: ('Connection aborted.', ConnectionResetError(104, 'Connectio retry
+  INE244L08042/listings: ('Connection aborted.', ConnectionResetError(104, 'Connectio retry
+  INE549A08963/isins: ('Connection aborted.', ConnectionResetError(104, 'Connectio retry
+  INE549A07213/isins: ('Connection aborted.', ConnectionResetError(104, 'Connectio retry
+  INE201P08209/isins: ('Connection aborted.', ConnectionResetError(104, 'Connectio retry
+  INE148I08306/listings: ('Connection aborted.', ConnectionResetError(104, 'Connectio retry
+  INE148I07OH5/isins: ('Connection aborted.', ConnectionResetError(104, 'Connectio retry
+  INE244L08042/listings: ('Connection aborted.', ConnectionResetError(104, 'Connectio retry
+  INE549A08963/isins: ('Connection aborted.', ConnectionResetError(104, 'Connectio retry
+  INE244L08018/listings: ('Connection aborted.', ConnectionResetError(104, 'Connectio retry
+  INE126D07073/defaultdetail: ('Connection aborted.', ConnectionResetError(104, 'Connectio retry
+  INE201P08209/isins: ('Connection aborted.', ConnectionResetError(104, 'Connectio retry
+  INE549A07213/isins: ('Connection aborted.', ConnectionResetError(104, 'Connectio retry
+  INE148I08306/listings: ('Connection aborted.', ConnectionResetError(104, 'Connectio retry
+[4600/6453] INE549K07BH7 fetched=0 unchanged=0 skipped=66501 failed=11 elapsed=1.8m eta=1m
+[4625/6453] INE549K07CV6 fetched=0 unchanged=0 skipped=66504 failed=11 elapsed=1.8m eta=1m
+[4650/6453] INE549K07DY8 fetched=0 unchanged=0 skipped=66505 failed=12 elapsed=1.8m eta=1m
+[4675/6453] INE549K07EX8 fetched=0 unchanged=0 skipped=66509 failed=14 elapsed=1.8m eta=1m
+[4700/6453] INE549K07FW7 fetched=0 unchanged=0 skipped=66509 failed=14 elapsed=1.8m eta=1m
+[4725/6453] INE549K07GV7 fetched=0 unchanged=0 skipped=66509 failed=14 elapsed=1.8m eta=1m
+[4750/6453] INE549K07HU7 fetched=0 unchanged=0 skipped=66509 failed=14 elapsed=1.8m eta=1m
+[4775/6453] INE549K07IT7 fetched=0 unchanged=0 skipped=66509 failed=14 elapsed=1.8m eta=1m
+[4800/6453] INE549K08285 fetched=0 unchanged=0 skipped=66509 failed=14 elapsed=1.8m eta=1m
+[4825/6453] INE551U07324 fetched=0 unchanged=0 skipped=66509 failed=14 elapsed=1.8m eta=1m
+[4850/6453] INE557F07090 fetched=0 unchanged=0 skipped=66509 failed=14 elapsed=1.8m eta=1m
+[4875/6453] INE562A08115 fetched=0 unchanged=0 skipped=66509 failed=14 elapsed=1.8m eta=1m
+[4900/6453] INE572J07612 fetched=0 unchanged=0 skipped=66510 failed=14 elapsed=1.8m eta=1m
+[4925/6453] INE583D07513 fetched=0 unchanged=0 skipped=66510 failed=14 elapsed=1.8m eta=1m
+[4950/6453] INE601U08168 fetched=0 unchanged=0 skipped=66512 failed=14 elapsed=1.8m eta=1m
+[4975/6453] INE607M08105 fetched=0 unchanged=0 skipped=66515 failed=14 elapsed=1.8m eta=1m
+[5000/6453] INE634S07025 fetched=0 unchanged=0 skipped=66518 failed=14 elapsed=1.8m eta=1m
+[5025/6453] INE651J07911 fetched=0 unchanged=0 skipped=66520 failed=14 elapsed=1.8m eta=1m
+[5050/6453] INE658F08045 fetched=0 unchanged=0 skipped=66521 failed=14 elapsed=1.8m eta=1m
+[5075/6453] INE658F08292 fetched=0 unchanged=0 skipped=66521 failed=14 elapsed=1.8m eta=0m
+[5100/6453] INE658F08540 fetched=0 unchanged=0 skipped=66521 failed=14 elapsed=1.8m eta=0m
+[5125/6453] INE667F07IX9 fetched=0 unchanged=0 skipped=66521 failed=14 elapsed=1.8m eta=0m
+[5150/6453] INE674K07093 fetched=0 unchanged=0 skipped=66521 failed=14 elapsed=1.8m eta=0m
+[5175/6453] INE685A07157 fetched=0 unchanged=0 skipped=66521 failed=14 elapsed=1.8m eta=0m
+[5200/6453] INE692Q07514 fetched=0 unchanged=0 skipped=66521 failed=14 elapsed=1.8m eta=0m
+[5225/6453] INE721A07KD3 fetched=0 unchanged=0 skipped=66522 failed=14 elapsed=1.8m eta=0m
+[5250/6453] INE721A07RN7 fetched=0 unchanged=0 skipped=66524 failed=15 elapsed=1.8m eta=0m
+[5275/6453] INE721A07SQ8 fetched=0 unchanged=0 skipped=66524 failed=15 elapsed=1.8m eta=0m
+[5300/6453] INE723X07166 fetched=0 unchanged=0 skipped=66524 failed=15 elapsed=1.8m eta=0m
+[5325/6453] INE725H08287 fetched=0 unchanged=0 skipped=66524 failed=15 elapsed=1.8m eta=0m
+[5350/6453] INE733E07KI9 fetched=0 unchanged=0 skipped=66524 failed=15 elapsed=1.8m eta=0m
+[5375/6453] INE735X08051 fetched=0 unchanged=0 skipped=66524 failed=15 elapsed=1.8m eta=0m
+[5400/6453] INE744Z07027 fetched=0 unchanged=0 skipped=66524 failed=15 elapsed=1.8m eta=0m
+[5425/6453] INE752E07NI3 fetched=0 unchanged=0 skipped=66524 failed=15 elapsed=1.8m eta=0m
+[5450/6453] INE752E08619 fetched=0 unchanged=0 skipped=66524 failed=15 elapsed=1.8m eta=0m
+[5475/6453] INE755L07023 fetched=0 unchanged=0 skipped=66524 failed=15 elapsed=1.8m eta=0m
+[5500/6453] INE756I07FK7 fetched=0 unchanged=0 skipped=66524 failed=15 elapsed=1.8m eta=0m
+[5525/6453] INE756I08280 fetched=0 unchanged=0 skipped=66524 failed=15 elapsed=1.8m eta=0m
+[5550/6453] INE711X07062 fetched=0 unchanged=0 skipped=66628 failed=15 elapsed=1.8m eta=0m
+[5575/6453] INE774D08MG3 fetched=0 unchanged=0 skipped=66922 failed=15 elapsed=1.8m eta=0m
+[5600/6453] INE787D08054 fetched=0 unchanged=0 skipped=67218 failed=15 elapsed=1.8m eta=0m
+[5625/6453] INE787H07313 fetched=0 unchanged=0 skipped=67513 failed=15 elapsed=1.8m eta=0m
+[5650/6453] INE795G08035 fetched=0 unchanged=0 skipped=67832 failed=15 elapsed=1.8m eta=0m
+[5675/6453] INE804I08742 fetched=0 unchanged=0 skipped=68106 failed=15 elapsed=1.8m eta=0m
+[5700/6453] INE813H07341 fetched=0 unchanged=0 skipped=68409 failed=15 elapsed=1.8m eta=0m
+[5725/6453] INE814O07626 fetched=0 unchanged=0 skipped=68720 failed=15 elapsed=1.8m eta=0m
+[5750/6453] INE818F07344 fetched=0 unchanged=0 skipped=69016 failed=15 elapsed=1.8m eta=0m
+[5775/6453] INE831R07482 fetched=0 unchanged=0 skipped=69317 failed=15 elapsed=1.8m eta=0m
+[5800/6453] INE831R08084 fetched=0 unchanged=0 skipped=69627 failed=15 elapsed=1.8m eta=0m
+[5825/6453] INE836B08293 fetched=0 unchanged=0 skipped=69923 failed=15 elapsed=1.8m eta=0m
+[5850/6453] INE848E07AC9 fetched=0 unchanged=0 skipped=70235 failed=15 elapsed=1.8m eta=0m
+[5875/6453] INE848E07BR5 fetched=0 unchanged=0 skipped=70512 failed=15 elapsed=1.8m eta=0m
+[5900/6453] INE848E08326 fetched=0 unchanged=0 skipped=70818 failed=15 elapsed=1.8m eta=0m
+[5925/6453] INE849D08TX3 fetched=0 unchanged=0 skipped=71122 failed=15 elapsed=1.8m eta=0m
+[5950/6453] INE859C07246 fetched=0 unchanged=0 skipped=71445 failed=15 elapsed=1.8m eta=0m
+[5975/6453] INE860H07IK3 fetched=0 unchanged=0 skipped=71712 failed=15 elapsed=1.8m eta=0m
+[6000/6453] INE860H08ED5 fetched=0 unchanged=0 skipped=72017 failed=15 elapsed=1.8m eta=0m
+[6025/6453] INE883F07280 fetched=0 unchanged=0 skipped=72330 failed=15 elapsed=1.8m eta=0m
+[6050/6453] INE884Q07822 fetched=0 unchanged=0 skipped=72628 failed=15 elapsed=1.8m eta=0m
+[6075/6453] INE891K07838 fetched=0 unchanged=0 skipped=72905 failed=15 elapsed=1.8m eta=0m
+[6100/6453] INE891K07AN3 fetched=0 unchanged=0 skipped=73223 failed=15 elapsed=1.8m eta=0m
+[6125/6453] INE896L07991 fetched=0 unchanged=0 skipped=73520 failed=15 elapsed=1.8m eta=0m
+[6150/6453] INE905Y07076 fetched=0 unchanged=0 skipped=73823 failed=15 elapsed=1.8m eta=0m
+[6175/6453] INE906B07GK1 fetched=0 unchanged=0 skipped=74124 failed=15 elapsed=1.8m eta=0m
+[6200/6453] INE911L07113 fetched=0 unchanged=0 skipped=74421 failed=15 elapsed=1.8m eta=0m
+[6225/6453] INE918K07PD3 fetched=0 unchanged=0 skipped=74717 failed=15 elapsed=1.8m eta=0m
+[6250/6453] INE918K07QE9 fetched=0 unchanged=0 skipped=75020 failed=15 elapsed=1.8m eta=0m
+[6275/6453] INE925U07049 fetched=0 unchanged=0 skipped=75320 failed=15 elapsed=1.8m eta=0m
+[6300/6453] INE939X07200 fetched=0 unchanged=0 skipped=75624 failed=15 elapsed=1.8m eta=0m
+[6325/6453] INE950O07438 fetched=0 unchanged=0 skipped=75919 failed=15 elapsed=1.8m eta=0m
+[6350/6453] INE950O08147 fetched=0 unchanged=0 skipped=76216 failed=15 elapsed=1.8m eta=0m
+[6375/6453] INE957N07880 fetched=0 unchanged=0 skipped=76506 failed=15 elapsed=1.8m eta=0m
+[6400/6453] INE975F07IU2 fetched=0 unchanged=0 skipped=76817 failed=15 elapsed=1.8m eta=0m
+[6425/6453] INE976I07DG4 fetched=0 unchanged=0 skipped=77133 failed=15 elapsed=1.8m eta=0m
+[6450/6453] INE999H07058 fetched=0 unchanged=0 skipped=77404 failed=15 elapsed=1.8m eta=0m
+[6453/6453] INE148I08306 fetched=0 unchanged=0 skipped=77420 failed=16 elapsed=1.8m eta=0m
+DONE {"fetched": 0, "unchanged": 0, "skipped": 77420, "failed": 16}
+bond_info                      6449
+bond_terms                     6453
+bond_cashflows               114609
+bond_further_issues            6453
+bond_redemption_events         3629
+bond_ratings                  54505
+bond_listings                  8783
+bond_documents                52218
+bond_contacts                  6453
+bond_arrangers                 3044
+bond_defaults                   307
+bond_technical_defaults         131
+bond_restructurings             129
+bond_holdings                243833
+DONE in 17s
