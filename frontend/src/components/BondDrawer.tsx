@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { api, fmt } from "../api/client";
 import type { BondDetail } from "../api/types";
@@ -24,11 +24,17 @@ export default function BondDrawer({
 }) {
   const [tab, setTab] = useState<Tab>(initialTab ?? "overview");
   const [whatIf, setWhatIf] = useState<string>("");
-  const price = whatIf ? Number(whatIf) : undefined;
+  const [price, setPrice] = useState<number | undefined>(undefined);
+
+  useEffect(() => {
+    const t = setTimeout(() => setPrice(whatIf ? Number(whatIf) : undefined), 400);
+    return () => clearTimeout(t);
+  }, [whatIf]);
 
   const { data: bond, isLoading } = useQuery({
     queryKey: ["bond", isin, price],
     queryFn: () => api.bond(isin, price),
+    placeholderData: keepPreviousData,
   });
 
   useEffect(() => {

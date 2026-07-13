@@ -1,35 +1,26 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_PRESET, describeFilters, PRESETS } from "./FilterBar";
+import { DEFAULT_FILTERS, describeFilters } from "./FilterBar";
 
-describe("v1 strategy presets", () => {
-  it("has the v1 strategies plus Tax-Free", () => {
-    expect(PRESETS).toHaveLength(14);
-    expect(PRESETS.map((p) => p.id)).toContain("fdbeater");
-  });
-
-  it("FD Beater is the default preset with v1 thresholds", () => {
-    expect(DEFAULT_PRESET.id).toBe("fdbeater");
-    expect(DEFAULT_PRESET.params).toEqual({
-      min_rating: "AA-",
+describe("default filters", () => {
+  it("starts with the five essentials", () => {
+    expect(DEFAULT_FILTERS).toEqual({
       min_ytm: 8,
       min_turnover: 100000,
+      min_rating: "A-",
+      min_years: 1,
+      traded_within: 7,
     });
-  });
-
-  it("every preset has a tooltip and valid params", () => {
-    for (const p of PRESETS) {
-      expect(p.tip.length).toBeGreaterThan(10);
-      expect(Object.keys(p.params).length).toBeGreaterThan(0);
-    }
   });
 });
 
 describe("describeFilters", () => {
-  it("summarizes FD Beater like v1", () => {
-    expect(describeFilters(DEFAULT_PRESET.params)).toEqual([
-      "rating ≥ AA-",
+  it("summarizes the default filter set", () => {
+    expect(describeFilters(DEFAULT_FILTERS)).toEqual([
+      "rating ≥ A-",
       "YTM ≥ 8%",
+      "maturity ≥ 1y",
       "retail traded ≥ ₹1.00 L",
+      "traded ≤ 7d ago",
     ]);
   });
 

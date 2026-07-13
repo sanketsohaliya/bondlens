@@ -3,16 +3,18 @@ import { useState } from "react";
 import { api } from "./api/client";
 import type { ScreenerParams } from "./api/types";
 import BondDrawer, { type Tab } from "./components/BondDrawer";
-import FilterBar, { DEFAULT_PRESET } from "./components/FilterBar";
+import FilterBar, { DEFAULT_FILTERS } from "./components/FilterBar";
 import ScreenerTable from "./components/ScreenerTable";
 
 export default function App() {
-  const [params, setParams] = useState<ScreenerParams>(DEFAULT_PRESET.params);
+  const [params, setParams] = useState<ScreenerParams>(DEFAULT_FILTERS);
   const [selected, setSelected] = useState<{ isin: string; tab?: Tab } | null>(null);
 
+  // A search means "find me this bond" — the screener filters would only
+  // hide what the user is explicitly looking for, so q bypasses them.
   const bonds = useQuery({
     queryKey: ["bonds", params],
-    queryFn: () => api.bonds({ ...params, limit: 1000 }),
+    queryFn: () => api.bonds(params.q ? { q: params.q, limit: 1000 } : { ...params, limit: 1000 }),
   });
 
   return (
@@ -34,7 +36,12 @@ export default function App() {
         </header>
 
         <main className="space-y-6">
-          <FilterBar params={params} onChange={setParams} />
+          <div
+            className={params.q ? "opacity-40 transition-opacity" : "transition-opacity"}
+            title={params.q ? "Filters are ignored while searching" : undefined}
+          >
+            <FilterBar params={params} onChange={setParams} />
+          </div>
           <ScreenerTable
             bonds={bonds.data?.bonds ?? []}
             loading={bonds.isLoading}

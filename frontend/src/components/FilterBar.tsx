@@ -1,121 +1,17 @@
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { api, fmt } from "../api/client";
 import type { Filters, ScreenerParams } from "../api/types";
-import Tip from "./Tooltip";
 
-export interface Preset {
-  id: string;
-  name: string;
-  sub?: string;
-  tip: string;
-  params: ScreenerParams;
-}
-
-// The v1 strategy presets, mapped onto v2 screener params.
-export const PRESETS: Preset[] = [
-  {
-    id: "ultrasafe",
-    name: "Ultra Safe",
-    sub: "AAA ₹5L+",
-    tip: "The safest bonds there are — and easy to buy and sell",
-    params: { min_rating: "AAA", min_turnover: 500000 },
-  },
-  {
-    id: "fdbeater",
-    name: "FD Beater",
-    sub: "≥8% AA-",
-    tip: "Earn more than a bank FD, with strong safety ratings",
-    params: { min_rating: "AA-", min_ytm: 8, min_turnover: 100000 },
-  },
-  {
-    id: "sweet",
-    name: "Sweet Spot",
-    sub: "≥9.5% A- ≤4y",
-    tip: "High returns at reasonable risk, without locking money away for years",
-    params: { min_rating: "A-", min_ytm: 9.5, max_years: 4, min_turnover: 100000 },
-  },
-  {
-    id: "parking",
-    name: "Cash Parking",
-    sub: "≤1.5y ≥7.5%",
-    tip: "For money you'll want back soon",
-    params: { min_rating: "AA-", min_ytm: 7.5, max_years: 1.5 },
-  },
-  {
-    id: "highyield",
-    name: "High Yield",
-    sub: "≥10.5% BBB-",
-    tip: "Maximum returns while staying out of junk territory",
-    params: { min_rating: "BBB-", min_ytm: 10.5 },
-  },
-  {
-    id: "lockin",
-    name: "Rate Lock-in",
-    sub: "≥5y ≥8.5%",
-    tip: "Lock in today's rates for 5+ years — smart if you expect rates to fall",
-    params: { min_rating: "AA-", min_ytm: 8.5, min_years: 5 },
-  },
-  {
-    id: "maturing",
-    name: "Maturing Soon",
-    sub: "≤1y",
-    tip: "Repays your money within a year",
-    params: { min_rating: "AA-", max_years: 1 },
-  },
-  {
-    id: "monthly",
-    name: "Monthly Income",
-    sub: "≥9% A-",
-    tip: "Pays you interest every month, like rent",
-    params: { min_rating: "A-", min_ytm: 9, frequency: "monthly" },
-  },
-  {
-    id: "value",
-    name: "Value Hunter",
-    sub: "≥9% AA- exact",
-    tip: "Well-paid credit risk on numbers you can trust: strong rating, exact NSDL schedule, traded within a week",
-    params: { min_rating: "AA-", min_ytm: 9, exact_only: true, traded_within: 7 },
-  },
-  {
-    id: "taxfree",
-    name: "Tax-Free",
-    tip: "Interest exempt from income tax — compare after-tax, not headline yield",
-    params: { tax_free_only: true },
-  },
-  {
-    id: "discount",
-    name: "Discount Bonds",
-    sub: "< face",
-    tip: "Trading below face value — part of your return comes as a guaranteed gain at redemption",
-    params: { below_par: true },
-  },
-  {
-    id: "downgraded",
-    name: "Downgraded",
-    sub: "≤30d",
-    tip: "Rating cut in the last 30 days — credits to avoid, or overreactions to hunt",
-    params: { downgraded_only: true },
-  },
-  {
-    id: "liquid",
-    name: "Most Traded",
-    sub: "₹10L+",
-    tip: "Where the most buying and selling is happening today",
-    params: { min_turnover: 1000000 },
-  },
-  {
-    id: "watchlist",
-    name: "★ Watchlist",
-    tip: "Your starred bonds",
-    params: { watchlist_only: true },
-  },
-];
-
-export const DEFAULT_PRESET = PRESETS.find((p) => p.id === "fdbeater")!;
-
-/* Chips shown inline; the rest live under "More ▾". */
-const INLINE_IDS = ["fdbeater", "ultrasafe", "sweet", "highyield", "liquid", "watchlist"];
+/* What a fresh screen starts with: decent yield, real retail liquidity,
+   investment-grade, at least a year to run, recently traded. */
+export const DEFAULT_FILTERS: ScreenerParams = {
+  min_ytm: 8,
+  min_turnover: 100000,
+  min_rating: "A-",
+  min_years: 1,
+  traded_within: 7,
+};
 
 /** v1's describeFilters(): human-readable summary of active filters. */
 export function describeFilters(p: ScreenerParams): string[] {
@@ -152,106 +48,19 @@ export default function FilterBar({
   params: ScreenerParams;
   onChange: (p: ScreenerParams) => void;
 }) {
-  const [moreOpen, setMoreOpen] = useState(false);
-  const [activePreset, setActivePreset] = useState<string | null>(DEFAULT_PRESET.id);
   const { data: filters } = useQuery({ queryKey: ["filters"], queryFn: api.filters });
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setMoreOpen(false);
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
-
   const set = (patch: Partial<ScreenerParams>) => {
-    setActivePreset(null);
     onChange({ ...params, ...patch });
   };
 
-  const applyPreset = (p: Preset) => {
-    if (activePreset === p.id) {
-      setActivePreset(null);
-      onChange({ q: params.q });
-    } else {
-      setActivePreset(p.id);
-      onChange({ ...p.params, q: params.q });
-    }
-  };
-
-  const inline = INLINE_IDS.map((id) => PRESETS.find((p) => p.id === id)!);
-  const overflow = PRESETS.filter((p) => !INLINE_IDS.includes(p.id));
-  const activeOverflow = overflow.find((p) => p.id === activePreset);
-
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center gap-2">
-        {inline.map((p) => (
-          <Tip key={p.id} text={p.tip} className="contents">
-            <button
-              type="button"
-              onClick={() => applyPreset(p)}
-              className={`preset-chip flex-1 ${activePreset === p.id ? "active" : ""}`}
-            >
-              {p.name}
-              {p.sub && <span>{p.sub}</span>}
-            </button>
-          </Tip>
-        ))}
-
-        <span className="relative flex-1 flex">
-          <button
-            type="button"
-            onClick={() => setMoreOpen(!moreOpen)}
-            className={`preset-chip flex-1 ${activeOverflow ? "active" : ""}`}
-          >
-            {activeOverflow ? `More: ${activeOverflow.name}` : "More"}
-            <span>▾</span>
-          </button>
-          {moreOpen && (
-            <>
-              <div
-                className="fixed inset-0 z-20"
-                onClick={() => setMoreOpen(false)}
-                aria-hidden="true"
-              />
-              <div className="absolute left-0 top-full mt-2 z-30 w-64 rounded-lg border border-zinc-700 bg-zinc-900 shadow-xl py-1">
-                {overflow.map((p) => (
-                  <button
-                    type="button"
-                    key={p.id}
-                    title={p.tip}
-                    onClick={() => {
-                      applyPreset(p);
-                      setMoreOpen(false);
-                    }}
-                    className={`w-full flex items-center justify-between gap-3 px-3 py-2 text-xs text-left hover:bg-zinc-800 ${
-                      activePreset === p.id ? "text-emerald-400" : "text-zinc-300"
-                    }`}
-                  >
-                    <span className="font-medium">{p.name}</span>
-                    {p.sub && <span className="text-[10px] text-zinc-500">{p.sub}</span>}
-                  </button>
-                ))}
-              </div>
-            </>
-          )}
-        </span>
-
-        <Tip text="Show everything" className="contents">
-          <button
-            type="button"
-            onClick={() => {
-              setActivePreset(null);
-              onChange({ q: params.q });
-            }}
-            className="preset-chip chip-clear flex-1"
-          >
-            Clear
-          </button>
-        </Tip>
-      </div>
-
-      <FilterFields params={params} set={set} filters={filters} />
-    </div>
+    <FilterFields
+      params={params}
+      set={set}
+      filters={filters}
+      onReset={() => onChange({ q: params.q })}
+    />
   );
 }
 
@@ -271,10 +80,12 @@ function FilterFields({
   params,
   set,
   filters,
+  onReset,
 }: {
   params: ScreenerParams;
   set: (patch: Partial<ScreenerParams>) => void;
   filters: Filters | undefined;
+  onReset: () => void;
 }) {
   const lbl = (active: boolean) =>
     `block text-[10px] font-semibold uppercase tracking-wider mb-1.5 whitespace-nowrap ${
@@ -512,6 +323,29 @@ function FilterFields({
             </div>
           </>
         )}
+      </span>
+
+      <span className="flex items-end gap-2 self-end">
+        <button
+          type="button"
+          title="Only your starred bonds"
+          onClick={() => set({ watchlist_only: !params.watchlist_only || undefined })}
+          className={`px-2.5 py-1.5 rounded-md border text-xs font-medium transition-colors whitespace-nowrap ${
+            params.watchlist_only
+              ? "border-emerald-600 text-emerald-500 bg-emerald-600/10"
+              : "border-zinc-700 text-zinc-400 hover:border-zinc-500"
+          }`}
+        >
+          ★ Watchlist
+        </button>
+        <button
+          type="button"
+          title="Remove all filters and show everything"
+          onClick={onReset}
+          className="px-2.5 py-1.5 rounded-md border border-zinc-700 text-xs font-medium text-red-400 hover:border-red-400 transition-colors whitespace-nowrap"
+        >
+          Clear
+        </button>
       </span>
     </div>
   );
