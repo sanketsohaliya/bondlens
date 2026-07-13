@@ -61,6 +61,31 @@ def to_int(v) -> int | None:
     return int(n) if n is not None else None
 
 
+def fix_record_date(record: date | None, due: date | None) -> date | None:
+    """Repair NSDL record dates that land AFTER the payment (impossible —
+    the record date is when they snapshot who gets paid).
+
+    The feed itself contains these errors (verified against nsdl_raw), in two
+    recoverable shapes: day/month swapped (07-09 for 09-07) and wrong year.
+    A repair is accepted only if it lands in the normal window — 0-60 days
+    before the payment (the modal gap is 15 days). Unrepairable dates become
+    None: no record date beats a wrong one.
+    """
+    if record is None or due is None or record <= due:
+        return record
+    if record.day <= 12:
+        swapped = record.replace(month=record.day, day=record.month)
+        if 0 <= (due - swapped).days <= 60:
+            return swapped
+    try:
+        year_fixed = record.replace(year=due.year)
+    except ValueError:  # 29 Feb into a non-leap year
+        year_fixed = None
+    if year_fixed and 0 <= (due - year_fixed).days <= 60:
+        return year_fixed
+    return None
+
+
 def agency_norm(name) -> str | None:
     s = clean(name)
     if not s:
@@ -162,11 +187,12 @@ def parse_coupondetail(isin, p):
     flows = []
     sched = (vo.get("cashFlowScheduleDetails") or {})
     for f in sched.get("cashFlowSchedule") or []:
+        due = to_date(f.get("dueDate"))
         flows.append({
             "isin": isin,
             "event": clean(f.get("cashFlowsEvent")),
-            "due_date": to_date(f.get("dueDate")),
-            "record_date": to_date(f.get("recordDate")),
+            "due_date": due,
+            "record_date": fix_record_date(to_date(f.get("recordDate")), due),
             "payment_date": to_date(f.get("paymentDate")),
             "amount_payable": to_num(f.get("amountPayable")),
             "amount_redeem": to_num(f.get("amountRedeem")),

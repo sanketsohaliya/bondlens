@@ -159,8 +159,9 @@ def accrued_interest(sched: Schedule,
     """Accrued interest per unit under the bond's day-count convention.
 
     Accrues the next coupon across [previous coupon date, next coupon
-    date). None when the position inside the coupon stream can't be
-    located (e.g. still in the first period with no anchor date).
+    date). In the first coupon period (no previous coupon yet) interest
+    accrues from the allotment date. None when the position inside the
+    coupon stream can't be located at all.
     """
     today = today or date.today()
     interest = sorted((f for f in sched.flows
@@ -175,12 +176,13 @@ def accrued_interest(sched: Schedule,
             nxt = f
     if nxt is None or nxt.amount is None:
         return None
-    if prev is None:
+    prev_date = prev.due_date if prev is not None else sched.allotment_date
+    if prev_date is None or prev_date > today:
         return None
-    total = daycount.year_frac(prev.due_date, nxt.due_date, sched.day_count)
+    total = daycount.year_frac(prev_date, nxt.due_date, sched.day_count)
     if total <= 0:
         return None
-    elapsed = daycount.year_frac(prev.due_date, today, sched.day_count)
+    elapsed = daycount.year_frac(prev_date, today, sched.day_count)
     return round(nxt.amount * min(1.0, elapsed / total), 2)
 
 

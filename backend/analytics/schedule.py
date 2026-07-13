@@ -62,6 +62,7 @@ class Schedule:
     periods_per_year: int | None = None
     day_count: str = daycount.ACT_ACT
     scale: float = 1.0               # divisor applied to issue-level amounts
+    allotment_date: date | None = None  # accrual anchor for the first period
     amounts_estimated: bool = False  # any flow amount was estimated
     redemption_matches_face: bool = False
     warnings: list[str] = field(default_factory=list)
@@ -139,7 +140,8 @@ def build(isin: str, cashflows: list[dict], terms: dict | None,
     coupon = _num(terms.get("coupon_rate"))
     perpetual = bool(terms.get("perpetual"))
     dc = daycount.normalize(terms.get("day_count_convention"))
-    sched = Schedule(isin=isin, shape="empty", face_value=face, day_count=dc)
+    sched = Schedule(isin=isin, shape="empty", face_value=face, day_count=dc,
+                     allotment_date=terms.get("allotment_date"))
 
     freq_name, ppy = classify_frequency(terms.get("interest_payment_frequency"))
     sched.frequency, sched.periods_per_year = freq_name, ppy

@@ -5,6 +5,7 @@ from datetime import date
 from backend.nsdl_parse import (
     agency_norm,
     clean,
+    fix_record_date,
     parse_credit_ratings,
     parse_holdings,
     parse_instruments,
@@ -28,6 +29,22 @@ class TestNsdlParse(unittest.TestCase):
         assert to_date("30/06/2026") == date(2026, 6, 30)
         assert to_date("-") is None
         assert to_date("Expiry of 60 months") is None  # free text
+
+    def test_fix_record_date(self):
+        # Normal: record before due passes through untouched.
+        assert fix_record_date(date(2026, 7, 9), date(2026, 7, 24)) \
+            == date(2026, 7, 9)
+        assert fix_record_date(None, date(2026, 7, 24)) is None
+        # Day/month swap: 07-09 was really 09-07 (the 9EFSL27 case).
+        assert fix_record_date(date(2026, 9, 7), date(2026, 7, 24)) \
+            == date(2026, 7, 9)
+        # Wrong year: 12 Aug 2026 for a 27 Aug 2025 payment.
+        assert fix_record_date(date(2026, 8, 12), date(2025, 8, 27)) \
+            == date(2025, 8, 12)
+        # Unrepairable (no swap/year fix lands 0-60d before due) -> None.
+        assert fix_record_date(date(2026, 10, 5), date(2025, 1, 20)) is None
+        # Swap exists but lands outside the window -> falls through to None.
+        assert fix_record_date(date(2026, 12, 8), date(2025, 8, 27)) is None
 
     def test_to_num_and_int(self):
         assert to_num("1,000.5") == 1000.5

@@ -78,6 +78,24 @@ def test_ytm_implausible_price_none():
 
 # --- accrued / clean ---------------------------------------------------------
 
+def test_accrued_first_period_from_allotment():
+    # No coupon paid yet (9EFSL27 case): accrue from the allotment date.
+    flows = [Flow("interest", date(2026, 7, 24), amount=90),
+             Flow("interest", date(2027, 7, 24), amount=90),
+             Flow("redemption", date(2027, 7, 24), amount=1000)]
+    s = _sched(flows)
+    s.allotment_date = date(2025, 7, 24)
+    acc = yields.accrued_interest(s, TODAY)
+    # 353/365 of the first coupon has accrued by 12 Jul 2026.
+    assert acc == pytest.approx(90 * 353 / 365, abs=1.0)
+
+
+def test_accrued_first_period_without_allotment_is_none():
+    flows = [Flow("interest", date(2026, 7, 24), amount=90),
+             Flow("redemption", date(2026, 7, 24), amount=1000)]
+    assert yields.accrued_interest(_sched(flows), TODAY) is None
+
+
 def test_accrued_midway():
     flows = [Flow("interest", date(2026, 1, 12), amount=100),
              Flow("interest", date(2027, 1, 12), amount=100),
