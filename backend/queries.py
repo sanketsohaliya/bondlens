@@ -60,6 +60,29 @@ def screener_core() -> dict[str, dict]:
             if r["isin"] in core:
                 core[r["isin"]].setdefault("retail_exch", {})[
                     (r["exchange"] or "").upper()] = dict(r)
+
+        # Retail turnover and close on each bond's previous trading day
+        # (turnover summed across venues; close from the day's biggest-
+        # turnover row) for the screener's up/down markers.
+        for r in conn.execute("""
+            WITH daily AS (
+                SELECT isin, trade_date, SUM(turnover) AS turnover,
+                       (ARRAY_AGG(COALESCE(close, last_price)
+                                  ORDER BY turnover DESC NULLS LAST))[1] AS close
+                FROM eod_trades
+                WHERE segment = 'retail'
+                GROUP BY isin, trade_date
+            ), ranked AS (
+                SELECT isin, turnover, close,
+                       ROW_NUMBER() OVER (PARTITION BY isin
+                                          ORDER BY trade_date DESC) AS rn
+                FROM daily
+            )
+            SELECT isin, turnover, close FROM ranked WHERE rn = 2
+        """).fetchall():
+            if r["isin"] in core:
+                core[r["isin"]]["prev_turnover"] = r["turnover"]
+                core[r["isin"]]["prev_ltp"] = r["close"]
     return core
 
 
@@ -82,12 +105,15 @@ def all_terms() -> dict[str, dict]:
 
 
 def current_ratings() -> dict[str, list[dict]]:
-    """Current agency ratings per ISIN."""
+    """Current agency ratings per ISIN. rating_date carries the event
+    date (NSDL ratingChangeDate) — creditRatingDate is only the initial
+    assignment date, identical across an agency's rows."""
     out: dict[str, list[dict]] = {}
     with db._conn() as conn:
         for r in conn.execute(
                 "SELECT isin, agency, rating, outlook, rating_action, "
-                "rating_date, watch, press_release_link AS press_release "
+                "COALESCE(rating_change_date, rating_date) AS rating_date, "
+                "watch, press_release_link AS press_release "
                 "FROM bond_ratings "
                 "WHERE is_current ORDER BY isin, agency").fetchall():
             out.setdefault(r["isin"], []).append(dict(r))
@@ -96,13 +122,17 @@ def current_ratings() -> dict[str, list[dict]]:
 
 def rating_history(isin: str | None = None) -> dict[str, list[dict]]:
     """Full rating trail per ISIN (one ISIN, or everything for the
-    screener's change detection)."""
+    screener's change detection). rating_date carries the event date
+    (NSDL ratingChangeDate), falling back to the assignment date for
+    initial \"New\" rows that have no change date."""
     out: dict[str, list[dict]] = {}
-    q = ("SELECT isin, agency, rating, outlook, rating_action, rating_date, "
+    q = ("SELECT isin, agency, rating, outlook, rating_action, "
+         "COALESCE(rating_change_date, rating_date) AS rating_date, "
          "press_release_link AS press_release, is_current FROM bond_ratings ")
+    order = "COALESCE(rating_change_date, rating_date)"
     with db._conn() as conn:
-        rows = (conn.execute(q + "WHERE isin = %s ORDER BY rating_date", (isin,))
-                if isin else conn.execute(q + "ORDER BY isin, rating_date")
+        rows = (conn.execute(q + f"WHERE isin = %s ORDER BY {order}", (isin,))
+                if isin else conn.execute(q + f"ORDER BY isin, {order}")
                 ).fetchall()
     for r in rows:
         out.setdefault(r["isin"], []).append(dict(r))
@@ -214,8 +244,10 @@ def screener(f: dict, stale_days: int) -> tuple[list[dict], int, float | None]:
         add("a.rating_change = 'down'")
     if f.get("q"):
         add("(a.isin ILIKE %(q)s OR "
-            "coalesce(a.nse_symbol, '') || ' ' || coalesce(a.issuer_name, '') "
-            "ILIKE %(q)s)", q=f"%{f['q'].strip()}%")
+            "coalesce(a.nse_symbol, '') || ' ' || "
+            "coalesce(a.bse_scrip_id, '') || ' ' || "
+            "coalesce(a.issuer_name, '') ILIKE %(q)s)",
+            q=f"%{f['q'].strip()}%")
 
     where: LiteralString = ("WHERE " + " AND ".join(conds)) if conds else ""
     with db._conn() as conn:

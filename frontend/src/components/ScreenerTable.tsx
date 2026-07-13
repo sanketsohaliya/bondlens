@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { api, fmt } from "../api/client";
 import type { Bond, BondsResponse } from "../api/types";
 import CopyBtn from "./CopyBtn";
@@ -7,6 +7,15 @@ import RatingBadge from "./RatingBadge";
 
 const monthYear = (d: string | null) =>
   d ? new Date(d).toLocaleDateString("en-IN", { month: "short", year: "numeric" }) : null;
+
+const yearsMonths = (years: number) => {
+  const months = Math.round(years * 12);
+  const y = Math.floor(months / 12);
+  const m = months % 12;
+  if (y === 0) return `${m}mo`;
+  if (m === 0) return `${y}y`;
+  return `${y}y ${m}mo`;
+};
 
 type SortKey = keyof Pick<
   Bond,
@@ -18,10 +27,10 @@ const COLS: { key: SortKey | null; label: string; right?: boolean }[] = [
   { key: null, label: "Symbol" },
   { key: "ytm", label: "YTM %" },
   { key: "ltp", label: "LTP" },
-  { key: "turnover", label: "Turnover" },
+  { key: "turnover", label: "Retail turnover" },
   { key: "rating_rank", label: "Rating" },
   { key: "years_to_maturity", label: "Maturity", right: true },
-  { key: "days_since_traded", label: "Traded", right: true },
+  { key: "days_since_traded", label: "Last traded", right: true },
 ];
 
 export default function ScreenerTable({
@@ -36,6 +45,39 @@ export default function ScreenerTable({
   onSelect: (isin: string, tab?: "ratings" | "chart") => void;
 }) {
   const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: "turnover", dir: -1 });
+  const tableRef = useRef<HTMLTableElement>(null);
+  const [widths, setWidths] = useState<number[] | null>(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem("screener-col-widths") ?? "null");
+      return Array.isArray(saved) && saved.length === COLS.length ? saved : null;
+    } catch {
+      return null;
+    }
+  });
+
+  const startResize = (i: number, e: React.PointerEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const table = tableRef.current;
+    if (!table) return;
+    const ths = Array.from(table.querySelectorAll("thead th"));
+    const base = widths ?? ths.map((t) => t.getBoundingClientRect().width);
+    const startX = e.clientX;
+    const startW = base[i];
+    let next = base;
+    const move = (ev: PointerEvent) => {
+      next = [...base];
+      next[i] = Math.max(48, startW + ev.clientX - startX);
+      setWidths(next);
+    };
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      localStorage.setItem("screener-col-widths", JSON.stringify(next));
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  };
 
   const sorted = useMemo(() => {
     const rows = [...bonds];
@@ -60,13 +102,20 @@ export default function ScreenerTable({
 
   return (
     <div className="overflow-x-auto scroll-slim">
-      <table className="w-full text-sm">
+      <table ref={tableRef} className={`w-full text-sm ${widths ? "table-fixed" : ""}`}>
+        {widths && (
+          <colgroup>
+            {widths.map((w, i) => (
+              <col key={i} style={{ width: w }} />
+            ))}
+          </colgroup>
+        )}
         <thead className="text-[11px] font-semibold uppercase tracking-wider text-zinc-500 border-b-2 border-zinc-100">
           <tr>
             {COLS.map((c, i) => (
               <th
                 key={i}
-                className={`px-3 py-3 whitespace-nowrap ${c.right ? "text-right" : "text-left"} ${c.key ? "cursor-pointer select-none hover:text-zinc-300" : ""}`}
+                className={`relative px-3 py-3 whitespace-nowrap ${c.right ? "text-right" : "text-left"} ${c.key ? "cursor-pointer select-none hover:text-zinc-300" : ""}`}
                 onClick={() =>
                   c.key &&
                   setSort((s) => ({
@@ -75,9 +124,17 @@ export default function ScreenerTable({
                   }))
                 }
               >
-                {c.label}
+                <span className={c.key === sort.key ? "text-zinc-200" : undefined}>{c.label}</span>
                 {c.key === sort.key && (
-                  <span className="ml-1 text-emerald-400">{sort.dir === -1 ? "▼" : "▲"}</span>
+                  <span className="ml-1 text-emerald-500/80">{sort.dir === -1 ? "▼" : "▲"}</span>
+                )}
+                {i > 0 && (
+                  <span
+                    className="absolute right-0 top-1/2 -translate-y-1/2 h-4 w-1.5 cursor-col-resize border-r-2 border-zinc-800 hover:border-emerald-500"
+                    onPointerDown={(e) => startResize(i, e)}
+                    onClick={(e) => e.stopPropagation()}
+                    title="Drag to resize"
+                  />
                 )}
               </th>
             ))}
@@ -111,9 +168,9 @@ function Row({
       <td className="pl-3 pr-1 py-2.5 w-8">
         <WatchStar isin={b.isin} watched={b.in_watchlist} />
       </td>
-      <td className="px-3 py-2.5 min-w-52">
+      <td className="px-3 py-2.5 w-80 max-w-80">
         <div className="flex items-center gap-1.5">
-          <span className="font-semibold text-zinc-100 hover:text-emerald-400 transition-colors">
+          <span className="font-medium text-zinc-200 hover:text-emerald-400 transition-colors">
             {b.nse_symbol ?? b.bse_scrip_id ?? b.isin}
           </span>
           <CopyBtn text={b.nse_symbol ?? b.bse_scrip_id ?? b.isin} label="symbol" />
@@ -123,18 +180,16 @@ function Row({
             </span>
           )}
         </div>
-        <div className="text-[11px] text-zinc-500 truncate max-w-64">{b.issuer_name ?? b.isin}</div>
+        <div className="text-[11px] text-zinc-500 truncate max-w-76">{b.issuer_name ?? b.isin}</div>
       </td>
       <td className="px-3 py-2.5 whitespace-nowrap">
         <span
           className={
             b.ytm_reliable === false
-              ? "text-zinc-600 font-bold"
-              : b.ytm != null && b.ytm >= 10
-                ? "text-emerald-500 font-bold"
-                : b.ytm != null
-                  ? "text-zinc-100 font-bold"
-                  : "text-zinc-500"
+              ? "text-zinc-600 font-medium"
+              : b.ytm != null
+                ? "text-zinc-200 font-medium"
+                : "text-zinc-500"
           }
           title={
             b.ytm_reliable === false
@@ -156,16 +211,11 @@ function Row({
             YTC
           </span>
         )}
-        {b.coupon != null && (
-          <div className="text-[11px] text-zinc-500" title="Coupon rate">
-            {fmt.pct(b.coupon)} cpn
-          </div>
-        )}
       </td>
       <td
         className={`px-3 py-2.5 whitespace-nowrap ${
           b.stale && (b.days_since_traded ?? 0) > 90 ? "text-amber-500/80" : "text-zinc-200"
-        }`}
+        } font-medium`}
         title={[
           b.stale && b.days_since_traded != null
             ? `No trades seen for ${b.days_since_traded} days — this price and its YTM may be outdated`
@@ -177,12 +227,22 @@ function Row({
       >
         <div>
           {fmt.inr(b.ltp)}
+          {!b.stale && b.ltp != null && b.prev_ltp != null && b.ltp !== b.prev_ltp && (
+            <span
+              className={`ml-1 text-[10px] ${
+                b.ltp > b.prev_ltp ? "text-emerald-500/80" : "text-red-400/70"
+              }`}
+              title={`LTP on previous trading day: ${fmt.inr(b.prev_ltp)}`}
+            >
+              {b.ltp > b.prev_ltp ? "▲" : "▼"}
+            </span>
+          )}
           {b.stale && b.ltp != null && (
             <span className="ml-1 text-[10px] text-zinc-600 align-middle">⚠</span>
           )}
         </div>
         {b.face_value != null && (
-          <div className="text-[11px] text-zinc-500">FV {fmt.inr(b.face_value)}</div>
+          <div className="text-[11px] text-zinc-500 font-normal">FV {fmt.inr(b.face_value)}</div>
         )}
       </td>
       <td
@@ -193,29 +253,22 @@ function Row({
         }}
         title="Open price chart"
       >
-        {b.nse_turnover == null && b.bse_turnover == null && b.otc_turnover == null ? (
+        {b.nse_turnover == null && b.bse_turnover == null ? (
           <span className="text-zinc-500">–</span>
         ) : (
           <>
-            {(b.nse_turnover != null || b.bse_turnover != null) && (
-              <div>
-                <span className="text-zinc-200 group-hover/turnover:underline decoration-zinc-600 underline-offset-2">
-                  {fmt.inr((b.nse_turnover ?? 0) + (b.bse_turnover ?? 0))}
-                </span>
-                <span className="ml-1.5 text-[10px] uppercase tracking-wide text-zinc-500">
-                  Retail
-                </span>
-              </div>
-            )}
-            {b.otc_turnover != null && (
-              <div>
-                <span className="text-zinc-200 group-hover/turnover:underline decoration-zinc-600 underline-offset-2">
-                  {fmt.inr(b.otc_turnover)}
-                </span>
-                <span className="ml-1.5 text-[10px] uppercase tracking-wide text-zinc-500">
-                  OTC
-                </span>
-              </div>
+            <span className="text-zinc-200 font-medium group-hover/turnover:underline decoration-zinc-600 underline-offset-2">
+              {fmt.inr((b.nse_turnover ?? 0) + (b.bse_turnover ?? 0))}
+            </span>
+            {b.turnover != null && b.prev_turnover != null && b.turnover !== b.prev_turnover && (
+              <span
+                className={`ml-1 text-[10px] ${
+                  b.turnover > b.prev_turnover ? "text-emerald-500/80" : "text-red-400/70"
+                }`}
+                title={`Turnover on previous trading day: ${fmt.inr(b.prev_turnover)}`}
+              >
+                {b.turnover > b.prev_turnover ? "▲" : "▼"}
+              </span>
             )}
           </>
         )}
@@ -226,26 +279,26 @@ function Row({
           e.stopPropagation();
           onSelect(b.isin, "ratings");
         }}
-        title={
-          b.rating_change === "down"
-            ? `Downgraded recently — was ${b.rating_prev}`
-            : b.rating_change === "up"
-              ? `Upgraded recently — was ${b.rating_prev}`
-              : "Open rating history"
-        }
       >
         <RatingBadge
           rating={b.credit_rating}
           showAgency={false}
           tone={b.rating_change === "down" ? "down" : b.rating_change === "up" ? "up" : undefined}
+          toneTitle={
+            b.rating_change === "down"
+              ? `Downgraded${b.rating_changed_at ? ` on ${fmt.date(b.rating_changed_at)}` : ""} — was ${b.rating_prev}`
+              : b.rating_change === "up"
+                ? `Upgraded${b.rating_changed_at ? ` on ${fmt.date(b.rating_changed_at)}` : ""} — was ${b.rating_prev}`
+                : undefined
+          }
         />
       </td>
       <td className="px-3 py-2.5 whitespace-nowrap text-right">
         {b.maturity_date != null ? (
           <>
-            <div className="text-zinc-200">{monthYear(b.maturity_date)}</div>
+            <div className="text-zinc-200 font-medium">{monthYear(b.maturity_date)}</div>
             {b.years_to_maturity != null && (
-              <div className="text-[11px] text-zinc-500">{b.years_to_maturity.toFixed(1)} yr</div>
+              <div className="text-[11px] text-zinc-500">{yearsMonths(b.years_to_maturity)}</div>
             )}
           </>
         ) : b.perpetual ? (
@@ -255,7 +308,7 @@ function Row({
         )}
       </td>
       <td className="px-3 py-2.5 whitespace-nowrap text-right">
-        <span className={b.stale ? "text-zinc-600" : "text-zinc-400"}>
+        <span className={b.stale ? "text-zinc-600" : "text-zinc-200 font-medium"}>
           {b.days_since_traded == null
             ? "never"
             : b.days_since_traded <= 1

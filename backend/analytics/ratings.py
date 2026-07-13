@@ -8,7 +8,7 @@ strips agency prefixes but suffixes like (CE)/(SO) ride along.
 """
 import itertools
 import re
-from datetime import date, timedelta
+from datetime import date
 
 # Best (lowest index) to worst.
 RATING_ORDER = [
@@ -17,9 +17,6 @@ RATING_ORDER = [
     "C+", "C", "C-", "D",
 ]
 RATING_RANK = {r: i for i, r in enumerate(RATING_ORDER)}
-
-# How long an upgrade/downgrade marker stays visible.
-FLAG_DAYS = 30
 
 _GRADE_RE = re.compile(
     r"(?<![A-Z])(AAA|AA\+|AA-|AA|A\+|A-|BBB\+|BBB-|BBB|BB\+|BB-|BB|B\+|B-|"
@@ -90,17 +87,14 @@ def composite(current: list[dict]) -> str | None:
     return ", ".join(f"{a}: {s}" if a else s for a, s in parts) or None
 
 
-def recent_change(history: list[dict],
-                  today: date | None = None) -> dict | None:
-    """Most significant rating action inside the flag window.
+def latest_change(history: list[dict]) -> dict | None:
+    """The most recent rating movement across agencies, however old.
 
     Returns {'direction': 'up'|'down', 'agency', 'rating', 'prev_rating',
-    'rating_date'} or None. Downgrades win over upgrades when both exist
-    (risk first). Direction comes from the actual grade movement per
-    agency; the action text is only a fallback.
+    'rating_date'} or None when the trail never moved. Direction comes
+    from the actual grade movement per agency; the action text is only a
+    fallback. On a same-day tie a downgrade wins (risk first).
     """
-    today = today or date.today()
-    cutoff = today - timedelta(days=FLAG_DAYS)
     by_agency: dict[str, list[dict]] = {}
     for h in history:
         if h.get("agency"):
@@ -110,9 +104,12 @@ def recent_change(history: list[dict],
     for agency, rows in by_agency.items():
         dated = sorted((r for r in rows if r.get("rating_date")),
                        key=lambda r: r["rating_date"])
-        for prev, cur in itertools.pairwise(dated):
-            if cur["rating_date"] < cutoff:
-                continue
+        # Re-ingested duplicates (same rating on the same date) must not
+        # register as movements or displace the true previous rating.
+        deduped = [r for i, r in enumerate(dated)
+                   if i == 0 or (r.get("rating"), r["rating_date"])
+                   != (dated[i - 1].get("rating"), dated[i - 1]["rating_date"])]
+        for prev, cur in itertools.pairwise(deduped):
             pr, cr = rank(prev.get("rating")), rank(cur.get("rating"))
             direction = None
             if pr is not None and cr is not None and pr != cr:
@@ -132,9 +129,8 @@ def recent_change(history: list[dict],
                 })
     if not changes:
         return None
-    downs = [c for c in changes if c["direction"] == "down"]
-    pool = downs or changes
-    return max(pool, key=lambda c: c["rating_date"])
+    return max(changes,
+               key=lambda c: (c["rating_date"], c["direction"] == "down"))
 
 
 def in_default(current: list[dict]) -> bool:

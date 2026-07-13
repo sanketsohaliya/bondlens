@@ -119,6 +119,14 @@ export type Bond = {
      */
     bse_turnover: number | null;
     /**
+     * Prev Turnover
+     */
+    prev_turnover: number | null;
+    /**
+     * Prev Ltp
+     */
+    prev_ltp: number | null;
+    /**
      * Days Since Traded
      */
     days_since_traded: number | null;
@@ -946,6 +954,10 @@ export type BondsApiBondsGetData = {
          */
         secured_only?: boolean;
         /**
+         * Unsecured Only
+         */
+        unsecured_only?: boolean;
+        /**
          * Tax Free Only
          */
         tax_free_only?: boolean;
@@ -959,6 +971,12 @@ export type BondsApiBondsGetData = {
          * Exclude stale retail prices
          */
         fresh_only?: boolean;
+        /**
+         * Traded Within
+         *
+         * Last retail trade at most N days ago
+         */
+        traded_within?: number | null;
         /**
          * Exact Only
          *

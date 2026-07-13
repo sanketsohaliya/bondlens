@@ -51,42 +51,91 @@ def test_composite_without_agency():
     assert ratings.composite([{"rating": "AA"}]) == "AA"
 
 
-def test_recent_downgrade_detected():
+def test_latest_downgrade_detected():
     hist = [
         {"agency": "CRISIL", "rating": "AA", "rating_date": TODAY - timedelta(days=400),
          "rating_action": "Reaffirm"},
         {"agency": "CRISIL", "rating": "AA-", "rating_date": TODAY - timedelta(days=10),
          "rating_action": "Downgrade"},
     ]
-    ch = ratings.recent_change(hist, TODAY)
+    ch = ratings.latest_change(hist)
     assert ch is not None
     assert ch["direction"] == "down"
     assert ch["prev_rating"] == "AA"
 
 
-def test_old_change_ignored():
+def test_old_change_still_reported():
+    # No recency window: the latest movement counts however old it is.
     hist = [
         {"agency": "CRISIL", "rating": "AA", "rating_date": TODAY - timedelta(days=400),
          "rating_action": "Reaffirm"},
         {"agency": "CRISIL", "rating": "AA-", "rating_date": TODAY - timedelta(days=90),
          "rating_action": "Downgrade"},
     ]
-    assert ratings.recent_change(hist, TODAY) is None
+    ch = ratings.latest_change(hist)
+    assert ch is not None and ch["direction"] == "down"
 
 
-def test_downgrade_wins_over_upgrade():
+def test_never_moved_reports_none():
+    hist = [
+        {"agency": "CRISIL", "rating": "AA", "rating_date": TODAY - timedelta(days=400),
+         "rating_action": "Reaffirm"},
+        {"agency": "CRISIL", "rating": "AA", "rating_date": TODAY - timedelta(days=90),
+         "rating_action": "Reaffirm"},
+    ]
+    assert ratings.latest_change(hist) is None
+
+
+def test_most_recent_action_wins():
     hist = [
         {"agency": "ICRA", "rating": "AA", "rating_date": TODAY - timedelta(days=60),
          "rating_action": None},
-        {"agency": "ICRA", "rating": "AA+", "rating_date": TODAY - timedelta(days=5),
+        {"agency": "ICRA", "rating": "AA+", "rating_date": TODAY - timedelta(days=3),
          "rating_action": "Upgrade"},
         {"agency": "CARE", "rating": "AA", "rating_date": TODAY - timedelta(days=60),
          "rating_action": None},
-        {"agency": "CARE", "rating": "AA-", "rating_date": TODAY - timedelta(days=3),
+        {"agency": "CARE", "rating": "AA-", "rating_date": TODAY - timedelta(days=5),
          "rating_action": "Downgrade"},
     ]
-    ch = ratings.recent_change(hist, TODAY)
-    assert ch is not None and ch["direction"] == "down"
+    ch = ratings.latest_change(hist)
+    assert ch is not None and ch["direction"] == "up"
+
+
+def test_downgrade_then_reaffirms_reports_the_downgrade():
+    # 962APSB32A shape: AA+(CE) reaffirms, a downgrade to AA(CE), then
+    # yearly reaffirms at the new grade. The downgrade is the last
+    # movement even though reaffirms follow it.
+    hist = [
+        {"agency": "ACUITE", "rating": "AA+(CE)", "rating_date": date(2023, 1, 5),
+         "rating_action": "Reaffirm"},
+        {"agency": "ACUITE", "rating": "AA+(CE)", "rating_date": date(2023, 7, 4),
+         "rating_action": "Reaffirm"},
+        {"agency": "ACUITE", "rating": "AA(CE)", "rating_date": date(2023, 12, 8),
+         "rating_action": "Downgrade"},
+        {"agency": "ACUITE", "rating": "AA(CE)", "rating_date": date(2024, 12, 6),
+         "rating_action": "Reaffirm"},
+        {"agency": "ACUITE", "rating": "AA(CE)", "rating_date": date(2026, 1, 14),
+         "rating_action": "Reaffirm"},
+    ]
+    ch = ratings.latest_change(hist)
+    assert ch is not None
+    assert ch["direction"] == "down"
+    assert ch["prev_rating"] == "AA+(CE)"
+    assert ch["rating_date"] == date(2023, 12, 8)
+
+
+def test_duplicate_rows_do_not_fabricate_changes():
+    # Re-ingested copies of the same event must not register as movement
+    # or displace the true previous rating.
+    hist = [
+        {"agency": "CRISIL", "rating": "AA", "rating_date": date(2024, 3, 1),
+         "rating_action": "Reaffirm"},
+        {"agency": "CRISIL", "rating": "AA", "rating_date": date(2024, 3, 1),
+         "rating_action": "Reaffirm"},
+        {"agency": "CRISIL", "rating": "AA", "rating_date": date(2024, 3, 1),
+         "rating_action": "Reaffirm"},
+    ]
+    assert ratings.latest_change(hist) is None
 
 
 def test_direction_from_grades_when_action_missing():
@@ -96,7 +145,7 @@ def test_direction_from_grades_when_action_missing():
         {"agency": "CRISIL", "rating": "AA-", "rating_date": TODAY - timedelta(days=7),
          "rating_action": None},
     ]
-    ch = ratings.recent_change(hist, TODAY)
+    ch = ratings.latest_change(hist)
     assert ch is not None and ch["direction"] == "up"
 
 

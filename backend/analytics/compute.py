@@ -24,6 +24,7 @@ _COLS: list[LiteralString] = [
     "coupon_basis", "frequency", "secured", "tax_free", "perpetual",
     "maturity_date", "schedule_shape", "ltp", "trade_date", "exchange",
     "volume", "turnover", "num_trades", "nse_turnover", "bse_turnover",
+    "prev_turnover", "prev_ltp",
     "otc_price_pct", "otc_yield",
     "otc_trade_date", "otc_turnover", "ytm", "ytm_method", "ytm_reliable",
     "current_yield", "duration",
@@ -120,7 +121,7 @@ def build_rows(today: date | None = None) -> list[dict]:
                 if approx is not None:
                     ytm, ytm_method = approx, "approx"
 
-        change = ratings.recent_change(history.get(isin, []), today)
+        change = ratings.latest_change(history.get(isin, []))
 
         rows.append({
             "isin": isin,
@@ -151,6 +152,8 @@ def build_rows(today: date | None = None) -> list[dict]:
                 (r.get("retail_exch") or {}).get("NSE", {}).get("turnover")),
             "bse_turnover": _f(
                 (r.get("retail_exch") or {}).get("BSE", {}).get("turnover")),
+            "prev_turnover": _f(r.get("prev_turnover")),
+            "prev_ltp": _f(r.get("prev_ltp")),
             "otc_price_pct": _f(otc and (otc.get("wap") or otc.get("last_price"))),
             "otc_yield": _f(otc and (otc.get("wap_yield") or otc.get("last_yield"))),
             "otc_trade_date": otc["trade_date"] if otc else None,

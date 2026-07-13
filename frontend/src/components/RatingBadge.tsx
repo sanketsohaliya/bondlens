@@ -4,12 +4,15 @@ export default function RatingBadge({
   rating,
   showAgency = true,
   tone,
+  toneTitle,
 }: {
   rating: string | null;
   showAgency?: boolean;
-  /** Recent rating action: "down" renders the grade amber with ▼ (like a
-      stale LTP), "up" adds a subtle green ▲. */
+  /** Recent rating action: "down" adds a red ▼, "up" a green ▲ — same
+      palette as the screener's price/turnover arrows. */
   tone?: "down" | "up";
+  /** Tooltip for the ▲/▼ change arrow (e.g. "Upgraded on … — was …"). */
+  toneTitle?: string;
 }) {
   if (!rating) return <span className="text-zinc-600 text-xs">unrated</span>;
   const entries = rating.split(", ");
@@ -23,12 +26,16 @@ export default function RatingBadge({
         const value = i > 0 ? entry.slice(i + 2) : entry;
         return (
           <div key={entry}>
-            <span className={tone === "down" ? "text-amber-500/80" : "text-zinc-200"}>{value}</span>
+            <span className="text-zinc-200 font-medium">{value}</span>
             {tone === "down" && (
-              <span className="ml-1 text-[10px] text-amber-500/80 align-middle">▼</span>
+              <span className="ml-1 text-[10px] text-red-400/70 align-middle" title={toneTitle}>
+                ▼
+              </span>
             )}
             {tone === "up" && (
-              <span className="ml-1 text-[10px] text-emerald-600 align-middle">▲</span>
+              <span className="ml-1 text-[10px] text-emerald-500/80 align-middle" title={toneTitle}>
+                ▲
+              </span>
             )}
             {showAgency && agency && (
               <span className="ml-1.5 text-[10px] uppercase tracking-wide text-zinc-500">

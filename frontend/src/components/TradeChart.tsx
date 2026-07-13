@@ -11,6 +11,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { api, fmt } from "../api/client";
 
 const RANGES = [
+  ["1D", 1],
+  ["1W", 7],
   ["1M", 31],
   ["6M", 183],
   ["1Y", 366],
@@ -40,7 +42,12 @@ export default function TradeChart({
   const filtered = useMemo(() => {
     if (!data) return [];
     const days = RANGES.find(([r]) => r === range)![1];
-    const cutoff = days ? Date.now() - days * 86400_000 : 0;
+    // Ranges anchor to the most recent trade date, not the wall clock, so
+    // "1D" always shows the last trading day with data.
+    const anchor = data.trades.length
+      ? Math.max(...data.trades.map((t) => new Date(t.trade_date).getTime()))
+      : Date.now();
+    const cutoff = days ? anchor - (days - 1) * 86400_000 : 0;
     return data.trades.filter(
       (t) => new Date(t.trade_date).getTime() >= cutoff && (!exchange || t.exchange === exchange),
     );

@@ -41,6 +41,8 @@ class Bond(BaseModel):
     num_trades: int | None
     nse_turnover: float | None
     bse_turnover: float | None
+    prev_turnover: float | None
+    prev_ltp: float | None
     days_since_traded: int | None
     stale: bool
     otc_price_pct: float | None
