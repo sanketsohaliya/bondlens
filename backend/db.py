@@ -5,7 +5,7 @@ DATABASE_URL env var (default: local dev database).
 
 Schema lives in migrations/ (applied by scripts/migrate.py, which the
 jobs container runs on start). This module only provides the pool and
-the write helpers for the universe/watchlist tables.
+the write helpers for the universe tables.
 """
 import gzip
 import hashlib
@@ -53,29 +53,6 @@ def close_pool():
     if _pool is not None:
         _pool.close()
         _pool = None
-
-
-# --- Watchlist --------------------------------------------------------------
-
-def get_watchlist() -> list[dict[str, Any]]:
-    with _conn() as conn:
-        return conn.execute(
-            "SELECT isin, added_at FROM watchlist ORDER BY added_at DESC"
-        ).fetchall()
-
-
-def add_to_watchlist(isin: str):
-    with _conn() as conn:
-        conn.execute(
-            "INSERT INTO watchlist (isin) VALUES (%s) "
-            "ON CONFLICT (isin) DO NOTHING",
-            (isin,),
-        )
-
-
-def remove_from_watchlist(isin: str):
-    with _conn() as conn:
-        conn.execute("DELETE FROM watchlist WHERE isin = %s", (isin,))
 
 
 # --- Bond universe (daily-tracked listed set) -----------------------------

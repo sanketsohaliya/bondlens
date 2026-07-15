@@ -161,10 +161,8 @@ SELECT a.*,
        (a.trade_date IS NULL
         OR CURRENT_DATE - a.trade_date > %(stale_days)s) AS stale,
        CASE WHEN a.otc_trade_date IS NOT NULL
-            THEN CURRENT_DATE - a.otc_trade_date END AS otc_days_since_traded,
-       (w.isin IS NOT NULL)                       AS in_watchlist
+            THEN CURRENT_DATE - a.otc_trade_date END AS otc_days_since_traded
 FROM bond_analytics a
-LEFT JOIN watchlist w ON w.isin = a.isin
 """
 
 
@@ -180,8 +178,10 @@ def screener(f: dict, stale_days: int) -> tuple[list[dict], int, float | None]:
         conds.append(cond)
         p.update(params)
 
-    if f.get("watchlist_only"):
-        add("w.isin IS NOT NULL")
+    # An explicit ISIN list is the user's own watchlist/holdings — show
+    # everything in it, defaulted or not.
+    if f.get("isins"):
+        add("a.isin = ANY(%(isins)s)", isins=list(f["isins"]))
     elif f.get("exclude_defaulted", True):
         add("NOT a.in_default")
     if f.get("min_ytm") is not None:
@@ -252,8 +252,7 @@ def screener(f: dict, stale_days: int) -> tuple[list[dict], int, float | None]:
     where: LiteralString = ("WHERE " + " AND ".join(conds)) if conds else ""
     with db._conn() as conn:
         total = conn.execute(
-            f"SELECT count(*) AS n FROM bond_analytics a "
-            f"LEFT JOIN watchlist w ON w.isin = a.isin {where}", p).fetchone()
+            f"SELECT count(*) AS n FROM bond_analytics a {where}", p).fetchone()
         rows = conn.execute(
             f"{_SCREENER_SELECT} {where} "
             "ORDER BY coalesce(a.turnover, 0) DESC, a.isin "

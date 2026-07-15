@@ -11,7 +11,6 @@ export type {
   Status,
   Trade,
   TradesResponse,
-  WatchlistEntry,
 } from "./generated";
 
 // Screener query params (request side; hand-maintained).
@@ -38,7 +37,7 @@ export interface ScreenerParams {
   exact_only?: boolean;
   downgraded_only?: boolean;
   exclude_defaulted?: boolean;
-  watchlist_only?: boolean;
+  isins?: string;
   q?: string;
   limit?: number;
 }

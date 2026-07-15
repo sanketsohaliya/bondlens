@@ -13,6 +13,12 @@ body {
   @apply bg-zinc-950 text-zinc-100 font-sans antialiased;
 }
 
+/* Tailwind v4 preflight leaves buttons with the arrow cursor; every
+   enabled button here is clickable, so give them all the hand. */
+button:not(:disabled) {
+  cursor: pointer;
+}
+
 select,
 input[type="number"],
 input[type="text"],

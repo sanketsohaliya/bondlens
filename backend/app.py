@@ -10,7 +10,7 @@ from datetime import date
 
 from fastapi import FastAPI, HTTPException, Query
 
-from . import db, kite, models, queries
+from . import kite, models, queries
 from .analytics import ratings, schedule, yields
 from .analytics.compute import STALE_AFTER_DAYS
 
@@ -57,7 +57,9 @@ def bonds(
     exact_only: bool = Query(False, description="Only exact-schedule YTMs"),
     downgraded_only: bool = Query(False),
     exclude_defaulted: bool = Query(True),
-    watchlist_only: bool = Query(False),
+    isins: str | None = Query(
+        None, description="Comma-separated ISIN list (e.g. browser-side "
+                          "watchlist/holdings); bypasses default-exclusion"),
     q: str | None = Query(None, description="Search ISIN / symbol / issuer"),
     limit: int = Query(500, le=5000),
     offset: int = Query(0, ge=0),
@@ -80,7 +82,9 @@ def bonds(
         "exact_only": exact_only,
         "downgraded_only": downgraded_only,
         "exclude_defaulted": exclude_defaulted,
-        "watchlist_only": watchlist_only, "q": q,
+        "isins": [s.strip().upper() for s in isins.split(",") if s.strip()]
+                 if isins else None,
+        "q": q,
         "limit": limit, "offset": offset,
     }, STALE_AFTER_DAYS)
     return {"count": total, "bonds": rows, "as_of": as_of}
@@ -158,7 +162,9 @@ def bond_detail(isin: str, price: float | None = Query(None, gt=0)):
     return {
         **row,
         "terms": terms,
-        "kite_url": kite.kite_url(row.get("nse_symbol"), row.get("nse_series")),
+        "kite_url": kite.kite_url(row.get("nse_symbol"), row.get("nse_series"),
+                                  row.get("bse_scrip_id"),
+                                  prefer=core.get("exchange")),
         "ltp": ltp,
         "custom_price": custom_price,
         "trade_date": core.get("trade_date"),
@@ -196,7 +202,6 @@ def bond_detail(isin: str, price: float | None = Query(None, gt=0)):
         **extras,
         "issuer_bonds": queries.issuer_siblings(isin, row["issuer_name"])
                         if row.get("issuer_name") else [],
-        "in_watchlist": bool(core.get("in_watchlist")),
     }
 
 
@@ -215,32 +220,6 @@ def bond_trades(
     rows = queries.trades(isin.strip().upper(), date_from, date_to,
                           exchange, segment)
     return {"isin": isin, "count": len(rows), "trades": rows}
-
-
-# --------------------------------------------------------------------------
-# Watchlist
-# --------------------------------------------------------------------------
-
-@app.get("/api/watchlist", response_model=models.WatchlistResponse)
-def watchlist():
-    return {"watchlist": db.get_watchlist()}
-
-
-@app.post("/api/watchlist/{isin}", response_model=models.WatchToggle)
-def watch(isin: str):
-    isin = isin.strip().upper()
-    try:
-        db.add_to_watchlist(isin)
-    except Exception:  # noqa: BLE001 - FK violation = unknown ISIN
-        raise HTTPException(status_code=404, detail="Unknown ISIN") from None
-    return {"isin": isin, "watched": True}
-
-
-@app.delete("/api/watchlist/{isin}", response_model=models.WatchToggle)
-def unwatch(isin: str):
-    isin = isin.strip().upper()
-    db.remove_from_watchlist(isin)
-    return {"isin": isin, "watched": False}
 
 
 # --------------------------------------------------------------------------

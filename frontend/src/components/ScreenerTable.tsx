@@ -1,7 +1,7 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useRef, useState } from "react";
-import { api, fmt } from "../api/client";
-import type { Bond, BondsResponse } from "../api/types";
+import { fmt } from "../api/client";
+import type { Bond } from "../api/types";
+import { HOLDINGS_KEY, useStoredList, WATCHLIST_KEY } from "../lib/lists";
 import CopyBtn from "./CopyBtn";
 import RatingBadge from "./RatingBadge";
 
@@ -23,7 +23,7 @@ type SortKey = keyof Pick<
 >;
 
 const COLS: { key: SortKey | null; label: string; right?: boolean }[] = [
-  { key: null, label: "★" },
+  { key: null, label: "" },
   { key: null, label: "Symbol" },
   { key: "ytm", label: "YTM %" },
   { key: "ltp", label: "LTP" },
@@ -163,17 +163,23 @@ function Row({
   return (
     <tr
       onClick={() => onSelect(b.isin)}
-      className="border-b border-zinc-900 hover:bg-zinc-900/60 cursor-pointer transition-colors"
+      className="group/row border-b border-zinc-900 hover:bg-zinc-900/60 cursor-pointer transition-colors"
     >
-      <td className="pl-3 pr-1 py-2.5 w-8">
-        <WatchStar isin={b.isin} watched={b.in_watchlist} />
+      <td className="pl-3 pr-1 py-2.5 w-14">
+        <span className="flex items-center gap-1.5">
+          <WatchStar isin={b.isin} />
+          <HoldMark isin={b.isin} />
+        </span>
       </td>
       <td className="px-3 py-2.5 w-80 max-w-80">
         <div className="flex items-center gap-1.5">
           <span className="font-medium text-zinc-200 hover:text-emerald-400 transition-colors">
             {b.nse_symbol ?? b.bse_scrip_id ?? b.isin}
           </span>
-          <CopyBtn text={b.nse_symbol ?? b.bse_scrip_id ?? b.isin} label="symbol" />
+          <span className="flex items-center gap-1.5 opacity-0 group-hover/row:opacity-100 transition-opacity">
+            <CopyBtn text={b.nse_symbol ?? b.bse_scrip_id ?? b.isin} label="symbol" />
+            <CopyBtn text={b.isin} label="ISIN" chip="isin" />
+          </span>
           {b.in_default && (
             <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-500/15 text-red-400 border border-red-500/30">
               DEFAULT
@@ -213,10 +219,15 @@ function Row({
         )}
       </td>
       <td
-        className={`px-3 py-2.5 whitespace-nowrap ${
+        className={`group/ltp px-3 py-2.5 whitespace-nowrap ${
           b.stale && (b.days_since_traded ?? 0) > 90 ? "text-amber-500/80" : "text-zinc-200"
         } font-medium`}
+        onClick={(e) => {
+          e.stopPropagation();
+          onSelect(b.isin, "chart");
+        }}
         title={[
+          "Open price chart",
           b.stale && b.days_since_traded != null
             ? `No trades seen for ${b.days_since_traded} days — this price and its YTM may be outdated`
             : null,
@@ -226,7 +237,9 @@ function Row({
           .join("\n")}
       >
         <div>
-          {fmt.inr(b.ltp)}
+          <span className="group-hover/ltp:underline decoration-zinc-600 underline-offset-2">
+            {fmt.inr(b.ltp)}
+          </span>
           {!b.stale && b.ltp != null && b.prev_ltp != null && b.ltp !== b.prev_ltp && (
             <span
               className={`ml-1 text-[10px] ${
@@ -320,34 +333,38 @@ function Row({
   );
 }
 
-export function WatchStar({ isin, watched }: { isin: string; watched: boolean }) {
-  const qc = useQueryClient();
-  const toggle = useMutation({
-    mutationFn: () => (watched ? api.unwatch(isin) : api.watch(isin)),
-    onSuccess: () => {
-      // Patch every cached screener result instead of refetching.
-      qc.setQueriesData<BondsResponse>({ queryKey: ["bonds"] }, (old) =>
-        old
-          ? {
-              ...old,
-              bonds: old.bonds.map((b) => (b.isin === isin ? { ...b, in_watchlist: !watched } : b)),
-            }
-          : old,
-      );
-      qc.invalidateQueries({ queryKey: ["bond", isin] });
-    },
-  });
+export function WatchStar({ isin }: { isin: string }) {
+  const { has, toggle } = useStoredList(WATCHLIST_KEY);
+  const watched = has(isin);
   return (
     <button
       type="button"
       onClick={(e) => {
         e.stopPropagation();
-        toggle.mutate();
+        toggle(isin);
       }}
       className={`text-base leading-none ${watched ? "text-amber-400" : "text-zinc-700 hover:text-zinc-400"}`}
       title={watched ? "Remove from watchlist" : "Add to watchlist"}
     >
       {watched ? "★" : "☆"}
+    </button>
+  );
+}
+
+export function HoldMark({ isin }: { isin: string }) {
+  const { has, toggle } = useStoredList(HOLDINGS_KEY);
+  const held = has(isin);
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        toggle(isin);
+      }}
+      className={`text-sm leading-none ${held ? "text-amber-400" : "text-zinc-700 hover:text-zinc-400"}`}
+      title={held ? "Remove from holdings" : "Add to holdings"}
+    >
+      {held ? "◆" : "◇"}
     </button>
   );
 }

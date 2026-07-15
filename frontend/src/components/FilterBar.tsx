@@ -29,7 +29,6 @@ export function describeFilters(p: ScreenerParams): string[] {
   if (p.exchange) parts.push(`on ${p.exchange}`);
   if (p.retail_only) parts.push("trades retail");
   if (p.otc_only) parts.push("trades OTC");
-  if (p.watchlist_only) parts.push("watchlist only");
   if (p.fresh_only) parts.push("fresh prices");
   if (p.traded_within != null) parts.push(`traded ≤ ${p.traded_within}d ago`);
   if (p.unsecured_only) parts.push("unsecured only");
@@ -41,12 +40,23 @@ export function describeFilters(p: ScreenerParams): string[] {
   return parts;
 }
 
+export interface ListModes {
+  watchlist: boolean;
+  holdings: boolean;
+}
+
 export default function FilterBar({
   params,
   onChange,
+  modes,
+  onModes,
+  dimReason,
 }: {
   params: ScreenerParams;
   onChange: (p: ScreenerParams) => void;
+  modes: ListModes;
+  onModes: (m: ListModes) => void;
+  dimReason?: string;
 }) {
   const { data: filters } = useQuery({ queryKey: ["filters"], queryFn: api.filters });
 
@@ -60,6 +70,9 @@ export default function FilterBar({
       set={set}
       filters={filters}
       onReset={() => onChange({ q: params.q })}
+      modes={modes}
+      onModes={onModes}
+      dimReason={dimReason}
     />
   );
 }
@@ -81,20 +94,26 @@ function FilterFields({
   set,
   filters,
   onReset,
+  modes,
+  onModes,
+  dimReason,
 }: {
   params: ScreenerParams;
   set: (patch: Partial<ScreenerParams>) => void;
   filters: Filters | undefined;
   onReset: () => void;
+  modes: ListModes;
+  onModes: (m: ListModes) => void;
+  dimReason?: string;
 }) {
   const lbl = (active: boolean) =>
     `block text-[10px] font-semibold uppercase tracking-wider mb-1.5 whitespace-nowrap ${
-      active ? "text-emerald-600" : "text-zinc-500"
+      active ? "text-zinc-300" : "text-zinc-500"
     }`;
   const box = (active: boolean) =>
     "w-full bg-transparent border rounded-md px-2 py-1.5 text-xs font-medium " +
-    "focus:outline-none focus:border-emerald-600 placeholder:text-zinc-600 " +
-    (active ? "border-emerald-700/70" : "border-zinc-700");
+    "focus:outline-none focus:border-zinc-400 placeholder:text-zinc-600 " +
+    (active ? "border-zinc-500 text-zinc-100" : "border-zinc-700 text-zinc-600");
 
   const num = (label: string, key: NumKey) => {
     const active = params[key] != null;
@@ -264,79 +283,98 @@ function FilterFields({
   };
 
   return (
-    <div className="grid grid-cols-[repeat(auto-fit,minmax(120px,1fr))] items-end gap-3">
-      {num("Min YTM %", "min_ytm")}
-      {num("Retail trd ₹", "min_turnover")}
-      {sel("Min rating", "min_rating", filters?.ratings ?? [])}
-      {num("Min mat (y)", "min_years")}
-      {num("Last traded ≤ (d)", "traded_within")}
+    <div className="flex items-end gap-3">
+      <div
+        className={`flex-1 grid grid-cols-[repeat(auto-fit,minmax(120px,1fr))] items-end gap-3 transition-opacity ${
+          dimReason ? "opacity-40" : ""
+        }`}
+        title={dimReason}
+      >
+        {num("Min YTM %", "min_ytm")}
+        {num("Retail trd ₹", "min_turnover")}
+        {sel("Min rating", "min_rating", filters?.ratings ?? [])}
+        {num("Min mat (y)", "min_years")}
+        {num("Last traded ≤ (d)", "traded_within")}
 
-      {visible.map(([id, label]) => (
-        <span key={id} className="flex items-end gap-1">
-          {extraControl(id)}
+        {visible.map(([id, label]) => (
+          <span key={id} className="flex items-end gap-1">
+            {extraControl(id)}
+            <button
+              type="button"
+              title={`Remove ${label} filter`}
+              onClick={() => {
+                setAdded((a) => a.filter((x) => x !== id));
+                set(clearExtra[id]);
+              }}
+              className="pb-2 text-zinc-600 hover:text-red-400 text-xs leading-none"
+            >
+              ×
+            </button>
+          </span>
+        ))}
+
+        <span className="relative self-end justify-self-start">
           <button
             type="button"
-            title={`Remove ${label} filter`}
-            onClick={() => {
-              setAdded((a) => a.filter((x) => x !== id));
-              set(clearExtra[id]);
-            }}
-            className="pb-2 text-zinc-600 hover:text-red-400 text-xs leading-none"
+            onClick={() => setAddOpen(!addOpen)}
+            className="px-2.5 py-1.5 rounded-md border border-dashed border-zinc-700 text-xs font-medium text-zinc-500 hover:text-zinc-300 hover:border-zinc-500 transition-colors whitespace-nowrap"
           >
-            ×
+            + Filter
           </button>
+          {addOpen && (
+            <>
+              <div
+                className="fixed inset-0 z-20"
+                onClick={() => setAddOpen(false)}
+                aria-hidden="true"
+              />
+              <div className="absolute left-0 top-full mt-2 z-30 w-44 rounded-lg border border-zinc-700 bg-zinc-900 shadow-xl py-1">
+                {EXTRAS.filter(([id]) => !visible.some(([v]) => v === id)).map(([id, label]) => (
+                  <button
+                    type="button"
+                    key={id}
+                    onClick={() => {
+                      setAdded((a) => [...a, id]);
+                      setAddOpen(false);
+                    }}
+                    className="w-full px-3 py-2 text-xs text-left text-zinc-300 hover:bg-zinc-800"
+                  >
+                    {label}
+                  </button>
+                ))}
+                {EXTRAS.every(([id]) => visible.some(([v]) => v === id)) && (
+                  <div className="px-3 py-2 text-xs text-zinc-600">All filters added</div>
+                )}
+              </div>
+            </>
+          )}
         </span>
-      ))}
-
-      <span className="relative self-end justify-self-start">
-        <button
-          type="button"
-          onClick={() => setAddOpen(!addOpen)}
-          className="px-2.5 py-1.5 rounded-md border border-dashed border-zinc-700 text-xs font-medium text-zinc-500 hover:text-zinc-300 hover:border-zinc-500 transition-colors whitespace-nowrap"
-        >
-          + Filter
-        </button>
-        {addOpen && (
-          <>
-            <div
-              className="fixed inset-0 z-20"
-              onClick={() => setAddOpen(false)}
-              aria-hidden="true"
-            />
-            <div className="absolute right-0 bottom-full mb-2 z-30 w-44 rounded-lg border border-zinc-700 bg-zinc-900 shadow-xl py-1">
-              {EXTRAS.filter(([id]) => !visible.some(([v]) => v === id)).map(([id, label]) => (
-                <button
-                  type="button"
-                  key={id}
-                  onClick={() => {
-                    setAdded((a) => [...a, id]);
-                    setAddOpen(false);
-                  }}
-                  className="w-full px-3 py-2 text-xs text-left text-zinc-300 hover:bg-zinc-800"
-                >
-                  {label}
-                </button>
-              ))}
-              {EXTRAS.every(([id]) => visible.some(([v]) => v === id)) && (
-                <div className="px-3 py-2 text-xs text-zinc-600">All filters added</div>
-              )}
-            </div>
-          </>
-        )}
-      </span>
+      </div>
 
       <span className="flex items-end gap-2 self-end">
         <button
           type="button"
           title="Only your starred bonds"
-          onClick={() => set({ watchlist_only: !params.watchlist_only || undefined })}
+          onClick={() => onModes({ ...modes, watchlist: !modes.watchlist })}
           className={`px-2.5 py-1.5 rounded-md border text-xs font-medium transition-colors whitespace-nowrap ${
-            params.watchlist_only
-              ? "border-emerald-600 text-emerald-500 bg-emerald-600/10"
+            modes.watchlist
+              ? "border-zinc-400 text-zinc-100 bg-zinc-800/60"
               : "border-zinc-700 text-zinc-400 hover:border-zinc-500"
           }`}
         >
           ★ Watchlist
+        </button>
+        <button
+          type="button"
+          title="Only bonds you hold"
+          onClick={() => onModes({ ...modes, holdings: !modes.holdings })}
+          className={`px-2.5 py-1.5 rounded-md border text-xs font-medium transition-colors whitespace-nowrap ${
+            modes.holdings
+              ? "border-zinc-400 text-zinc-100 bg-zinc-800/60"
+              : "border-zinc-700 text-zinc-400 hover:border-zinc-500"
+          }`}
+        >
+          ◆ Holdings
         </button>
         <button
           type="button"

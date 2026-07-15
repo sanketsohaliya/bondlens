@@ -31,14 +31,6 @@ export const api = {
   ) => get<TradesResponse>(`/api/bonds/${isin}/trades`, params),
   status: () => get<Status>("/api/status"),
   filters: () => get<Filters>("/api/filters"),
-  watch: async (isin: string) => {
-    const res = await fetch(`/api/watchlist/${isin}`, { method: "POST" });
-    if (!res.ok) throw new Error(await res.text());
-  },
-  unwatch: async (isin: string) => {
-    const res = await fetch(`/api/watchlist/${isin}`, { method: "DELETE" });
-    if (!res.ok) throw new Error(await res.text());
-  },
 };
 
 export const fmt = {

@@ -4,9 +4,8 @@ import { api, fmt } from "../api/client";
 import type { BondDetail } from "../api/types";
 import CashflowTable from "./CashflowTable";
 import CopyBtn from "./CopyBtn";
-import RatingBadge from "./RatingBadge";
 import RatingTimeline from "./RatingTimeline";
-import { WatchStar } from "./ScreenerTable";
+import { HoldMark, WatchStar } from "./ScreenerTable";
 import TradeChart from "./TradeChart";
 
 export type Tab = "overview" | "chart" | "cashflows" | "ratings";
@@ -55,11 +54,11 @@ export default function BondDrawer({
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <div className="flex items-center gap-2.5">
-                    <WatchStar isin={bond.isin} watched={bond.in_watchlist} />
+                    <WatchStar isin={bond.isin} />
+                    <HoldMark isin={bond.isin} />
                     <h2 className="text-lg font-bold">
                       {bond.nse_symbol ?? bond.bse_scrip_id ?? bond.isin}
                     </h2>
-                    <RatingBadge rating={bond.credit_rating} />
                     {bond.in_default && (
                       <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-500/15 text-red-400 border border-red-500/30">
                         DEFAULT
@@ -67,19 +66,27 @@ export default function BondDrawer({
                     )}
                   </div>
                   <div className="text-sm text-zinc-400 mt-0.5">{bond.issuer_name}</div>
-                  <div className="text-xs text-zinc-600 font-mono mt-0.5 flex items-center gap-1.5">
+                  <div className="text-xs text-zinc-500 font-mono mt-0.5 flex items-center gap-1.5">
                     {bond.isin}
                     <CopyBtn text={bond.isin} label="ISIN" />
                     {bond.sector && <span>· {bond.sector}</span>}
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
+                  <a
+                    href={`https://www.indiabondinfo.nsdl.com/CBDServices/#/instrumentDetails/${bond.isin}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-xs px-3 py-1.5 rounded-md border border-zinc-700 text-zinc-300 hover:border-zinc-500 hover:text-zinc-100 transition-colors"
+                  >
+                    NSDL ↗
+                  </a>
                   {bond.kite_url && (
                     <a
                       href={bond.kite_url}
                       target="_blank"
                       rel="noreferrer"
-                      className="text-xs px-3 py-1.5 rounded-md bg-emerald-600 hover:bg-emerald-500 text-white font-medium"
+                      className="text-xs px-3 py-1.5 rounded-md border border-zinc-700 text-zinc-300 hover:border-zinc-500 hover:text-zinc-100 transition-colors"
                     >
                       Kite ↗
                     </a>

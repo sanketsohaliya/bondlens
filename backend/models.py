@@ -61,7 +61,6 @@ class Bond(BaseModel):
     rating_prev: str | None
     rating_changed_at: date | None
     in_default: bool
-    in_watchlist: bool
     computed_at: datetime
 
 
@@ -181,7 +180,6 @@ class BondDetail(BaseModel):
     defaults: list[dict[str, Any]]
     technical_defaults: list[dict[str, Any]]
     issuer_bonds: list[IssuerBond]
-    in_watchlist: bool
 
 
 class Trade(BaseModel):
@@ -206,20 +204,6 @@ class TradesResponse(BaseModel):
     isin: str
     count: int
     trades: list[Trade]
-
-
-class WatchlistEntry(BaseModel):
-    isin: str
-    added_at: datetime
-
-
-class WatchlistResponse(BaseModel):
-    watchlist: list[WatchlistEntry]
-
-
-class WatchToggle(BaseModel):
-    isin: str
-    watched: bool
 
 
 class RunInfo(BaseModel):

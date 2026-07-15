@@ -199,10 +199,6 @@ export type Bond = {
      */
     in_default: boolean;
     /**
-     * In Watchlist
-     */
-    in_watchlist: boolean;
-    /**
      * Computed At
      */
     computed_at: string;
@@ -463,10 +459,6 @@ export type BondDetail = {
      * Issuer Bonds
      */
     issuer_bonds: Array<IssuerBond>;
-    /**
-     * In Watchlist
-     */
-    in_watchlist: boolean;
 };
 
 /**
@@ -823,44 +815,6 @@ export type ValidationError = {
     };
 };
 
-/**
- * WatchToggle
- */
-export type WatchToggle = {
-    /**
-     * Isin
-     */
-    isin: string;
-    /**
-     * Watched
-     */
-    watched: boolean;
-};
-
-/**
- * WatchlistEntry
- */
-export type WatchlistEntry = {
-    /**
-     * Isin
-     */
-    isin: string;
-    /**
-     * Added At
-     */
-    added_at: string;
-};
-
-/**
- * WatchlistResponse
- */
-export type WatchlistResponse = {
-    /**
-     * Watchlist
-     */
-    watchlist: Array<WatchlistEntry>;
-};
-
 export type BondsApiBondsGetData = {
     body?: never;
     path?: never;
@@ -992,9 +946,11 @@ export type BondsApiBondsGetData = {
          */
         exclude_defaulted?: boolean;
         /**
-         * Watchlist Only
+         * Isins
+         *
+         * Comma-separated ISIN list (e.g. browser-side watchlist/holdings); bypasses default-exclusion
          */
-        watchlist_only?: boolean;
+        isins?: string | null;
         /**
          * Q
          *
@@ -1128,82 +1084,6 @@ export type BondTradesApiBondsIsinTradesGetResponses = {
 };
 
 export type BondTradesApiBondsIsinTradesGetResponse = BondTradesApiBondsIsinTradesGetResponses[keyof BondTradesApiBondsIsinTradesGetResponses];
-
-export type WatchlistApiWatchlistGetData = {
-    body?: never;
-    path?: never;
-    query?: never;
-    url: '/api/watchlist';
-};
-
-export type WatchlistApiWatchlistGetResponses = {
-    /**
-     * Successful Response
-     */
-    200: WatchlistResponse;
-};
-
-export type WatchlistApiWatchlistGetResponse = WatchlistApiWatchlistGetResponses[keyof WatchlistApiWatchlistGetResponses];
-
-export type UnwatchApiWatchlistIsinDeleteData = {
-    body?: never;
-    path: {
-        /**
-         * Isin
-         */
-        isin: string;
-    };
-    query?: never;
-    url: '/api/watchlist/{isin}';
-};
-
-export type UnwatchApiWatchlistIsinDeleteErrors = {
-    /**
-     * Validation Error
-     */
-    422: HttpValidationError;
-};
-
-export type UnwatchApiWatchlistIsinDeleteError = UnwatchApiWatchlistIsinDeleteErrors[keyof UnwatchApiWatchlistIsinDeleteErrors];
-
-export type UnwatchApiWatchlistIsinDeleteResponses = {
-    /**
-     * Successful Response
-     */
-    200: WatchToggle;
-};
-
-export type UnwatchApiWatchlistIsinDeleteResponse = UnwatchApiWatchlistIsinDeleteResponses[keyof UnwatchApiWatchlistIsinDeleteResponses];
-
-export type WatchApiWatchlistIsinPostData = {
-    body?: never;
-    path: {
-        /**
-         * Isin
-         */
-        isin: string;
-    };
-    query?: never;
-    url: '/api/watchlist/{isin}';
-};
-
-export type WatchApiWatchlistIsinPostErrors = {
-    /**
-     * Validation Error
-     */
-    422: HttpValidationError;
-};
-
-export type WatchApiWatchlistIsinPostError = WatchApiWatchlistIsinPostErrors[keyof WatchApiWatchlistIsinPostErrors];
-
-export type WatchApiWatchlistIsinPostResponses = {
-    /**
-     * Successful Response
-     */
-    200: WatchToggle;
-};
-
-export type WatchApiWatchlistIsinPostResponse = WatchApiWatchlistIsinPostResponses[keyof WatchApiWatchlistIsinPostResponses];
 
 export type StatusApiStatusGetData = {
     body?: never;
