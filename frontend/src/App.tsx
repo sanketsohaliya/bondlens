@@ -5,6 +5,7 @@ import type { ScreenerParams } from "./api/types";
 import BondDrawer, { type Tab } from "./components/BondDrawer";
 import FilterBar, { DEFAULT_FILTERS, type ListModes } from "./components/FilterBar";
 import ScreenerTable from "./components/ScreenerTable";
+import { useAuth } from "./lib/auth";
 import { HOLDINGS_KEY, useStoredList, WATCHLIST_KEY } from "./lib/lists";
 
 export default function App() {
@@ -65,6 +66,7 @@ export default function App() {
                 </button>
               )}
             </div>
+            <UserMenu />
           </div>
         </header>
 
@@ -91,6 +93,12 @@ export default function App() {
             onSelect={(isin, tab) => setSelected({ isin, tab })}
           />
         </main>
+
+        <footer className="mt-10 pt-4 border-t border-zinc-800 text-xs leading-relaxed text-zinc-500">
+          Not investment advice. Prices, yields and ratings are derived from exchange/depository
+          data that may be delayed, incomplete or inaccurate; verify independently before acting.
+          Bonds carry credit and liquidity risk, including loss of principal.
+        </footer>
       </div>
 
       {selected && (
@@ -101,6 +109,54 @@ export default function App() {
           onSelect={(isin) => setSelected({ isin })}
           onClose={() => setSelected(null)}
         />
+      )}
+    </div>
+  );
+}
+
+function UserMenu() {
+  const { user, signOut } = useAuth();
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        title={user.email}
+        className="block rounded-full border border-zinc-700 hover:border-zinc-400 transition-colors"
+      >
+        {user.picture ? (
+          <img
+            src={user.picture}
+            alt=""
+            referrerPolicy="no-referrer"
+            className="w-8 h-8 rounded-full"
+          />
+        ) : (
+          <span className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-zinc-300">
+            {(user.name ?? user.email)[0]?.toUpperCase()}
+          </span>
+        )}
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-20" onClick={() => setOpen(false)} aria-hidden="true" />
+          <div className="absolute right-0 top-full mt-2 z-30 w-56 rounded-lg border border-zinc-700 bg-zinc-900 shadow-xl py-1">
+            <div className="px-3 py-2 border-b border-zinc-800">
+              <div className="text-xs font-medium text-zinc-200 truncate">
+                {user.name ?? "\u2014"}
+              </div>
+              <div className="text-[11px] text-zinc-500 truncate">{user.email}</div>
+            </div>
+            <button
+              type="button"
+              onClick={signOut}
+              className="w-full px-3 py-2 text-xs text-left text-zinc-300 hover:bg-zinc-800"
+            >
+              Sign out
+            </button>
+          </div>
+        </>
       )}
     </div>
   );

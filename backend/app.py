@@ -7,14 +7,18 @@ The API is stateless: the screener is a filtered SELECT; only the
 per-bond detail view computes yields live (it supports what-if pricing).
 """
 from datetime import date
+from typing import Literal
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import APIRouter, Body, Depends, FastAPI, HTTPException, Query, Response
 
-from . import kite, models, queries
+from . import auth, db, kite, models, queries
 from .analytics import ratings, schedule, yields
 from .analytics.compute import STALE_AFTER_DAYS
 
 app = FastAPI(title="BondLens", version="2.0")
+
+# Everything except auth and the health check requires a session.
+router = APIRouter(dependencies=[Depends(auth.require_user)])
 
 
 def _years(maturity: date | None, today: date) -> float | None:
@@ -24,10 +28,69 @@ def _years(maturity: date | None, today: date) -> float | None:
 
 
 # --------------------------------------------------------------------------
+# Auth
+# --------------------------------------------------------------------------
+
+@app.post("/api/auth/google", response_model=models.User)
+def auth_google(response: Response, credential: str = Body(embed=True)):
+    """Verify a Google ID token (from GIS button / One Tap), enforce the
+    allowlist, upsert the user and set the session cookie."""
+    claims = auth.verify_google_token(credential)
+    user = db.upsert_user(claims["sub"], claims["email"],
+                          claims.get("name"), claims.get("picture"))
+    response.set_cookie(
+        auth.SESSION_COOKIE, auth.mint_session(user["id"]),
+        max_age=auth.SESSION_DAYS * 86400, httponly=True,
+        samesite="lax", secure=auth.COOKIE_SECURE,
+    )
+    return user
+
+
+@app.get("/api/auth/me", response_model=models.User)
+def auth_me(user_id: int = Depends(auth.require_user)):
+    user = db.get_user(user_id)
+    if user is None:  # user row deleted; session is stale
+        raise HTTPException(status_code=401, detail="Sign in required")
+    return user
+
+
+@app.post("/api/auth/logout", response_model=models.Ok)
+def auth_logout(response: Response):
+    response.delete_cookie(auth.SESSION_COOKIE)
+    return {"ok": True}
+
+
+# --------------------------------------------------------------------------
+# Per-user lists (watchlist / holdings)
+# --------------------------------------------------------------------------
+
+ListName = Literal["watchlist", "holdings"]
+
+
+@router.get("/api/lists", response_model=models.ListsResponse)
+def lists(user_id: int = Depends(auth.require_user)):
+    return db.get_user_lists(user_id)
+
+
+@router.put("/api/lists/{list_name}/{isin}", response_model=models.ListToggle)
+def list_add(list_name: ListName, isin: str,
+             user_id: int = Depends(auth.require_user)):
+    db.add_to_user_list(user_id, list_name, isin.strip().upper())
+    return {"list": list_name, "isin": isin, "present": True}
+
+
+@router.delete("/api/lists/{list_name}/{isin}", response_model=models.ListToggle)
+def list_remove(list_name: ListName, isin: str,
+                user_id: int = Depends(auth.require_user)):
+    db.remove_from_user_list(user_id, list_name, isin.strip().upper())
+    return {"list": list_name, "isin": isin, "present": False}
+
+
+# --------------------------------------------------------------------------
 # Screener
 # --------------------------------------------------------------------------
 
-@app.get("/api/bonds", response_model=models.BondsResponse)
+@router.get("/api/bonds", response_model=models.BondsResponse)
 def bonds(
     min_ytm: float | None = Query(None),
     max_ytm: float | None = Query(None),
@@ -90,7 +153,7 @@ def bonds(
     return {"count": total, "bonds": rows, "as_of": as_of}
 
 
-@app.get("/api/filters", response_model=models.Filters)
+@router.get("/api/filters", response_model=models.Filters)
 def filters():
     """Distinct values for filter dropdowns."""
     return {**queries.screener_filters(), "ratings": list(ratings.RATING_ORDER)}
@@ -100,7 +163,7 @@ def filters():
 # Bond detail
 # --------------------------------------------------------------------------
 
-@app.get("/api/bonds/{isin}", response_model=models.BondDetail)
+@router.get("/api/bonds/{isin}", response_model=models.BondDetail)
 def bond_detail(isin: str, price: float | None = Query(None, gt=0)):
     """Everything known about one bond. ``price`` reprices every
     price-derived figure for what-if analysis."""
@@ -209,7 +272,7 @@ def bond_detail(isin: str, price: float | None = Query(None, gt=0)):
 # Trade history
 # --------------------------------------------------------------------------
 
-@app.get("/api/bonds/{isin}/trades", response_model=models.TradesResponse)
+@router.get("/api/bonds/{isin}/trades", response_model=models.TradesResponse)
 def bond_trades(
     isin: str,
     date_from: date | None = Query(None, alias="from"),
@@ -226,7 +289,7 @@ def bond_trades(
 # Status
 # --------------------------------------------------------------------------
 
-@app.get("/api/status", response_model=models.Status)
+@router.get("/api/status", response_model=models.Status)
 def status():
     return queries.status()
 
@@ -234,3 +297,6 @@ def status():
 @app.get("/", response_model=models.Health)
 def health():
     return {"app": "BondLens", "version": "2.0"}
+
+
+app.include_router(router)

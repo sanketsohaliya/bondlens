@@ -32,6 +32,9 @@ services:
     <<: *logging
     environment:
       DATABASE_URL: postgresql://bondlens:bondlens@db:5432/bondlens
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      SESSION_SECRET: ${SESSION_SECRET:-}
+      COOKIE_SECURE: ${COOKIE_SECURE:-}
     ports:
       - "8000:8000"
     depends_on:
@@ -39,7 +42,10 @@ services:
         condition: service_healthy
 
   web:
-    build: ./frontend
+    build:
+      context: ./frontend
+      args:
+        VITE_GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
     restart: unless-stopped
     <<: *logging
     ports:

@@ -55,6 +55,68 @@ def close_pool():
         _pool = None
 
 
+# --- Users & per-user lists -------------------------------------------------
+
+def upsert_user(sub: str, email: str, name: str | None,
+                picture: str | None) -> dict[str, Any]:
+    """Create or refresh a user from verified Google claims."""
+    with _conn() as conn:
+        row = conn.execute(
+            """
+            INSERT INTO users (google_sub, email, name, picture)
+            VALUES (%s, %s, %s, %s)
+            ON CONFLICT (google_sub) DO UPDATE SET
+                email = EXCLUDED.email,
+                name = EXCLUDED.name,
+                picture = EXCLUDED.picture,
+                last_login = now()
+            RETURNING id, email, name, picture
+            """,
+            (sub, email, name, picture),
+        ).fetchone()
+        assert row is not None
+        return row
+
+
+def get_user(user_id: int) -> dict[str, Any] | None:
+    with _conn() as conn:
+        return conn.execute(
+            "SELECT id, email, name, picture FROM users WHERE id = %s",
+            (user_id,),
+        ).fetchone()
+
+
+def get_user_lists(user_id: int) -> dict[str, list[str]]:
+    """{'watchlist': [isin...], 'holdings': [isin...]} for a user."""
+    out: dict[str, list[str]] = {"watchlist": [], "holdings": []}
+    with _conn() as conn:
+        rows = conn.execute(
+            "SELECT list, isin FROM user_lists WHERE user_id = %s "
+            "ORDER BY added_at",
+            (user_id,),
+        ).fetchall()
+    for r in rows:
+        out[r["list"]].append(r["isin"])
+    return out
+
+
+def add_to_user_list(user_id: int, list_name: str, isin: str):
+    with _conn() as conn:
+        conn.execute(
+            "INSERT INTO user_lists (user_id, list, isin) VALUES (%s, %s, %s) "
+            "ON CONFLICT DO NOTHING",
+            (user_id, list_name, isin),
+        )
+
+
+def remove_from_user_list(user_id: int, list_name: str, isin: str):
+    with _conn() as conn:
+        conn.execute(
+            "DELETE FROM user_lists WHERE user_id = %s AND list = %s AND isin = %s",
+            (user_id, list_name, isin),
+        )
+
+
 # --- Bond universe (daily-tracked listed set) -----------------------------
 
 _UNIVERSE_COLS = [

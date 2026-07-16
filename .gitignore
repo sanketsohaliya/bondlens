@@ -1,6 +1,10 @@
 # Virtual environment
 .venv/
 
+# Secrets (Google OAuth client, session key, allowlist)
+.env
+frontend/.env.local
+
 # Python artifacts
 __pycache__/
 *.pyc

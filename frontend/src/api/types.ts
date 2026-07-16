@@ -7,11 +7,15 @@ export type {
   Cashflow,
   Filters,
   IssuerBond,
+  ListsResponse,
   RatingEvent,
   Status,
   Trade,
   TradesResponse,
+  User,
 } from "./generated";
+
+export type ListName = "watchlist" | "holdings";
 
 // Screener query params (request side; hand-maintained).
 export interface ScreenerParams {

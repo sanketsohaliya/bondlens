@@ -5,6 +5,16 @@ export type ClientOptions = {
 };
 
 /**
+ * Body_auth_google_api_auth_google_post
+ */
+export type BodyAuthGoogleApiAuthGooglePost = {
+    /**
+     * Credential
+     */
+    credential: string;
+};
+
+/**
  * Bond
  *
  * One screener row (bond_analytics + read-time derived fields).
@@ -612,6 +622,48 @@ export type IssuerBond = {
 };
 
 /**
+ * ListToggle
+ */
+export type ListToggle = {
+    /**
+     * List
+     */
+    list: 'watchlist' | 'holdings';
+    /**
+     * Isin
+     */
+    isin: string;
+    /**
+     * Present
+     */
+    present: boolean;
+};
+
+/**
+ * ListsResponse
+ */
+export type ListsResponse = {
+    /**
+     * Watchlist
+     */
+    watchlist: Array<string>;
+    /**
+     * Holdings
+     */
+    holdings: Array<string>;
+};
+
+/**
+ * Ok
+ */
+export type Ok = {
+    /**
+     * Ok
+     */
+    ok: boolean;
+};
+
+/**
  * RatingEvent
  */
 export type RatingEvent = {
@@ -788,6 +840,28 @@ export type TradesResponse = {
 };
 
 /**
+ * User
+ */
+export type User = {
+    /**
+     * Id
+     */
+    id: number;
+    /**
+     * Email
+     */
+    email: string;
+    /**
+     * Name
+     */
+    name: string | null;
+    /**
+     * Picture
+     */
+    picture: string | null;
+};
+
+/**
  * ValidationError
  */
 export type ValidationError = {
@@ -814,6 +888,181 @@ export type ValidationError = {
         [key: string]: unknown;
     };
 };
+
+export type AuthGoogleApiAuthGooglePostData = {
+    body: BodyAuthGoogleApiAuthGooglePost;
+    path?: never;
+    query?: never;
+    url: '/api/auth/google';
+};
+
+export type AuthGoogleApiAuthGooglePostErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type AuthGoogleApiAuthGooglePostError = AuthGoogleApiAuthGooglePostErrors[keyof AuthGoogleApiAuthGooglePostErrors];
+
+export type AuthGoogleApiAuthGooglePostResponses = {
+    /**
+     * Successful Response
+     */
+    200: User;
+};
+
+export type AuthGoogleApiAuthGooglePostResponse = AuthGoogleApiAuthGooglePostResponses[keyof AuthGoogleApiAuthGooglePostResponses];
+
+export type AuthMeApiAuthMeGetData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/auth/me';
+};
+
+export type AuthMeApiAuthMeGetErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type AuthMeApiAuthMeGetError = AuthMeApiAuthMeGetErrors[keyof AuthMeApiAuthMeGetErrors];
+
+export type AuthMeApiAuthMeGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: User;
+};
+
+export type AuthMeApiAuthMeGetResponse = AuthMeApiAuthMeGetResponses[keyof AuthMeApiAuthMeGetResponses];
+
+export type AuthLogoutApiAuthLogoutPostData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/auth/logout';
+};
+
+export type AuthLogoutApiAuthLogoutPostResponses = {
+    /**
+     * Successful Response
+     */
+    200: Ok;
+};
+
+export type AuthLogoutApiAuthLogoutPostResponse = AuthLogoutApiAuthLogoutPostResponses[keyof AuthLogoutApiAuthLogoutPostResponses];
+
+export type HealthGetData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/';
+};
+
+export type HealthGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: Health;
+};
+
+export type HealthGetResponse = HealthGetResponses[keyof HealthGetResponses];
+
+export type ListsApiListsGetData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/lists';
+};
+
+export type ListsApiListsGetErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ListsApiListsGetError = ListsApiListsGetErrors[keyof ListsApiListsGetErrors];
+
+export type ListsApiListsGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: ListsResponse;
+};
+
+export type ListsApiListsGetResponse = ListsApiListsGetResponses[keyof ListsApiListsGetResponses];
+
+export type ListRemoveApiListsListNameIsinDeleteData = {
+    body?: never;
+    path: {
+        /**
+         * List Name
+         */
+        list_name: 'watchlist' | 'holdings';
+        /**
+         * Isin
+         */
+        isin: string;
+    };
+    query?: never;
+    url: '/api/lists/{list_name}/{isin}';
+};
+
+export type ListRemoveApiListsListNameIsinDeleteErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ListRemoveApiListsListNameIsinDeleteError = ListRemoveApiListsListNameIsinDeleteErrors[keyof ListRemoveApiListsListNameIsinDeleteErrors];
+
+export type ListRemoveApiListsListNameIsinDeleteResponses = {
+    /**
+     * Successful Response
+     */
+    200: ListToggle;
+};
+
+export type ListRemoveApiListsListNameIsinDeleteResponse = ListRemoveApiListsListNameIsinDeleteResponses[keyof ListRemoveApiListsListNameIsinDeleteResponses];
+
+export type ListAddApiListsListNameIsinPutData = {
+    body?: never;
+    path: {
+        /**
+         * List Name
+         */
+        list_name: 'watchlist' | 'holdings';
+        /**
+         * Isin
+         */
+        isin: string;
+    };
+    query?: never;
+    url: '/api/lists/{list_name}/{isin}';
+};
+
+export type ListAddApiListsListNameIsinPutErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ListAddApiListsListNameIsinPutError = ListAddApiListsListNameIsinPutErrors[keyof ListAddApiListsListNameIsinPutErrors];
+
+export type ListAddApiListsListNameIsinPutResponses = {
+    /**
+     * Successful Response
+     */
+    200: ListToggle;
+};
+
+export type ListAddApiListsListNameIsinPutResponse = ListAddApiListsListNameIsinPutResponses[keyof ListAddApiListsListNameIsinPutResponses];
 
 export type BondsApiBondsGetData = {
     body?: never;
@@ -994,6 +1243,15 @@ export type FiltersApiFiltersGetData = {
     url: '/api/filters';
 };
 
+export type FiltersApiFiltersGetErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type FiltersApiFiltersGetError = FiltersApiFiltersGetErrors[keyof FiltersApiFiltersGetErrors];
+
 export type FiltersApiFiltersGetResponses = {
     /**
      * Successful Response
@@ -1092,6 +1350,15 @@ export type StatusApiStatusGetData = {
     url: '/api/status';
 };
 
+export type StatusApiStatusGetErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type StatusApiStatusGetError = StatusApiStatusGetErrors[keyof StatusApiStatusGetErrors];
+
 export type StatusApiStatusGetResponses = {
     /**
      * Successful Response
@@ -1100,19 +1367,3 @@ export type StatusApiStatusGetResponses = {
 };
 
 export type StatusApiStatusGetResponse = StatusApiStatusGetResponses[keyof StatusApiStatusGetResponses];
-
-export type HealthGetData = {
-    body?: never;
-    path?: never;
-    query?: never;
-    url: '/';
-};
-
-export type HealthGetResponses = {
-    /**
-     * Successful Response
-     */
-    200: Health;
-};
-
-export type HealthGetResponse = HealthGetResponses[keyof HealthGetResponses];

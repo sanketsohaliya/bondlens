@@ -9,6 +9,8 @@ dependencies = [
     "requests>=2.34",
     "psycopg[binary]>=3.3",
     "psycopg-pool>=3.3",
+    "google-auth>=2.44",
+    "pyjwt>=2.10",
 ]
 
 [dependency-groups]

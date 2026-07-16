@@ -206,6 +206,28 @@ class TradesResponse(BaseModel):
     trades: list[Trade]
 
 
+class User(BaseModel):
+    id: int
+    email: str
+    name: str | None
+    picture: str | None
+
+
+class ListsResponse(BaseModel):
+    watchlist: list[str]
+    holdings: list[str]
+
+
+class ListToggle(BaseModel):
+    list: Literal["watchlist", "holdings"]
+    isin: str
+    present: bool
+
+
+class Ok(BaseModel):
+    ok: bool
+
+
 class RunInfo(BaseModel):
     """Latest job-run summary (subset shared by bond_runs / nsdl_runs)."""
     run_at: datetime
