@@ -71,6 +71,16 @@ def test_reliability_none_cases():
     assert ytm_reliability(8.0, None, TODAY) is True  # perpetual YTC w/ bounds
 
 
+def test_reliability_floating_basis():
+    # Real DB values: 'Variable-Others', 'Variable - Index Linked', etc.
+    far = date(2030, 1, 1)
+    for basis in ("Variable-Others", "Variable - Index Linked",
+                  "Variable - Mibor Linked", "Variable- Commodity linked"):
+        assert ytm_reliability(8.5, far, TODAY, basis) is False
+    assert ytm_reliability(8.5, far, TODAY, "Fixed Interest") is True
+    assert ytm_reliability(None, far, TODAY, "Variable-Others") is None
+
+
 # --- perpetual YTC -----------------------------------------------------------
 
 def _perp_schedule() -> Schedule:
@@ -103,3 +113,25 @@ def test_parse_call_dates_moved_helper():
                                               date(2029, 9, 15)]
     assert yields.parse_call_dates({"call_indicator": "No"}) == []
     assert yields.parse_call_dates(None) == []
+
+
+def test_parse_call_dates_prose_style():
+    # Real feed shape: 'THE CALL OPTION PAYMENT DATES ARE NOVEMBER 24, 2026,
+    # AND ANNUALLY THEREAFTER ON NOVEMBER 24, 2027 ...'
+    terms = {"call_indicator": "Yes",
+             "call_specified_dates":
+                 "CALL OPTION PAYMENT DATES ARE NOVEMBER 24, 2026, AND "
+                 "ANNUALLY THEREAFTER ON NOVEMBER 24, 2027"}
+    assert yields.parse_call_dates(terms) == [date(2026, 11, 24),
+                                              date(2027, 11, 24)]
+    terms = {"call_indicator": "Yes",
+             "call_specified_dates":
+                 "AT THE END OF 36 MONTHS FROM DEEMED DATE OF ALLOTMENT "
+                 "I.E. DECEMBER 17, 2024. OPTION AVAILABLE TO THE COMPANY"}
+    assert yields.parse_call_dates(terms) == [date(2024, 12, 17)]
+    # Pure prose with no concrete date -> nothing extracted.
+    terms = {"call_indicator": "Yes",
+             "call_specified_dates":
+                 "AFTER THE EXPIRY OF 5 (FIVE) YEARS FROM THE DEEMED DATE "
+                 "OF ALLOTMENT UNLESS NOT PERMITTED UNDER APPLICABLE LAW"}
+    assert yields.parse_call_dates(terms) == []

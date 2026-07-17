@@ -40,6 +40,25 @@ def test_composite():
     assert ratings.composite([]) is None
 
 
+def test_junk_ratings_do_not_displace_live_ones():
+    # Real DB shapes: 'WITHDRAWN' and '0' appear as current "ratings".
+    cur = [
+        {"agency": "CRISIL", "rating": "AA", "outlook": "Stable",
+         "rating_date": date(2024, 1, 1)},
+        {"agency": "CARE", "rating": "WITHDRAWN", "outlook": None,
+         "rating_date": date(2026, 1, 1)},  # newer, but junk
+    ]
+    picked = ratings.latest(cur)
+    assert picked and picked[0]["agency"] == "CRISIL"
+    assert ratings.composite(picked) == "CRISIL: AA/Stable"
+    # Only junk rows -> unrated, not 'CARE: WITHDRAWN'.
+    only_junk = [{"agency": "CARE", "rating": "WITHDRAWN"},
+                 {"agency": "ICRA", "rating": "0"}]
+    assert ratings.latest(only_junk) == []
+    assert ratings.composite(only_junk) is None
+    assert ratings.best_rank(only_junk) is None
+
+
 def test_composite_dedupes_and_keeps_disagreements():
     cur = [{"agency": "CRISIL", "rating": "AA+", "outlook": "Stable"},
            {"agency": "CRISIL", "rating": "AA+", "outlook": "Stable"},

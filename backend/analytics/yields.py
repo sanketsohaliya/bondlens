@@ -131,9 +131,10 @@ def parse_call_dates(terms: dict | None) -> list[date]:
     """Extract usable call dates from bond_terms' free-text fields."""
     if not terms or (terms.get("call_indicator") or "").lower() != "yes":
         return []
-    text = terms.get("call_specified_dates") or terms.get("call_deadline") or ""
+    text = str(terms.get("call_specified_dates")
+               or terms.get("call_deadline") or "")
     dates = []
-    for m in re.finditer(r"(\d{1,2})[-/](\d{1,2}|\w{3})[-/](\d{4})", str(text)):
+    for m in re.finditer(r"(\d{1,2})[-/](\d{1,2}|\w{3})[-/](\d{4})", text):
         d, mth, y = m.groups()
         try:
             if mth.isdigit():
@@ -141,6 +142,14 @@ def parse_call_dates(terms: dict | None) -> list[date]:
             else:
                 dates.append(datetime.strptime(
                     f"{d}-{mth}-{y}", "%d-%b-%Y").date())
+        except ValueError:
+            continue
+    # Prose style dominates the feed: 'NOVEMBER 24, 2026' / 'DECEMBER 17 2024'.
+    for m in re.finditer(r"([A-Za-z]{3,9})\.?\s+(\d{1,2}),?\s+(\d{4})", text):
+        mon, d, y = m.groups()
+        try:
+            dates.append(datetime.strptime(
+                f"{d}-{mon[:3]}-{y}", "%d-%b-%Y").date())
         except ValueError:
             continue
     return sorted(set(dates))

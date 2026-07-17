@@ -53,10 +53,14 @@ _NEAR_DAYS = 90
 
 
 def ytm_reliability(ytm: float | None, maturity: date | None,
-                    today: date) -> bool | None:
+                    today: date, coupon_basis: str | None = None) -> bool | None:
     """False = display with caution; None = no YTM to judge."""
     if ytm is None:
         return None
+    # Floating / market-linked coupons: published future flows assume the
+    # current rate holds, so any YTM is indicative at best.
+    if (coupon_basis or "").strip().lower().startswith("variable"):
+        return False
     lo, hi = _RELIABLE
     if not lo <= ytm <= hi:
         return False
@@ -160,7 +164,8 @@ def build_rows(today: date | None = None) -> list[dict]:
             "otc_turnover": _f(otc and otc.get("turnover")),
             "ytm": ytm,
             "ytm_method": ytm_method,
-            "ytm_reliable": ytm_reliability(ytm, red_date, today),
+            "ytm_reliable": ytm_reliability(ytm, red_date, today,
+                                            r.get("coupon_basis")),
             "current_yield": yields.current_yield(price, coupon, face),
             "duration": yields.modified_duration(price, sched, ytm, today)
                         if ytm_method in ("exact", "estimated") else None,

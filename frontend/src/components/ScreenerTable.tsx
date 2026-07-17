@@ -199,7 +199,9 @@ function Row({
           }
           title={
             b.ytm_reliable === false
-              ? "Likely an annualization artifact (near maturity or out of band) — treat with caution"
+              ? b.coupon_basis?.startsWith("Variable")
+                ? "Floating / market-linked coupon — YTM assumes the current rate holds; indicative only"
+                : "Likely an annualization artifact (near maturity or out of band) — treat with caution"
               : b.ytm_method === "exact"
                 ? "From the actual payment schedule"
                 : b.ytm_method
@@ -215,6 +217,11 @@ function Row({
             title="Yield to earliest call (perpetual)"
           >
             YTC
+          </span>
+        )}
+        {b.coupon_basis?.startsWith("Variable") && (
+          <span className="ml-1 text-[10px] text-zinc-500" title="Floating / market-linked coupon">
+            FLT
           </span>
         )}
       </td>

@@ -26,6 +26,10 @@ _DOWN_WORDS = ("downgrade", "lowered", "negative implication")
 _UP_WORDS = ("upgrade", "raised")
 _WITHDRAWN_WORDS = ("withdraw",)
 _DEFAULT_GRADES = {"D"}
+# Placeholder "ratings" in the feed that carry no grade: a withdrawn/junk
+# row must not displace another agency's live rating in the screener.
+_JUNK_RATING = re.compile(r"^\s*(withdrawn|suspended|not\s*rated|nr|0)\s*$",
+                          re.IGNORECASE)
 
 
 def grade(rating: str | None) -> str | None:
@@ -53,7 +57,8 @@ def latest(current: list[dict]) -> list[dict]:
     """The single most recent current agency rating, as a one-element list
     for composite(). Undated rows lose to dated ones; a same-day tie breaks
     toward the better grade. Empty input -> empty list."""
-    rated = [x for x in current if x.get("rating")]
+    rated = [x for x in current
+             if x.get("rating") and not _JUNK_RATING.match(x["rating"])]
     if not rated:
         return []
     def key(x: dict):
@@ -75,7 +80,7 @@ def composite(current: list[dict]) -> str | None:
     parts: list[tuple[str, str]] = []
     for x in current:
         s = x.get("rating") or ""
-        if not s:
+        if not s or _JUNK_RATING.match(s):
             continue
         if x.get("outlook") and x["outlook"].lower() not in ("no outlook", ""):
             s += f"/{x['outlook']}"
