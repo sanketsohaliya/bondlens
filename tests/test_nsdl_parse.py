@@ -5,6 +5,7 @@ from datetime import date
 from backend.nsdl_parse import (
     agency_norm,
     clean,
+    coupon_rate_num,
     dual_rates,
     fix_record_date,
     parse_coupondetail,
@@ -144,6 +145,44 @@ class TestNsdlParse(unittest.TestCase):
         assert dual_rates("8.25") is None
         assert dual_rates("RESET RATE - 8%") is None
         assert dual_rates(None) is None
+
+    def test_coupon_rate_num(self):
+        assert coupon_rate_num("8.25") == 8.25
+        assert coupon_rate_num("9%") == 9.0
+        assert coupon_rate_num("8.4 %") == 8.4
+        assert coupon_rate_num("(7.04/7.54)%") == 7.04
+        assert coupon_rate_num("Nifty 50 Index") is None
+        assert coupon_rate_num("-") is None
+        assert coupon_rate_num(None) is None
+
+    def test_coupon_rate_num_prose(self):
+        # Fixed-rate prose (real nsdl_raw values) -> the rate.
+        assert coupon_rate_num("8.83% (REFER REMARKS)") == 8.83
+        assert coupon_rate_num("8.50% (Compounded annually)") == 8.5
+        assert coupon_rate_num("12% (REFER REMARKS)") == 12.0
+        # Category-rate prose -> lowest plausible (secondary-buyer) rate.
+        assert coupon_rate_num("Cat I & II-8.12% Cat-III-8.32%") == 8.12
+        assert coupon_rate_num("7.04% (ADDITIONAL 0.50% TO RIs)") == 7.04
+        assert coupon_rate_num("8.58% FOR CATEGORY I, II AND III") == 8.58
+        assert coupon_rate_num(
+            "7.04 CATEGORY I.II& III, 7.54 FOR CATEGORY- IV") == 7.04
+        assert coupon_rate_num(
+            "8.1% (cat I & II and 0.2% additn int for cat III)") == 8.1
+        assert coupon_rate_num(
+            "7.53% (IF ON RECORD DATE BONDS HELD BY RII, ELSE 7.28% p.a)"
+        ) == 7.28
+        # Floating / MLD / step-up / vague -> None.
+        assert coupon_rate_num("RESET RATE - 10%. HOLDER AND ISSUER...") is None
+        assert coupon_rate_num("3 Month TBill") is None
+        assert coupon_rate_num("SBI 3 Month MCLR") is None
+        assert coupon_rate_num("NA (EFFECTIVE YIELD 10%)") is None
+        assert coupon_rate_num("15% XIRR AND 7.26 GSEC LINKED") is None
+        assert coupon_rate_num(
+            "13.6% UPTO MARCH 31, 2023 13.7% FROM APRIL 1, 2023, TO "
+            "MARCH 31, 2027 16% FROM APRIL 1, 2027, TO OCTOBER 31, 2047"
+        ) is None
+        assert coupon_rate_num("As per term sheet") is None
+        assert coupon_rate_num("na") is None
 
     def test_parse_coupondetail_dual_rate_summed_amounts(self):
         # The INE134E07364 shape: NSDL publishes interest as the SUM of

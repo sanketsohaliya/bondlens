@@ -83,6 +83,11 @@ class Schedule:
 
 _FREQ_MAP = [
     # (needle in lowered frequency text, canonical name, periods/year)
+    # Order matters: 'semi annual' contains 'annual' and 'half yearly'
+    # contains 'yearly', so semiannual needles must be checked first.
+    ("twice a year", "semiannual", 2),
+    ("half year", "semiannual", 2),
+    ("semi", "semiannual", 2),
     ("twelve times", "monthly", 12),
     ("monthly", "monthly", 12),
     ("once a year", "annual", 1),
@@ -90,9 +95,7 @@ _FREQ_MAP = [
     ("yearly", "annual", 1),
     ("quarter", "quarterly", 4),
     ("four times", "quarterly", 4),
-    ("twice a year", "semiannual", 2),
-    ("half year", "semiannual", 2),
-    ("semi", "semiannual", 2),
+    ("every year", "annual", 1),
     ("maturity", "cumulative", None),
     ("irregular", "irregular", None),
 ]

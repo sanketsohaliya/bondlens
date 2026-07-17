@@ -25,6 +25,33 @@ def _cf(event, due, payable=None, redeem=None, record=None):
             "amount_outstanding": None}
 
 
+def test_classify_frequency_real_db_values():
+    # Real free-text values from bond_terms.interest_payment_frequency.
+    cases = [
+        ("Once a year", "annual", 1),
+        ("Twelve times a year", "monthly", 12),
+        ("QUARTERLY", "quarterly", 4),
+        ("Twice a year", "semiannual", 2),
+        ("On Maturity", "cumulative", None),
+        ("Four times a year", "quarterly", 4),
+        ("Irregular Occurence", "irregular", None),
+        # 'SEMI ANNUAL' must not fall through to the 'annual' needle.
+        ("SEMI ANNUAL ON 31 MAR AND 30 SEP", "semiannual", 2),
+        ("HALF YEARLY", "semiannual", 2),
+        ("PAYABLE ANNUALLY", "annual", 1),
+        ("ANNUAL ON 25 APR", "annual", 1),
+        ("1ST APRIL EVERY YEAR", "annual", 1),
+        ("PAYABLE ON MONTHLY BASIS ON 01/12/2021,01/01/2022 AND SO ON "
+         "TILL MATURITY.", "monthly", 12),
+        ("QUARTERLY 31ST AUG, 30TH NOV, 28TH FEB AND 31ST MAY EVERY YEAR",
+         "quarterly", 4),
+        (None, None, None),
+        ("", None, None),
+    ]
+    for text, name, ppy in cases:
+        assert schedule.classify_frequency(text) == (name, ppy), text
+
+
 def test_plain_annual():
     flows = [_cf("Interest", date(2027 + i, 1, 1), payable=100) for i in range(3)]
     flows.append(_cf("Full Redemption", date(2030, 1, 1), redeem=1000))

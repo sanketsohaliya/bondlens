@@ -81,6 +81,51 @@ def dual_rates(v) -> tuple[float, float] | None:
     return (a, b) if a <= b else (b, a)
 
 
+# Texts describing floating / market-linked / accreting structures where a
+# single fixed coupon number does not exist (or would mislead).
+_NO_FIXED_RATE = re.compile(
+    r"reset|link|mclr|repo|mibor|\bois\b|g-?sec|nifty|index|benchmark|"
+    r"treasury|t[- ]?bill|term ?sheet|strategy|gold|xirr|effective yield|"
+    r"zero coupon|upto|\b20\d\d\b", re.IGNORECASE)
+_RATE_PCT = re.compile(r"(\d+(?:\.\d+)?)\s*%")
+# Category-rate prose: different rates per allotment category / RII holding.
+_CATEGORY = re.compile(r"\bcat|\brii?s?\b|record date", re.IGNORECASE)
+
+
+def coupon_rate_num(v) -> float | None:
+    """couponRate free-text -> %: '8.75', '9%', '(7.04/7.54)%',
+    '8.83% (REFER REMARKS)', '8.2% for Cat I & II, 8.35% for Cat III'.
+
+    Floating/benchmark-linked, step-up and MLD texts -> None (no single
+    fixed rate exists). Category-rate prose -> the LOWEST plausible rate,
+    the base a secondary-market buyer earns (step-ups only accrue to
+    original allottees).
+    """
+    s = clean(v)
+    if s is None:
+        return None
+    n = to_num(s.rstrip("% "))
+    if n is not None:
+        return n
+    d = dual_rates(s)
+    if d:
+        return d[0]  # base rate: what a secondary buyer earns
+    if _NO_FIXED_RATE.search(s):
+        return None
+    rates = [float(r) for r in _RATE_PCT.findall(s)]
+    if _CATEGORY.search(s):
+        # Bare numbers allowed here ('7.04 CATEGORY I.II& III, 7.54 ...');
+        # spreads like '0.50% additional' filtered by the plausible band.
+        if not rates:
+            rates = [float(r) for r in
+                     re.findall(r"\d+(?:\.\d+)?", s)]
+        rates = [r for r in rates if 2.0 <= r <= 20.0]
+        return min(rates) if rates else None
+    if len(rates) == 1 and s.lstrip().startswith(_RATE_PCT.findall(s)[0]):
+        return rates[0]  # '8.83% (REFER REMARKS)' shape
+    return None
+
+
 def fix_record_date(record: date | None, due: date | None) -> date | None:
     """Repair NSDL record dates that land AFTER the payment (impossible —
     the record date is when they snapshot who gets paid).
@@ -193,12 +238,9 @@ def parse_coupondetail(isin, p):
     vo = p.get("coupensVo") or {}
     cd = vo.get("couponDetails") or {}
     dual = dual_rates(cd.get("couponRate"))
-    coupon_rate = to_num(cd.get("couponRate"))
-    if coupon_rate is None and dual:
-        coupon_rate = dual[0]  # base rate: what a secondary buyer earns
     terms = {
         "isin": isin,
-        "coupon_rate": coupon_rate,
+        "coupon_rate": coupon_rate_num(cd.get("couponRate")),
         "coupon_type": clean(cd.get("couponType")),
         "coupon_basis": clean(cd.get("couponBasis")),
         "interest_payment_frequency": clean(cd.get("interestPaymentFrequency")),
