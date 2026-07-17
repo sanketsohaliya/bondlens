@@ -5,7 +5,9 @@ from datetime import date
 from backend.nsdl_parse import (
     agency_norm,
     clean,
+    dual_rates,
     fix_record_date,
+    parse_coupondetail,
     parse_credit_ratings,
     parse_holdings,
     parse_instruments,
@@ -135,6 +137,64 @@ class TestNsdlParse(unittest.TestCase):
         events = out["bond_redemption_events"]
         assert len(events) == 1
         assert events[0]["redemption_date"] == date(2023, 4, 30)
+
+    def test_dual_rates(self):
+        assert dual_rates("(7.04/7.54)%") == (7.04, 7.54)
+        assert dual_rates("(7.4/7.9)%") == (7.4, 7.9)
+        assert dual_rates("8.25") is None
+        assert dual_rates("RESET RATE - 8%") is None
+        assert dual_rates(None) is None
+
+    def test_parse_coupondetail_dual_rate_summed_amounts(self):
+        # The INE134E07364 shape: NSDL publishes interest as the SUM of
+        # both category rates (70.4 + 75.4 = 145.8 per ₹1000 face).
+        payload = {"coupensVo": {
+            "couponDetails": {
+                "couponRate": "(7.04/7.54)%",
+                "couponType": "Simple",
+                "interestPaymentFrequency": "ANNUALLY ON 28 MARCH",
+            },
+            "cashFlowScheduleDetails": {"cashFlowSchedule": [
+                {"cashFlowsEvent": "Interest", "dueDate": "28-03-2027",
+                 "amountPayable": 145.8},
+                {"cashFlowsEvent": "Full Redemption",
+                 "dueDate": "28-03-2028", "amountPayable": 1000},
+            ]},
+        }}
+        out = parse_coupondetail("INE134E07364", payload)
+        assert out["_terms"][0]["coupon_rate"] == 7.04
+        interest = [f for f in out["bond_cashflows"]
+                    if f["event"] == "Interest"]
+        assert interest[0]["amount_payable"] == 70.4
+
+    def test_parse_coupondetail_dual_rate_correct_amounts_untouched(self):
+        # The INE363O07046 shape: amounts already at the base rate.
+        payload = {"coupensVo": {
+            "couponDetails": {"couponRate": "(7.17/7.67)%"},
+            "cashFlowScheduleDetails": {"cashFlowSchedule": [
+                {"cashFlowsEvent": "Interest", "dueDate": "16-11-2026",
+                 "amountPayable": 71.7},
+                {"cashFlowsEvent": "Full Redemption",
+                 "dueDate": "16-11-2027", "amountPayable": 1000},
+            ]},
+        }}
+        out = parse_coupondetail("INE363O07046", payload)
+        assert out["_terms"][0]["coupon_rate"] == 7.17
+        interest = [f for f in out["bond_cashflows"]
+                    if f["event"] == "Interest"]
+        assert interest[0]["amount_payable"] == 71.7
+
+    def test_parse_coupondetail_plain_rate_unaffected(self):
+        payload = {"coupensVo": {
+            "couponDetails": {"couponRate": "8.25"},
+            "cashFlowScheduleDetails": {"cashFlowSchedule": [
+                {"cashFlowsEvent": "Interest", "dueDate": "01-01-2027",
+                 "amountPayable": 82.5},
+            ]},
+        }}
+        out = parse_coupondetail("INE000TEST01", payload)
+        assert out["_terms"][0]["coupon_rate"] == 8.25
+        assert out["bond_cashflows"][0]["amount_payable"] == 82.5
 
     def test_parse_holdings_skips_null_matrix(self):
         payload = {

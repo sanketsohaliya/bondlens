@@ -7,6 +7,7 @@ the whole layer on the next rebuild.
 """
 from __future__ import annotations
 
+import re
 from datetime import date, datetime
 
 _NULLS = {"", "-", "NA", "N.A", "N.A.", "None", "null", "Not applicable",
@@ -59,6 +60,25 @@ def to_num(v) -> float | None:
 def to_int(v) -> int | None:
     n = to_num(v)
     return int(n) if n is not None else None
+
+
+# Dual-rate coupons like "(7.04/7.54)%": 2012-13 tax-free issues pay the
+# base rate plus an extra step-up ONLY to original retail allottees. A
+# secondary-market buyer earns the base rate.
+_DUAL_RATE = re.compile(
+    r"^\(?\s*(\d+(?:\.\d+)?)\s*/\s*(\d+(?:\.\d+)?)\s*\)?\s*%?$")
+
+
+def dual_rates(v) -> tuple[float, float] | None:
+    """'(7.04/7.54)%' -> (7.04, 7.54); None if not a dual-rate string."""
+    s = clean(v)
+    if s is None:
+        return None
+    m = _DUAL_RATE.match(s)
+    if not m:
+        return None
+    a, b = float(m.group(1)), float(m.group(2))
+    return (a, b) if a <= b else (b, a)
 
 
 def fix_record_date(record: date | None, due: date | None) -> date | None:
@@ -172,9 +192,13 @@ def parse_instruments(isin, p):
 def parse_coupondetail(isin, p):
     vo = p.get("coupensVo") or {}
     cd = vo.get("couponDetails") or {}
+    dual = dual_rates(cd.get("couponRate"))
+    coupon_rate = to_num(cd.get("couponRate"))
+    if coupon_rate is None and dual:
+        coupon_rate = dual[0]  # base rate: what a secondary buyer earns
     terms = {
         "isin": isin,
-        "coupon_rate": to_num(cd.get("couponRate")),
+        "coupon_rate": coupon_rate,
         "coupon_type": clean(cd.get("couponType")),
         "coupon_basis": clean(cd.get("couponBasis")),
         "interest_payment_frequency": clean(cd.get("interestPaymentFrequency")),
@@ -201,7 +225,28 @@ def parse_coupondetail(isin, p):
             "actual_payment_date": to_date(f.get("actualPaymentDate")),
             "reason_delay_payment": clean(f.get("reasonDelayPayment")),
         })
+    if dual:
+        _repair_dual_rate_interest(flows, *dual)
     return {"_terms": [terms], "bond_cashflows": flows}
+
+
+def _repair_dual_rate_interest(flows, base, stepped):
+    """For dual-rate bonds NSDL sometimes publishes interest as the SUM of
+    both category rates (e.g. 145.8 = 70.4 + 75.4 per ₹1000). Detect that
+    against the redemption amount (per-unit face proxy) and rewrite each
+    interest flow to the base rate a secondary buyer actually receives."""
+    reds = [f["amount_redeem"] or f["amount_payable"] or 0 for f in flows
+            if "redemption" in (f["event"] or "").lower()]
+    face = max(reds) if reds else None
+    if not face:
+        return
+    summed = face * (base + stepped) / 100.0
+    for f in flows:
+        if "interest" not in (f["event"] or "").lower():
+            continue
+        amt = f["amount_payable"]
+        if amt is not None and abs(amt - summed) <= summed * 0.02:
+            f["amount_payable"] = round(face * base / 100.0, 2)
 
 
 def parse_redemptions(isin, p):
