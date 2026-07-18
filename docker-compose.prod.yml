@@ -1,0 +1,45 @@
+# Production overrides for the InterServer VPS.
+# Usage: docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+#
+# Differences from dev:
+#   - db/api/web are internal-only; Caddy is the sole public entrypoint (80/443 with auto-TLS).
+#   - jobs backups land in ~/backups on the VPS instead of the Windows Desktop mount.
+#   - DOMAIN in .env selects the Caddy site address (falls back to plain :80 if unset).
+
+services:
+  db:
+    ports: []
+
+  api:
+    ports: []
+
+  web:
+    ports: []
+
+  jobs:
+    volumes:
+      - ~/backups:/desktop
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN:-:80}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - web
+
+volumes:
+  caddy_data:
+  caddy_config:

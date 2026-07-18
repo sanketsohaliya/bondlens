@@ -1,0 +1,6 @@
+# DOMAIN comes from .env via compose. With a real domain Caddy provisions
+# Let's Encrypt certs automatically; with the ":80" fallback it serves plain HTTP.
+{$DOMAIN} {
+	encode gzip
+	reverse_proxy web:80
+}
