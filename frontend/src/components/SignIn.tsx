@@ -83,7 +83,9 @@ export default function SignIn({ onSignedIn }: { onSignedIn: (user: User) => voi
           <p className="mt-2 text-sm text-zinc-400">Indian corporate-bond screener</p>
           <p className="mt-1 text-xs text-zinc-600">Sign in to continue</p>
 
-          <div ref={buttonRef} className="mt-8 flex justify-center" />
+          {/* [color-scheme:light] stops the browser painting an opaque white
+              canvas behind the GIS iframe on our color-scheme:dark page. */}
+          <div ref={buttonRef} className="mt-8 flex justify-center [color-scheme:light]" />
           {error && (
             <p className="mt-4 text-xs text-red-400 border border-red-500/30 bg-red-500/10 rounded-md px-3 py-2">
               {error}
