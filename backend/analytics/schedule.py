@@ -231,6 +231,26 @@ def build(isin: str, cashflows: list[dict], terms: dict | None,
             sched.frequency = sched.frequency or name
             sched.periods_per_year = ppy
 
+    # --- repair rate-filed-as-amount interest rows -------------------------
+    # Some issuers file the coupon RATE into every amount field
+    # (INE0IID07751: 12.75% monthly bond, every interest row = 12.75 on
+    # face 1000). Trigger only when ALL interest amounts equal the rate
+    # numerically AND that disagrees with coupon x face / m — on bonds
+    # where the two legitimately coincide (face 100 annual) the mismatch
+    # test fails and nothing changes.
+    if face and coupon and sched.periods_per_year and len(interest) >= 2:
+        expected = face * coupon / 100.0 / sched.periods_per_year
+        amts = [f.amount for f in interest if f.amount is not None]
+        if (len(amts) == len(interest)
+                and all(abs(a - coupon) < 0.005 for a in amts)
+                and abs(expected - coupon) / expected > 0.05):
+            for f in interest:
+                f.amount = round(expected, 2)
+                f.estimated = True
+            sched.warnings.append(
+                f"interest amounts equal the coupon rate ({coupon:g}) — "
+                f"recomputed as coupon × face / periods = {expected:,.2f}")
+
     # --- estimate missing interest amounts --------------------------------
     if face and coupon:
         _estimate_missing(interest, redemptions, face, coupon, dc)

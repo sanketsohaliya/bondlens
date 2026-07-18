@@ -52,6 +52,36 @@ def test_classify_frequency_real_db_values():
         assert schedule.classify_frequency(text) == (name, ppy), text
 
 
+def test_rate_filed_as_amount_repaired():
+    # INE0IID07751 shape: 12.75% MONTHLY bond on face 1000 where NSDL filed
+    # the coupon rate (12.75) into every amount field, redemption included.
+    flows = [_cf("Interest", date(2026, m, 28), payable=12.75)
+             for m in range(1, 13)]
+    flows.append(_cf("Full Redemption", date(2029, 12, 29), payable=12.75))
+    s = schedule.build("X", flows, _terms(
+        coupon_rate=12.75, interest_payment_frequency="Twelve times a year",
+        redemption_date=date(2029, 12, 29)), today=date(2025, 12, 1))
+    interest = [f for f in s.flows if f.event == "interest"]
+    assert all(f.amount == round(1000 * 12.75 / 100 / 12, 2) for f in interest)
+    assert all(f.estimated for f in interest)
+    redemption = [f for f in s.flows if f.event == "redemption"][0]
+    assert redemption.amount == 1000  # the earlier implausible-vs-face repair
+    assert s.amounts_estimated
+    assert any("coupon rate" in w for w in s.warnings)
+
+
+def test_amount_equal_to_rate_legitimately_untouched():
+    # Face 100, annual, 12.75%: amount == rate is CORRECT (100 x 12.75% = 12.75).
+    flows = [_cf("Interest", date(2027 + i, 1, 1), payable=12.75)
+             for i in range(3)]
+    flows.append(_cf("Full Redemption", date(2030, 1, 1), redeem=100))
+    s = schedule.build("X", flows, _terms(face_value=100, coupon_rate=12.75),
+                       today=TODAY)
+    interest = [f for f in s.flows if f.event == "interest"]
+    assert all(f.amount == 12.75 and not f.estimated for f in interest)
+    assert not s.warnings
+
+
 def test_plain_annual():
     flows = [_cf("Interest", date(2027 + i, 1, 1), payable=100) for i in range(3)]
     flows.append(_cf("Full Redemption", date(2030, 1, 1), redeem=1000))
