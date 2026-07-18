@@ -234,7 +234,7 @@ function Overview({
         <Stat label="Price (dirty)" value={fmt.inr(b.ltp)} />
         <Stat label="Clean price" value={fmt.inr(b.clean_price)} />
         <Stat label="Accrued" value={fmt.inr(b.accrued)} />
-        <Stat label="Duration" value={b.duration != null ? `${b.duration}y` : "–"} />
+        <Stat label="Duration" value={fmt.yearsMonths(b.duration)} />
         <Stat label="Coupon" value={`${fmt.pct(b.coupon)} ${b.frequency ?? ""}`} />
         <Stat label="Face value" value={fmt.inr(b.face_value)} />
         <Stat label="Matures" value={fmt.date(b.maturity_date)} />

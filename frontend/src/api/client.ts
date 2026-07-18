@@ -75,6 +75,15 @@ export const fmt = {
           ? `₹${(v / 1e5).toFixed(2)} L`
           : `₹${v.toLocaleString("en-IN", { maximumFractionDigits: 0 })}`,
   pct: (v: number | null | undefined): string => (v == null ? "–" : `${v.toFixed(2)}%`),
+  // Decimal years -> "1y 9m" (months rounded; "9m" under a year, "2y" on exact years).
+  yearsMonths: (v: number | null | undefined): string => {
+    if (v == null) return "–";
+    const months = Math.round(v * 12);
+    const y = Math.floor(months / 12);
+    const m = months % 12;
+    if (y === 0) return `${m}m`;
+    return m === 0 ? `${y}y` : `${y}y ${m}m`;
+  },
   date: (v: string | null | undefined): string =>
     v == null
       ? "–"
