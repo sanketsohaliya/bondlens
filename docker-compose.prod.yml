@@ -6,15 +6,20 @@
 #   - jobs backups land in ~/backups on the VPS instead of the Windows Desktop mount.
 #   - DOMAIN in .env selects the Caddy site address (falls back to plain :80 if unset).
 
+# NOTE: a plain `ports: []` does NOT clear the base file's mappings — compose
+# merges lists by appending. The `!override` tag replaces them instead.
 services:
   db:
-    ports: []
+    # Loopback-only: reachable via SSH tunnel (ssh -L 5433:localhost:5432),
+    # never from the internet.
+    ports: !override
+      - "127.0.0.1:5432:5432"
 
   api:
-    ports: []
+    ports: !override []
 
   web:
-    ports: []
+    ports: !override []
 
   jobs:
     volumes:
