@@ -1,0 +1,45 @@
+# Auto-deploy to the InterServer VPS on every push to main.
+# The runner rsyncs the checkout to /opt/bondlens and rebuilds the stack,
+# so the VPS never needs GitHub access. Required repo secret:
+#   VPS_SSH_KEY - private key whose public half is in root@VPS authorized_keys
+name: deploy
+
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H 162.35.184.182 >> ~/.ssh/known_hosts
+
+      - name: Sync code to VPS
+        run: |
+          rsync -az --delete \
+            --exclude .git --exclude .env --exclude node_modules \
+            --exclude .venv --exclude __pycache__ --exclude frontend/dist \
+            -e "ssh -i ~/.ssh/deploy_key" \
+            ./ root@162.35.184.182:/opt/bondlens/
+
+      - name: Rebuild and restart stack
+        run: |
+          ssh -i ~/.ssh/deploy_key root@162.35.184.182 \
+            'cd /opt/bondlens && docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build --remove-orphans && docker image prune -f'
+
+      - name: Smoke test
+        run: |
+          sleep 5
+          curl -sf -o /dev/null https://bondlens.duckdns.org/
+          curl -s https://bondlens.duckdns.org/api/auth/me | grep -q 'Sign in required'
