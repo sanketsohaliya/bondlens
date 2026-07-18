@@ -140,11 +140,18 @@ export default function BondDrawer({
 function AiBriefBtn({ bond }: { bond: BondDetail }) {
   const [copied, setCopied] = useState(false);
   return (
-    <Tip text="Copy an AI-ready brief prompt — paste into ChatGPT/Gemini">
+    <Tip text="Opens ChatGPT with this bond's analysis prompt (also copied — paste into Gemini/Claude if you prefer)">
       <button
         type="button"
         onClick={() => {
-          navigator.clipboard.writeText(buildBondPrompt(bond));
+          const prompt = buildBondPrompt(bond);
+          navigator.clipboard.writeText(prompt);
+          // Synchronous open so popup blockers treat it as user-initiated.
+          window.open(
+            `https://chatgpt.com/?q=${encodeURIComponent(prompt)}`,
+            "_blank",
+            "noreferrer",
+          );
           setCopied(true);
           setTimeout(() => setCopied(false), 1500);
         }}
@@ -155,7 +162,7 @@ function AiBriefBtn({ bond }: { bond: BondDetail }) {
             : "border-zinc-700 text-zinc-300 hover:border-zinc-500 hover:text-zinc-100")
         }
       >
-        {copied ? "Copied ✓" : "AI brief"}
+        {copied ? "Copied ✓" : "AI brief ↗"}
       </button>
     </Tip>
   );
