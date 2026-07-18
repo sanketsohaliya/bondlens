@@ -23,7 +23,8 @@ jobs:
       - run: uv sync --locked
       - run: uv run ruff check backend scripts tests
       - run: uv run basedpyright
-      - run: uv run pytest tests/ -q
+      # python -m puts the repo root on sys.path (needed to import `backend`)
+      - run: uv run python -m pytest tests/ -q
 
   test-frontend:
     runs-on: ubuntu-latest
