@@ -6,6 +6,7 @@ import CashflowTable from "./CashflowTable";
 import CopyBtn from "./CopyBtn";
 import RatingTimeline from "./RatingTimeline";
 import { HoldMark, WatchStar } from "./ScreenerTable";
+import Tip from "./Tooltip";
 import TradeChart from "./TradeChart";
 
 export type Tab = "overview" | "chart" | "cashflows" | "ratings";
@@ -134,16 +135,75 @@ export default function BondDrawer({
   );
 }
 
-function Stat({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
-  return (
+function Stat({
+  label,
+  value,
+  accent,
+  tip,
+}: {
+  label: string;
+  value: string;
+  accent?: boolean;
+  tip?: string | null;
+}) {
+  const card = (
     <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 px-3 py-2.5">
-      <div className="text-[11px] text-zinc-500">{label}</div>
+      <div className="text-[11px] text-zinc-500">
+        {label}
+        {tip && <span className="ml-1 text-zinc-600">ⓘ</span>}
+      </div>
       <div
         className={`text-sm font-semibold mt-0.5 ${accent ? "text-emerald-400" : "text-zinc-100"}`}
       >
         {value}
       </div>
     </div>
+  );
+  return tip ? (
+    <Tip text={tip} className="contents">
+      {card}
+    </Tip>
+  ) : (
+    card
+  );
+}
+
+const PERIODS: Record<string, [number, string]> = {
+  monthly: [12, "monthly"],
+  quarterly: [4, "quarterly"],
+  semiannual: [2, "half-yearly"],
+  annual: [1, "annual"],
+};
+
+/** Per-bond explanation of exactly how the shown YTM figure is solved. */
+function ytmTip(b: BondDetail): string | null {
+  if (b.ytm == null || b.ltp == null) return null;
+  const [m, mName] = PERIODS[b.frequency ?? ""] ?? [1, "annual"];
+  const future = b.cashflows.filter((f) => f.future && f.amount);
+  const total = future.reduce((s, f) => s + (f.amount ?? 0), 0);
+  const last = future.length ? fmt.date(future[future.length - 1].due_date) : null;
+  if (b.schedule_shape === "perpetual" && b.call_dates.length > 0) {
+    return (
+      `Perpetual — yield to earliest call (${fmt.date(b.call_dates[0])}). ` +
+      `Solves r so that coupons up to the call plus face ${fmt.inr(b.face_value)} at the call, ` +
+      `each discounted by (1 + r/${m})^(${m}×t), sum to today's price ${fmt.inr(b.ltp)}. ` +
+      `t = years until each payment. r = ${fmt.pct(b.ytm)}.`
+    );
+  }
+  if (b.ytm_exact != null) {
+    return (
+      `Solved from the actual payment schedule: finds r so that all ${future.length} future ` +
+      `payments (${fmt.inr(total)} total, last on ${last}), each discounted by ` +
+      `(1 + r/${m})^(${m}×t), sum to the dirty price ${fmt.inr(b.ltp)} paid today. ` +
+      `t = years until each payment, compounded ${mName} (m=${m}). r = ${fmt.pct(b.ytm_exact)}.` +
+      (b.amounts_estimated ? " Some amounts were estimated as coupon × face." : "")
+    );
+  }
+  return (
+    `No usable payment schedule — approximated from headline terms: finds r so that ` +
+    `${mName} coupons of ${fmt.pct(b.coupon)} × ${fmt.inr(b.face_value)} ÷ ${m}, plus face ` +
+    `${fmt.inr(b.face_value)} at maturity (${fmt.date(b.maturity_date)}), each discounted by ` +
+    `(1 + r/${m})^(${m}×t), sum to the price ${fmt.inr(b.ltp)}. r = ${fmt.pct(b.ytm)}.`
   );
 }
 
@@ -165,6 +225,7 @@ function Overview({
           label={`YTM ${b.ytm_exact != null ? "(exact)" : "(approx)"}`}
           value={fmt.pct(b.ytm)}
           accent
+          tip={ytmTip(b)}
         />
         {b.yield_to_worst != null && b.yield_to_worst !== b.ytm && (
           <Stat label="Yield to worst" value={fmt.pct(b.yield_to_worst)} />
