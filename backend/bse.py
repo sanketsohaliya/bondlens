@@ -43,7 +43,7 @@ def _new_session() -> requests.Session:
 
 
 def fetch_scrip_master_raw(statuses=LISTED_STATUSES, timeout: int = 60,
-                           retries: int = 4, backoff: float = 10.0) -> dict:
+                           retries: int = 6, backoff: float = 30.0) -> dict:
     """Fetch BSE's raw list-of-securities payload per status.
 
     Returns {status: [rows...]} exactly as the API delivered it (all debt
