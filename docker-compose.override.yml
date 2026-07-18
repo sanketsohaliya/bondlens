@@ -1,0 +1,11 @@
+# Local-dev override (docker compose loads this automatically when no -f
+# flags are given; the VPS uses explicit -f files, so it never applies there).
+#
+# The scheduled jobs now run on the VPS — assigning a never-enabled profile
+# keeps the local jobs container from starting and double-running harvests
+# and double-pushing ntfy alerts. Run migrations/scripts manually if needed:
+#   docker compose run --rm jobs python scripts/migrate.py
+
+services:
+  jobs:
+    profiles: ["disabled"]
