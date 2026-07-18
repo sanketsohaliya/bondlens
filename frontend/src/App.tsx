@@ -4,6 +4,7 @@ import { api } from "./api/client";
 import type { ScreenerParams } from "./api/types";
 import BondDrawer, { type Tab } from "./components/BondDrawer";
 import FilterBar, { DEFAULT_FILTERS, type ListModes } from "./components/FilterBar";
+import Logo from "./components/Logo";
 import ScreenerTable from "./components/ScreenerTable";
 import { useAuth } from "./lib/auth";
 import { HOLDINGS_KEY, useStoredList, WATCHLIST_KEY } from "./lib/lists";
@@ -43,9 +44,12 @@ export default function App() {
     <div className="min-h-screen">
       <div className="max-w-screen-2xl mx-auto px-6 py-8">
         <header className="flex items-center gap-4 mb-8">
-          <h1 className="text-3xl font-extrabold tracking-tight">
-            Bond<span className="text-emerald-400">Lens</span>
-          </h1>
+          <div className="flex items-center gap-2.5">
+            <Logo size={36} className="rounded-lg ring-1 ring-zinc-800" />
+            <h1 className="text-3xl font-extrabold tracking-tight">
+              Bond<span className="text-emerald-400">Lens</span>
+            </h1>
+          </div>
           <div className="ml-auto flex items-center gap-3">
             <div className="relative">
               <input

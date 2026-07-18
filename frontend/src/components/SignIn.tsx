@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "../api/client";
 import type { User } from "../api/types";
+import Logo from "./Logo";
 
 const CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined;
 
@@ -73,9 +74,12 @@ export default function SignIn({ onSignedIn }: { onSignedIn: (user: User) => voi
 
       <div className="relative mx-4 w-full max-w-sm">
         <div className="rounded-2xl border border-zinc-800/80 bg-zinc-900/60 backdrop-blur-sm shadow-[0_0_60px_-15px_rgba(16,185,129,0.15)] p-8 text-center">
-          <h1 className="text-[26px] font-bold tracking-tight text-zinc-100">
-            Bond<span className="text-emerald-400">Lens</span>
-          </h1>
+          <div className="flex items-center justify-center gap-2.5">
+            <Logo size={34} className="rounded-lg ring-1 ring-zinc-800" />
+            <h1 className="text-[26px] font-bold tracking-tight text-zinc-100">
+              Bond<span className="text-emerald-400">Lens</span>
+            </h1>
+          </div>
           <p className="mt-2 text-sm text-zinc-400">Indian corporate-bond screener</p>
           <p className="mt-1 text-xs text-zinc-600">Sign in to continue</p>
 
