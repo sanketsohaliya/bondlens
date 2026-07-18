@@ -2,6 +2,7 @@ import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { api, fmt } from "../api/client";
 import type { BondDetail } from "../api/types";
+import { buildBondPrompt } from "../lib/aiPrompt";
 import CashflowTable from "./CashflowTable";
 import CopyBtn from "./CopyBtn";
 import RatingTimeline from "./RatingTimeline";
@@ -74,6 +75,7 @@ export default function BondDrawer({
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
+                  <AiBriefBtn bond={bond} />
                   <a
                     href={`https://www.indiabondinfo.nsdl.com/CBDServices/#/instrumentDetails/${bond.isin}`}
                     target="_blank"
@@ -132,6 +134,30 @@ export default function BondDrawer({
         )}
       </aside>
     </div>
+  );
+}
+
+function AiBriefBtn({ bond }: { bond: BondDetail }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <Tip text="Copy an AI-ready brief prompt — paste into ChatGPT/Gemini">
+      <button
+        type="button"
+        onClick={() => {
+          navigator.clipboard.writeText(buildBondPrompt(bond));
+          setCopied(true);
+          setTimeout(() => setCopied(false), 1500);
+        }}
+        className={
+          "text-xs px-3 py-1.5 rounded-md border transition-colors " +
+          (copied
+            ? "border-emerald-500/50 text-emerald-400"
+            : "border-zinc-700 text-zinc-300 hover:border-zinc-500 hover:text-zinc-100")
+        }
+      >
+        {copied ? "Copied ✓" : "AI brief"}
+      </button>
+    </Tip>
   );
 }
 
