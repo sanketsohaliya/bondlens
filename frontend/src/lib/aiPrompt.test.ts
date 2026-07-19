@@ -172,12 +172,42 @@ describe("buildBondPrompt", () => {
     expect(p).toContain("(+8 more)");
   });
 
+  it("lists rating-rationale and document links, capped at 5 each", () => {
+    const events: RatingEvent[] = Array.from({ length: 8 }, (_, i) => ({
+      rating: "A",
+      outlook: null,
+      action: null,
+      rating_date: `2025-02-0${i + 1}`,
+      press_release: `https://crisil.com/pr/${i}`,
+    }));
+    const docs = Array.from({ length: 8 }, (_, i) => ({
+      doc_name: `Prospectus ${i}`,
+      source: "NSDL",
+      download_link: `https://nsdl.com/doc/${i}`,
+    }));
+    const p = buildBondPrompt(
+      mk({ rating_timeline: { CRISIL: events }, documents: docs as BondDetail["documents"] }),
+    );
+    expect(p).toContain("-- Reports & documents --");
+    expect(p.match(/Rating rationale:/g)?.length).toBe(5);
+    expect(p.match(/Document: Prospectus/g)?.length).toBe(5);
+    // Most recent release first
+    expect(p).toContain("https://crisil.com/pr/7");
+    expect(p).not.toContain("https://crisil.com/pr/0");
+  });
+
+  it("omits the reports section when there are no links", () => {
+    expect(buildBondPrompt(mk({ rating_timeline: {}, documents: [] }))).not.toContain(
+      "Reports & documents",
+    );
+  });
+
   it("marks what-if prices as hypothetical", () => {
     expect(buildBondPrompt(mk({ custom_price: true }))).toContain("hypothetical what-if");
     expect(buildBondPrompt(mk())).not.toContain("hypothetical");
   });
 
   it("stays paste-friendly in size", () => {
-    expect(buildBondPrompt(mk()).length).toBeLessThan(4000);
+    expect(buildBondPrompt(mk()).length).toBeLessThan(5000);
   });
 });

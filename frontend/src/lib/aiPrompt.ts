@@ -8,6 +8,7 @@ import type { BondDetail, RatingEvent } from "../api/types";
 const MAX_RATING_EVENTS = 10;
 const MAX_REDEMPTIONS = 12;
 const MAX_SIBLINGS = 8;
+const MAX_LINKS = 5;
 
 const INSTRUCTIONS = `You are a fixed-income analyst covering Indian corporate bonds. I'm a retail
 investor considering the bond below. All amounts are ₹ per unit.
@@ -19,7 +20,8 @@ Do two things:
    records, liquidity, structural quirks, and any data that looks off.
 
 Also search the web for recent news on the issuer (results, rating actions,
-defaults, promoter/governance issues) and factor that in.
+defaults, promoter/governance issues) and factor that in. If rating-rationale
+or offer-document links are provided below, read them too.
 
 Be direct and specific. End with a one-line verdict.`;
 
@@ -64,6 +66,35 @@ function ratingEvents(b: BondDetail): string[] {
         `${e.agency} ${e.rating}${e.outlook ? ` (${e.outlook})` : ""}` +
         `${e.action ? ` ${e.action}` : ""}${e.rating_date ? ` ${fmt.date(e.rating_date)}` : ""}`,
     );
+}
+
+function reportLinks(b: BondDetail): string[] {
+  const out: string[] = [];
+  const releases: { agency: string; label: string; url: string; date: string }[] = [];
+  for (const [agency, evs] of Object.entries(b.rating_timeline ?? {})) {
+    for (const e of evs) {
+      if (e.press_release) {
+        releases.push({
+          agency,
+          label: e.rating ?? "",
+          url: e.press_release,
+          date: e.rating_date ?? "",
+        });
+      }
+    }
+  }
+  releases.sort((a, z) => z.date.localeCompare(a.date));
+  for (const r of releases.slice(0, MAX_LINKS)) {
+    out.push(
+      `Rating rationale: ${r.agency} ${r.label}${r.date ? ` ${fmt.date(r.date)}` : ""} — ${r.url}`,
+    );
+  }
+  for (const d of (b.documents ?? []).filter((d) => d.download_link).slice(0, MAX_LINKS)) {
+    out.push(
+      `Document: ${d.doc_name ?? "unnamed"}${d.source ? ` (${d.source})` : ""} — ${d.download_link}`,
+    );
+  }
+  return out;
 }
 
 function cashflowLines(b: BondDetail): string[] {
@@ -188,6 +219,7 @@ export function buildBondPrompt(b: BondDetail): string {
       ],
     ],
     ["Cashflows (summary)", cashflowLines(b)],
+    [reportLinks(b).length ? "Reports & documents" : null, reportLinks(b)],
     [siblingLines(b).length ? "Same issuer" : null, siblingLines(b)],
   ];
 
