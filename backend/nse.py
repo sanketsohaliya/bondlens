@@ -6,6 +6,7 @@ only the functions the universe builder uses.
 import csv
 import io
 import re
+import time
 
 import requests
 
@@ -32,11 +33,27 @@ def _to_float(value):
         return None
 
 
-def fetch_debt_csv(timeout: int = 20) -> str:
-    """Raw DEBT.csv text from NSE archives (parsed below; also archived)."""
-    resp = requests.get(DEBT_MASTER_URL, headers=HEADERS, timeout=timeout)
-    resp.raise_for_status()
-    return resp.text
+def fetch_debt_csv(timeout: int = 60, retries: int = 5,
+                   backoff: float = 30.0) -> str:
+    """Raw DEBT.csv text from NSE archives (parsed below; also archived).
+
+    NSE archives is flaky around its early-morning regeneration window
+    (read timeouts, transient 5xx), so retry with a linear backoff like
+    the BSE fetcher does.
+    """
+    last_exc: Exception | None = None
+    for attempt in range(retries + 1):
+        if attempt:
+            time.sleep(backoff * attempt)
+        try:
+            resp = requests.get(DEBT_MASTER_URL, headers=HEADERS,
+                                timeout=timeout)
+            resp.raise_for_status()
+            return resp.text
+        except requests.RequestException as exc:
+            last_exc = exc
+    raise RuntimeError(f"NSE DEBT.csv failed after {retries + 1} "
+                       f"attempts: {last_exc!r}")
 
 
 def parse_debt_isins(text: str) -> list[dict]:
@@ -85,6 +102,6 @@ def parse_debt_isins(text: str) -> list[dict]:
     return list(out.values())
 
 
-def fetch_debt_isins(timeout: int = 20) -> list[dict]:
+def fetch_debt_isins(timeout: int = 60) -> list[dict]:
     """Fetch and parse DEBT.csv in one step."""
     return parse_debt_isins(fetch_debt_csv(timeout=timeout))
