@@ -337,6 +337,10 @@ export type BondDetail = {
      */
     coupon: number | null;
     /**
+     * Implied Coupon
+     */
+    implied_coupon: number | null;
+    /**
      * Face Value
      */
     face_value: number | null;

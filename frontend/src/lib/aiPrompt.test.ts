@@ -33,6 +33,7 @@ const base = {
   otc_yield: 14.11,
   otc_trade_date: "2026-07-17",
   coupon: 13,
+  implied_coupon: null,
   face_value: 10000,
   frequency: "monthly",
   schedule_shape: "staggered",
@@ -194,6 +195,19 @@ describe("buildBondPrompt", () => {
     // Most recent release first
     expect(p).toContain("https://crisil.com/pr/7");
     expect(p).not.toContain("https://crisil.com/pr/0");
+  });
+
+  it("describes cumulative bonds via the implied coupon", () => {
+    const p = buildBondPrompt(
+      mk({
+        coupon: null,
+        implied_coupon: 11.2,
+        frequency: "cumulative",
+        schedule_shape: "cumulative",
+      }),
+    );
+    expect(p).toContain("pays everything at maturity (cumulative)");
+    expect(p).toContain("≈11.20% effective annual implied");
   });
 
   it("omits the reports section when there are no links", () => {

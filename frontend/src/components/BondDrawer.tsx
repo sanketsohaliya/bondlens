@@ -268,7 +268,22 @@ function Overview({
         <Stat label="Clean price" value={fmt.inr(b.clean_price)} />
         <Stat label="Accrued" value={fmt.inr(b.accrued)} />
         <Stat label="Duration" value={fmt.yearsMonths(b.duration)} />
-        <Stat label="Coupon" value={`${fmt.pct(b.coupon)} ${b.frequency ?? ""}`} />
+        <Stat
+          label="Coupon"
+          value={
+            b.coupon == null && b.implied_coupon != null
+              ? `≈${fmt.pct(b.implied_coupon)} implied`
+              : `${fmt.pct(b.coupon)} ${b.frequency ?? ""}`
+          }
+          tip={
+            b.coupon == null && b.implied_coupon != null
+              ? `No published coupon — everything is paid at maturity (${b.schedule_shape}). ` +
+                `This is the effective-annual rate implied by the cashflows: face value growing to ` +
+                `the total payout between allotment and maturity. The issuer's brochure may quote the ` +
+                `same cashflows as a simple or monthly-compounded rate, so treat this as indicative.`
+              : undefined
+          }
+        />
         <Stat label="Face value" value={fmt.inr(b.face_value)} />
         <Stat label="Matures" value={fmt.date(b.maturity_date)} />
         <Stat

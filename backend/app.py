@@ -236,6 +236,9 @@ def bond_detail(isin: str, price: float | None = Query(None, gt=0)):
         "otc_yield": core.get("otc_yield"),
         "otc_trade_date": core.get("otc_trade_date"),
         "coupon": coupon,
+        "implied_coupon": (yields.implied_coupon(
+            sched, terms.get("issue_price") if terms else None)
+            if coupon is None else None),
         "face_value": face,
         "frequency": sched.frequency,
         "schedule_shape": sched.shape,

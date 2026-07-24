@@ -127,6 +127,44 @@ def yield_to_call(price: float | None, sched: Schedule,
     return None
 
 
+def implied_coupon(sched: Schedule,
+                   issue_price: float | None = None) -> float | None:
+    """Implied effective-annual rate (%) for bonds that pay everything at
+    the end (shapes ``cumulative`` and ``zero_coupon``), where NSDL's
+    couponRate is prose ("N.A.", "effective yield ...") and parses to None.
+
+    Solves (total_payout / base)^(1/T) = 1 + r over T years from allotment
+    to the final flow. ``base`` is the face value; when the redemption is
+    at par (a discount-issued zero coupon) the return sits in the issue
+    price instead, so that is used when supplied.
+
+    Deliberately effective-annual: it is the only quoting-convention-free
+    measure (issuers advertise the same cashflows as simple, monthly- or
+    annually-compounded rates), and it matches the compounding our YTM
+    uses. Display as ≈implied, never as the official coupon.
+    """
+    if sched.shape not in ("cumulative", "zero_coupon") or not sched.usable:
+        return None
+    if sched.allotment_date is None or not sched.face_value:
+        return None
+    dated = [(f.due_date, f.amount) for f in sched.flows
+             if f.amount and f.due_date]
+    if not dated:
+        return None
+    total = sum(a for _, a in dated)
+    last = max(d for d, _ in dated)
+    base = float(sched.face_value)
+    if total <= base * 1.001:
+        # Redeems at par: the gain is the issue discount, if we know it.
+        if not issue_price or not 0 < float(issue_price) < total:
+            return None
+        base = float(issue_price)
+    t = daycount.year_frac(sched.allotment_date, last, sched.day_count)
+    if t < 0.25:
+        return None
+    return _plausible(round(((total / base) ** (1 / t) - 1) * 100, 2))
+
+
 def parse_call_dates(terms: dict | None) -> list[date]:
     """Extract usable call dates from bond_terms' free-text fields."""
     if not terms or (terms.get("call_indicator") or "").lower() != "yes":

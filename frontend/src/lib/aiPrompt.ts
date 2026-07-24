@@ -160,9 +160,14 @@ export function buildBondPrompt(b: BondDetail): string {
         b.coupon != null
           ? `Coupon: ${fmt.pct(b.coupon)}${b.frequency ? ` ${b.frequency}` : ""}` +
             (b.face_value != null ? `, face value ₹${b.face_value.toLocaleString("en-IN")}` : "")
-          : b.face_value != null
-            ? `Face value: ₹${b.face_value.toLocaleString("en-IN")}`
-            : null,
+          : b.implied_coupon != null
+            ? `Coupon: none periodic — pays everything at maturity (${b.schedule_shape}); ` +
+              `≈${fmt.pct(b.implied_coupon)} effective annual implied by the cashflows ` +
+              `(issuer may quote it under a different compounding convention)` +
+              (b.face_value != null ? `. Face value ₹${b.face_value.toLocaleString("en-IN")}` : "")
+            : b.face_value != null
+              ? `Face value: ₹${b.face_value.toLocaleString("en-IN")}`
+              : null,
         [
           secured ? `Secured: ${secured}` : null,
           taxFree ? `Tax-free: ${taxFree}` : null,

@@ -144,6 +144,7 @@ class BondDetail(BaseModel):
     otc_yield: float | None
     otc_trade_date: date | None
     coupon: float | None
+    implied_coupon: float | None
     face_value: float | None
     frequency: str | None
     # Schedule provenance

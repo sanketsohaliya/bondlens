@@ -163,6 +163,40 @@ def test_current_yield():
     assert yields.current_yield(950, 10, 1000) == pytest.approx(10.53, abs=0.01)
 
 
+def test_implied_coupon_cumulative():
+    # 1000 face doubles to 2001 over ~6.55y -> ~11.2% effective annual.
+    flows = [Flow("interest", date(2031, 10, 30), amount=1001),
+             Flow("redemption", date(2031, 10, 30), amount=1000)]
+    s = _sched(flows, shape="cumulative")
+    s.allotment_date = date(2025, 4, 10)
+    r = yields.implied_coupon(s)
+    assert r == pytest.approx(11.2, abs=0.2)
+
+
+def test_implied_coupon_zero_coupon_uses_issue_price():
+    # Redeems at par: the return is the issue discount.
+    flows = [Flow("redemption", date(2028, 7, 12), amount=1000)]
+    s = _sched(flows, shape="zero_coupon")
+    s.allotment_date = date(2026, 7, 12)
+    assert yields.implied_coupon(s) is None  # no issue price known
+    r = yields.implied_coupon(s, issue_price=826.45)
+    assert r == pytest.approx(10.0, abs=0.1)
+
+
+def test_implied_coupon_only_for_terminal_shapes():
+    flows = [Flow("interest", date(2027, 7, 12), amount=100),
+             Flow("redemption", date(2027, 7, 12), amount=1000)]
+    s = _sched(flows, shape="plain")
+    s.allotment_date = date(2026, 7, 12)
+    assert yields.implied_coupon(s) is None
+
+
+def test_implied_coupon_requires_allotment_date():
+    flows = [Flow("interest", date(2031, 10, 30), amount=1001),
+             Flow("redemption", date(2031, 10, 30), amount=1000)]
+    assert yields.implied_coupon(_sched(flows, shape="cumulative")) is None
+
+
 def test_xirr_simple():
     y = yields.xirr([(date(2025, 1, 1), -1000), (date(2026, 1, 1), 1100)])
     assert y == pytest.approx(10.0, abs=0.1)
