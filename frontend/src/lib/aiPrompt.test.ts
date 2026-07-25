@@ -40,6 +40,7 @@ const base = {
   schedule_usable: true,
   schedule_warnings: [],
   amounts_estimated: false,
+  issue_date: "2023-12-19",
   maturity_date: "2028-12-19",
   years_to_maturity: 2.42,
   ytm_exact: 14.17,
@@ -195,6 +196,11 @@ describe("buildBondPrompt", () => {
     // Most recent release first
     expect(p).toContain("https://crisil.com/pr/7");
     expect(p).not.toContain("https://crisil.com/pr/0");
+  });
+
+  it("includes the issue date in the terms section", () => {
+    expect(buildBondPrompt(mk())).toContain("Issued: 19 Dec 2023");
+    expect(buildBondPrompt(mk({ issue_date: null }))).not.toContain("Issued:");
   });
 
   it("describes cumulative bonds via the implied coupon", () => {

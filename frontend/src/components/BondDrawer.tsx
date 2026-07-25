@@ -285,6 +285,16 @@ function Overview({
           }
         />
         <Stat label="Face value" value={fmt.inr(b.face_value)} />
+        <Stat
+          label="Issued"
+          value={
+            b.issue_date
+              ? `${fmt.date(b.issue_date)} (${fmt.yearsMonths(
+                  (Date.now() - new Date(b.issue_date).getTime()) / 31557600000,
+                )} ago)`
+              : "–"
+          }
+        />
         <Stat label="Matures" value={fmt.date(b.maturity_date)} />
         <Stat
           label="Last traded"

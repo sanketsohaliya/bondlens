@@ -175,6 +175,7 @@ export function buildBondPrompt(b: BondDetail): string {
         ]
           .filter(Boolean)
           .join(" | ") || null,
+        b.issue_date ? `Issued: ${fmt.date(b.issue_date)}` : null,
         b.maturity_date
           ? `Matures: ${fmt.date(b.maturity_date)}` +
             (b.years_to_maturity != null ? ` (${fmt.yearsMonths(b.years_to_maturity)})` : "")

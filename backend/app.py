@@ -249,6 +249,7 @@ def bond_detail(isin: str, price: float | None = Query(None, gt=0)):
         "schedule_usable": sched.usable,
         "schedule_warnings": sched.warnings,
         "amounts_estimated": sched.amounts_estimated,
+        "issue_date": terms.get("allotment_date") if terms else None,
         "maturity_date": red_date,
         "exchange": core.get("exchange"),
         "years_to_maturity": _years(red_date, today),

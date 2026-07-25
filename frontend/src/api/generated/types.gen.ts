@@ -365,6 +365,10 @@ export type BondDetail = {
      */
     amounts_estimated: boolean;
     /**
+     * Issue Date
+     */
+    issue_date: string | null;
+    /**
      * Maturity Date
      */
     maturity_date: string | null;

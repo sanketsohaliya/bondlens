@@ -152,6 +152,7 @@ class BondDetail(BaseModel):
     schedule_usable: bool
     schedule_warnings: list[str]
     amounts_estimated: bool
+    issue_date: date | None
     maturity_date: date | None
     years_to_maturity: float | None
     # Yields
