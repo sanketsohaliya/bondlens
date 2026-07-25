@@ -101,6 +101,9 @@ def bonds(
     issuer: str | None = Query(None, description="Issuer name substring"),
     exchange: str | None = Query(None, description="NSE or BSE"),
     frequency: str | None = Query(None, description="monthly|quarterly|semiannual|annual"),
+    payout: str | None = Query(
+        None, pattern="^(maturity|periodic)$",
+        description="maturity = zero-coupon/cumulative, periodic = coupon stream"),
     min_years: float | None = Query(None),
     max_years: float | None = Query(None),
     max_ltp: float | None = Query(None, description="Max price per unit"),
@@ -136,6 +139,7 @@ def bonds(
         "min_ytm": min_ytm, "max_ytm": max_ytm, "rating": rating,
         "min_rating_rank": floor, "sector": sector, "industry": industry,
         "issuer": issuer, "exchange": exchange, "frequency": frequency,
+        "payout": payout,
         "min_years": min_years, "max_years": max_years, "max_ltp": max_ltp,
         "min_turnover": min_turnover, "min_otc_turnover": min_otc_turnover,
         "retail_only": retail_only, "otc_only": otc_only,

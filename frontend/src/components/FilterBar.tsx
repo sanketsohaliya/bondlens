@@ -25,6 +25,7 @@ export function describeFilters(p: ScreenerParams): string[] {
   if (p.min_turnover != null) parts.push(`retail traded ≥ ${fmt.inr(p.min_turnover)}`);
   if (p.min_otc_turnover != null) parts.push(`OTC traded ≥ ${fmt.inr(p.min_otc_turnover)}`);
   if (p.frequency) parts.push(`pays ${p.frequency}`);
+  if (p.payout) parts.push(p.payout === "maturity" ? "pays at maturity" : "periodic payout");
   if (p.sector) parts.push(`sector: ${p.sector}`);
   if (p.exchange) parts.push(`on ${p.exchange}`);
   if (p.retail_only) parts.push("trades retail");
@@ -158,6 +159,7 @@ function FilterFields({
     ["max_ytm", "Max YTM %"],
     ["sector", "Sector"],
     ["frequency", "Pays"],
+    ["payout", "Payout"],
     ["exchange", "Exchange"],
     ["max_years", "Max maturity"],
     ["max_ltp", "Ticket size"],
@@ -172,6 +174,7 @@ function FilterFields({
     max_ytm: params.max_ytm != null,
     sector: !!params.sector,
     frequency: !!params.frequency,
+    payout: !!params.payout,
     exchange: !!params.exchange,
     max_years: params.max_years != null,
     max_ltp: params.max_ltp != null,
@@ -188,6 +191,7 @@ function FilterFields({
     max_ytm: { max_ytm: undefined },
     sector: { sector: undefined },
     frequency: { frequency: undefined },
+    payout: { payout: undefined },
     exchange: { exchange: undefined },
     max_years: { max_years: undefined },
     max_ltp: { max_ltp: undefined },
@@ -235,6 +239,21 @@ function FilterFields({
         return sel("Sector", "sector", filters?.sectors ?? []);
       case "frequency":
         return sel("Pays", "frequency", filters?.frequencies ?? []);
+      case "payout":
+        return (
+          <label className="flex-1">
+            <span className={lbl(!!params.payout)}>Payout</span>
+            <select
+              className={box(!!params.payout)}
+              value={params.payout ?? ""}
+              onChange={(e) => set({ payout: e.target.value || undefined })}
+            >
+              <option value="">Any</option>
+              <option value="maturity">At maturity (zero coupon / cumulative)</option>
+              <option value="periodic">Periodic coupons</option>
+            </select>
+          </label>
+        );
       case "exchange":
         return sel("Exchange", "exchange", ["NSE", "BSE"]);
       case "max_years":

@@ -25,6 +25,7 @@ export interface ScreenerParams {
   sector?: string;
   exchange?: string;
   frequency?: string;
+  payout?: string;
   min_years?: number;
   max_years?: number;
   max_ltp?: number;

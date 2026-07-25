@@ -204,6 +204,12 @@ def screener(f: dict, stale_days: int) -> tuple[list[dict], int, float | None]:
         add("a.on_bse")
     if f.get("frequency"):
         add("a.frequency = %(freq)s", freq=f["frequency"].lower())
+    # Payout structure: "maturity" = the whole return arrives at redemption
+    # (zero-coupon / cumulative), "periodic" = a running coupon stream.
+    if f.get("payout") == "maturity":
+        add("a.schedule_shape IN ('zero_coupon', 'cumulative')")
+    elif f.get("payout") == "periodic":
+        add("a.schedule_shape IN ('plain', 'staggered')")
     if f.get("min_years") is not None:
         add("a.maturity_date > CURRENT_DATE AND "
             "round((a.maturity_date - CURRENT_DATE) / 365.0, 2) >= %(min_years)s",
