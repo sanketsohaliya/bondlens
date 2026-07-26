@@ -267,7 +267,6 @@ function Overview({
         <Stat label="Price (dirty)" value={fmt.inr(b.ltp)} />
         <Stat label="Clean price" value={fmt.inr(b.clean_price)} />
         <Stat label="Accrued" value={fmt.inr(b.accrued)} />
-        <Stat label="Duration" value={fmt.yearsMonths(b.duration)} />
         <Stat
           label="Coupon"
           value={
