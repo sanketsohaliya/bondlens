@@ -130,6 +130,20 @@ def test_cumulative_on_maturity():
     assert s.usable
 
 
+def test_accreted_interest_row_at_maturity_is_zero_coupon():
+    # INE0BUS07CA1 shape: 'Zero Interest' bond where NSDL files the accreted
+    # interest as a separate Interest row on the redemption date. Used to
+    # misclassify as 'plain' (interest + redemption present).
+    flows = [_cf("Full Redemption", date(2031, 10, 30), payable=1000),
+             _cf("Interest", date(2031, 10, 30), payable=1000.83)]
+    s = schedule.build("X", flows, _terms(
+        coupon_rate=None, coupon_basis="Zero Interest",
+        interest_payment_frequency=None), today=TODAY)
+    assert s.shape == "zero_coupon"
+    assert s.frequency == "cumulative"
+    assert s.usable
+
+
 def test_issue_level_rescaled():
     # Amounts published at issue level: 100,000 units of ₹1000 face.
     flows = [_cf("Interest", date(2027, 1, 1), payable=100_000 * 100),

@@ -269,7 +269,14 @@ def build(isin: str, cashflows: list[dict], terms: dict | None,
     elif n_redemptions > 1:
         sched.shape = "staggered"
     elif interest and redemptions:
-        sched.shape = "plain"
+        # Accreted-interest payout: every interest flow lands on the final
+        # redemption date, so nothing is paid before maturity.
+        final_red = max(f.due_date for f in redemptions)
+        if all(f.due_date == final_red for f in interest):
+            sched.shape = "zero_coupon" if (zero_coupon or not coupon) else "cumulative"
+            sched.frequency = sched.frequency or "cumulative"
+        else:
+            sched.shape = "plain"
     else:
         sched.shape = "irregular"
         sched.warnings.append("unclassifiable flow pattern")
