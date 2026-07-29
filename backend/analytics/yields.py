@@ -209,6 +209,11 @@ def accrued_interest(sched: Schedule,
     date). In the first coupon period (no previous coupon yet) interest
     accrues from the allotment date. None when the position inside the
     coupon stream can't be located at all.
+
+    Ex-interest window: once the next coupon's record date has passed, a
+    buyer settling today no longer receives it, so accrued turns negative
+    (the seller keeps the full coupon; the buyer is compensated for the
+    days between settlement and the payment date).
     """
     today = today or date.today()
     interest = sorted((f for f in sched.flows
@@ -229,6 +234,11 @@ def accrued_interest(sched: Schedule,
     total = daycount.year_frac(prev_date, nxt.due_date, sched.day_count)
     if total <= 0:
         return None
+    if not nxt.receivable_by_buyer(today):
+        # Ex-interest: buyer misses the whole coupon, so accrued is minus
+        # the unearned remainder of the period (settlement -> due date).
+        remaining = daycount.year_frac(today, nxt.due_date, sched.day_count)
+        return round(-nxt.amount * max(0.0, min(1.0, remaining / total)), 2)
     elapsed = daycount.year_frac(prev_date, today, sched.day_count)
     return round(nxt.amount * min(1.0, elapsed / total), 2)
 

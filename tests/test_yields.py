@@ -105,6 +105,32 @@ def test_accrued_midway():
     assert acc == pytest.approx(100 * 181 / 365, abs=1.0)
 
 
+def test_accrued_negative_in_ex_interest_window():
+    # 13LLDL29 case: next coupon due 31 Jul with record date 16 Jul, today
+    # 12 Jul... shift today past the record date. A buyer settling then
+    # misses the coupon -> negative accrued for the unearned remainder.
+    today = date(2026, 7, 20)
+    flows = [Flow("interest", date(2026, 6, 30), amount=100),
+             Flow("interest", date(2026, 7, 31), record_date=date(2026, 7, 16),
+                  amount=100),
+             Flow("interest", date(2027, 7, 31), amount=100),
+             Flow("redemption", date(2027, 7, 31), amount=1000)]
+    acc = yields.accrued_interest(_sched(flows), today)
+    # 11 of 31 days remain unearned -> -100 * 11/31
+    assert acc == pytest.approx(-100 * 11 / 31, abs=1.0)
+
+
+def test_clean_price_above_dirty_when_ex_interest():
+    today = date(2026, 7, 20)
+    flows = [Flow("interest", date(2026, 6, 30), amount=100),
+             Flow("interest", date(2026, 7, 31), record_date=date(2026, 7, 16),
+                  amount=100),
+             Flow("redemption", date(2027, 7, 31), amount=1000)]
+    s = _sched(flows)
+    cp = yields.clean_price(1000, s, today)
+    assert cp is not None and cp > 1000
+
+
 def test_clean_price():
     flows = [Flow("interest", date(2026, 1, 12), amount=100),
              Flow("interest", date(2027, 1, 12), amount=100),
