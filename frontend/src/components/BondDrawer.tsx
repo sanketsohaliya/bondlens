@@ -264,7 +264,7 @@ function Overview({
           <Stat label="Yield to worst" value={fmt.pct(b.yield_to_worst)} />
         )}
         <Stat label="Current yield" value={fmt.pct(b.current_yield)} />
-        <Stat label="Price (dirty)" value={fmt.inrFull(b.ltp)} />
+        <Stat label="LTP (dirty)" value={fmt.inrFull(b.ltp)} />
         <Stat label="Clean price" value={fmt.inrFull(b.clean_price)} />
         <Stat label="Accrued" value={fmt.inrFull(b.accrued)} />
         <Stat
