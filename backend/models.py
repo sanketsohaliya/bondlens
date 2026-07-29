@@ -251,6 +251,33 @@ class Status(BaseModel):
     bonds_total: int
 
 
+class DepthLevel(BaseModel):
+    price: float | None
+    qty: float | None
+    orders: int | None = None
+
+
+class DepthSide(BaseModel):
+    bids: list[DepthLevel]
+    asks: list[DepthLevel]
+    total_bid_qty: float | None
+    total_ask_qty: float | None
+    as_of: str | None
+
+
+class YtmAtPrice(BaseModel):
+    price: float
+    ytm: float | None
+
+
+class OrderBook(BaseModel):
+    isin: str
+    fetched_at: str
+    nse: DepthSide | None
+    bse: DepthSide | None
+    ytm_at_ask: list[YtmAtPrice]
+
+
 class Health(BaseModel):
     app: str
     version: str

@@ -4,6 +4,7 @@ import type {
   Filters,
   ListName,
   ListsResponse,
+  OrderBook,
   ScreenerParams,
   Status,
   TradesResponse,
@@ -48,6 +49,7 @@ export const api = {
     isin: string,
     params?: { from?: string; to?: string; exchange?: string; segment?: string },
   ) => get<TradesResponse>(`/api/bonds/${isin}/trades`, params),
+  depth: (isin: string) => get<OrderBook>(`/api/bonds/${isin}/depth`),
   status: () => get<Status>("/api/status"),
   filters: () => get<Filters>("/api/filters"),
   auth: {

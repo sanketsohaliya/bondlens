@@ -5,12 +5,13 @@ import type { BondDetail } from "../api/types";
 import { buildBondPrompt } from "../lib/aiPrompt";
 import CashflowTable from "./CashflowTable";
 import CopyBtn from "./CopyBtn";
+import OrderBook from "./OrderBook";
 import RatingTimeline from "./RatingTimeline";
 import { HoldMark, WatchStar } from "./ScreenerTable";
 import Tip from "./Tooltip";
 import TradeChart from "./TradeChart";
 
-export type Tab = "overview" | "chart" | "cashflows" | "ratings";
+export type Tab = "overview" | "chart" | "cashflows" | "order book" | "ratings";
 
 export default function BondDrawer({
   isin,
@@ -104,7 +105,7 @@ export default function BondDrawer({
                 </div>
               </div>
               <nav className="flex gap-1 mt-3 -mb-px">
-                {(["overview", "chart", "cashflows", "ratings"] as Tab[]).map((t) => (
+                {(["overview", "chart", "cashflows", "order book", "ratings"] as Tab[]).map((t) => (
                   <button
                     type="button"
                     key={t}
@@ -128,6 +129,7 @@ export default function BondDrawer({
               )}
               {tab === "chart" && <TradeChart isin={bond.isin} faceValue={bond.face_value} />}
               {tab === "cashflows" && <CashflowTable bond={bond} />}
+              {tab === "order book" && <OrderBook isin={bond.isin} />}
               {tab === "ratings" && <RatingTimeline timeline={bond.rating_timeline} />}
             </div>
           </>

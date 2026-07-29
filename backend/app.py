@@ -11,7 +11,7 @@ from typing import Literal
 
 from fastapi import APIRouter, Body, Depends, FastAPI, HTTPException, Query, Response
 
-from . import auth, db, kite, models, queries
+from . import auth, db, depth, kite, models, queries
 from .analytics import ratings, schedule, yields
 from .analytics.compute import STALE_AFTER_DAYS
 
@@ -291,6 +291,39 @@ def bond_trades(
     rows = queries.trades(isin.strip().upper(), date_from, date_to,
                           exchange, segment)
     return {"isin": isin, "count": len(rows), "trades": rows}
+
+
+# --------------------------------------------------------------------------
+# Order book
+# --------------------------------------------------------------------------
+
+@router.get("/api/bonds/{isin}/depth", response_model=models.OrderBook)
+def bond_depth(isin: str):
+    """Live top-5 bid/ask depth from both exchanges, fetched on demand
+    (30s cache). Ask levels are annotated with the YTM a buyer would
+    lock at that dirty price."""
+    isin = isin.strip().upper()
+    row = queries.bond_row(isin)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Unknown ISIN")
+    book = depth.order_book(isin, row.get("nse_symbol"), row.get("nse_series"),
+                            row.get("bse_scrip_code"))
+    if not book["ytm_at_ask"]:
+        ask_prices = sorted({
+            lv["price"]
+            for side in (book.get("nse"), book.get("bse")) if side
+            for lv in side["asks"] if lv["price"]
+        })
+        if ask_prices:
+            today = date.today()
+            sched = schedule.build(isin, queries.bond_cashflows(isin),
+                                   queries.bond_terms(isin), today=today)
+            if sched.usable:
+                book["ytm_at_ask"] = [
+                    {"price": p, "ytm": yields.exact_ytm(p, sched, today)}
+                    for p in ask_prices
+                ]
+    return book
 
 
 # --------------------------------------------------------------------------

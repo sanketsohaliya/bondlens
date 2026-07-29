@@ -1375,3 +1375,81 @@ export type StatusApiStatusGetResponses = {
 };
 
 export type StatusApiStatusGetResponse = StatusApiStatusGetResponses[keyof StatusApiStatusGetResponses];
+
+/**
+ * DepthLevel
+ */
+export type DepthLevel = {
+    /**
+     * Price
+     */
+    price: number | null;
+    /**
+     * Qty
+     */
+    qty: number | null;
+    /**
+     * Orders
+     */
+    orders?: number | null;
+};
+
+/**
+ * DepthSide
+ */
+export type DepthSide = {
+    /**
+     * Bids
+     */
+    bids: Array<DepthLevel>;
+    /**
+     * Asks
+     */
+    asks: Array<DepthLevel>;
+    /**
+     * Total Bid Qty
+     */
+    total_bid_qty: number | null;
+    /**
+     * Total Ask Qty
+     */
+    total_ask_qty: number | null;
+    /**
+     * As Of
+     */
+    as_of: string | null;
+};
+
+/**
+ * YtmAtPrice
+ */
+export type YtmAtPrice = {
+    /**
+     * Price
+     */
+    price: number;
+    /**
+     * Ytm
+     */
+    ytm: number | null;
+};
+
+/**
+ * OrderBook
+ */
+export type OrderBook = {
+    /**
+     * Isin
+     */
+    isin: string;
+    /**
+     * Fetched At
+     */
+    fetched_at: string;
+    nse: DepthSide | null;
+    bse: DepthSide | null;
+    /**
+     * Ytm At Ask
+     */
+    ytm_at_ask: Array<YtmAtPrice>;
+};

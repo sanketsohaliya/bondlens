@@ -15,6 +15,10 @@ export type {
   User,
 } from "./generated";
 
+// Hand-added pending codegen (backend models exist; run `npm run codegen`
+// against a live API to fold these into ./generated).
+export type { DepthLevel, DepthSide, OrderBook, YtmAtPrice } from "./generated/types.gen";
+
 export type ListName = "watchlist" | "holdings";
 
 // Screener query params (request side; hand-maintained).
