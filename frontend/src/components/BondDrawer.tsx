@@ -264,9 +264,9 @@ function Overview({
           <Stat label="Yield to worst" value={fmt.pct(b.yield_to_worst)} />
         )}
         <Stat label="Current yield" value={fmt.pct(b.current_yield)} />
-        <Stat label="Price (dirty)" value={fmt.inr(b.ltp)} />
-        <Stat label="Clean price" value={fmt.inr(b.clean_price)} />
-        <Stat label="Accrued" value={fmt.inr(b.accrued)} />
+        <Stat label="Price (dirty)" value={fmt.inrFull(b.ltp)} />
+        <Stat label="Clean price" value={fmt.inrFull(b.clean_price)} />
+        <Stat label="Accrued" value={fmt.inrFull(b.accrued)} />
         <Stat
           label="Coupon"
           value={
@@ -283,7 +283,7 @@ function Overview({
               : undefined
           }
         />
-        <Stat label="Face value" value={fmt.inr(b.face_value)} />
+        <Stat label="Face value" value={fmt.inrFull(b.face_value)} />
         <Stat
           label="Issued"
           value={

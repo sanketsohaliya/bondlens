@@ -245,14 +245,14 @@ function Row({
       >
         <div>
           <span className="group-hover/ltp:underline decoration-zinc-600 underline-offset-2">
-            {fmt.inr(b.ltp)}
+            {fmt.inrFull(b.ltp)}
           </span>
           {!b.stale && b.ltp != null && b.prev_ltp != null && b.ltp !== b.prev_ltp && (
             <span
               className={`ml-1 text-[10px] ${
                 b.ltp > b.prev_ltp ? "text-emerald-500/80" : "text-red-400/70"
               }`}
-              title={`LTP on previous trading day: ${fmt.inr(b.prev_ltp)}`}
+              title={`LTP on previous trading day: ${fmt.inrFull(b.prev_ltp)}`}
             >
               {b.ltp > b.prev_ltp ? "▲" : "▼"}
             </span>
@@ -262,7 +262,9 @@ function Row({
           )}
         </div>
         {b.face_value != null && (
-          <div className="text-[11px] text-zinc-500 font-normal">FV {fmt.inr(b.face_value)}</div>
+          <div className="text-[11px] text-zinc-500 font-normal">
+            FV {fmt.inrFull(b.face_value)}
+          </div>
         )}
       </td>
       <td
