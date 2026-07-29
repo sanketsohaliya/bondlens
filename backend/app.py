@@ -15,7 +15,11 @@ from . import auth, db, depth, kite, models, queries
 from .analytics import ratings, schedule, yields
 from .analytics.compute import STALE_AFTER_DAYS
 
-app = FastAPI(title="BondLens", version="2.0")
+# redirect_slashes builds its 307 from the proxied (http) scheme, which
+# bounces through Caddy's cacheable http->https 308 and can poison a
+# browser's redirect cache into a loop. No API URL has a trailing slash,
+# so a plain 404 is safer than a redirect.
+app = FastAPI(title="BondLens", version="2.0", redirect_slashes=False)
 
 # Everything except auth and the health check requires a session.
 router = APIRouter(dependencies=[Depends(auth.require_user)])
