@@ -4,3 +4,10 @@
 	encode gzip
 	reverse_proxy web:80
 }
+
+# Legacy DuckDNS host and www — permanent redirect to the canonical domain.
+# NOTE: DOMAIN must be bondlens.in (a duplicate host across blocks is a
+# config error). Remove the duckdns entry once old links have migrated.
+www.bondlens.in, bondlens.duckdns.org {
+	redir https://bondlens.in{uri} permanent
+}

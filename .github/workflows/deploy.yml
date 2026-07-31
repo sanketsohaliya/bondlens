@@ -72,5 +72,5 @@ jobs:
       - name: Smoke test
         run: |
           sleep 5
-          curl -sf -o /dev/null https://bondlens.duckdns.org/
-          curl -s https://bondlens.duckdns.org/api/auth/me | grep -q 'Sign in required'
+          curl -sf -o /dev/null https://bondlens.in/
+          curl -s https://bondlens.in/api/auth/me | grep -q 'Sign in required'
