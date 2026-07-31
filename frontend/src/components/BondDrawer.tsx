@@ -129,7 +129,13 @@ export default function BondDrawer({
               )}
               {tab === "chart" && <TradeChart isin={bond.isin} faceValue={bond.face_value} />}
               {tab === "cashflows" && <CashflowTable bond={bond} />}
-              {tab === "order book" && <OrderBook isin={bond.isin} />}
+              {tab === "order book" && (
+                <OrderBook
+                  isin={bond.isin}
+                  nseSymbol={bond.nse_symbol}
+                  nseSeries={bond.nse_series}
+                />
+              )}
               {tab === "ratings" && <RatingTimeline timeline={bond.rating_timeline} />}
             </div>
           </>

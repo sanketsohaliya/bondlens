@@ -2,9 +2,23 @@ import { useQuery } from "@tanstack/react-query";
 import { api, fmt } from "../api/client";
 import type { DepthSide, YtmAtPrice } from "../api/types";
 
+function nseQuoteUrl(symbol: string, series: string | null | undefined): string {
+  const qs = new URLSearchParams({ symbol });
+  if (series) qs.set("series", series);
+  return `https://www.nseindia.com/get-quotes/bonds?${qs}`;
+}
+
 /** Live top-5 bid/ask depth per exchange. Fetched once when the tab is
  * opened (server caches 30s); no background polling — use Refresh. */
-export default function OrderBook({ isin }: { isin: string }) {
+export default function OrderBook({
+  isin,
+  nseSymbol,
+  nseSeries,
+}: {
+  isin: string;
+  nseSymbol?: string | null;
+  nseSeries?: string | null;
+}) {
   const { data, isLoading, isFetching, refetch, dataUpdatedAt } = useQuery({
     queryKey: ["depth", isin],
     queryFn: () => api.depth(isin),
@@ -49,7 +63,12 @@ export default function OrderBook({ isin }: { isin: string }) {
         </div>
       ) : (
         <div className="grid md:grid-cols-2 gap-4">
-          <Ladder name="NSE" side={data.nse} ytmAtAsk={data.ytm_at_ask} />
+          <Ladder
+            name="NSE"
+            side={data.nse}
+            ytmAtAsk={data.ytm_at_ask}
+            fallbackUrl={nseSymbol ? nseQuoteUrl(nseSymbol, nseSeries) : undefined}
+          />
           <Ladder name="BSE" side={data.bse} ytmAtAsk={data.ytm_at_ask} />
         </div>
       )}
@@ -73,10 +92,12 @@ function Ladder({
   name,
   side,
   ytmAtAsk,
+  fallbackUrl,
 }: {
   name: string;
   side: DepthSide | null;
   ytmAtAsk: YtmAtPrice[];
+  fallbackUrl?: string;
 }) {
   const ytmFor = (price: number | null) =>
     price == null ? null : (ytmAtAsk.find((y) => y.price === price)?.ytm ?? null);
@@ -90,6 +111,16 @@ function Ladder({
       {!side ? (
         <div className="p-4 text-sm text-zinc-600">
           {name === "NSE" ? "Depth unavailable (NSE blocks non-browser access)." : "No depth."}
+          {fallbackUrl && (
+            <a
+              href={fallbackUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="block mt-2 text-emerald-400 hover:text-emerald-300"
+            >
+              View live order book on nseindia.com ↗
+            </a>
+          )}
         </div>
       ) : (
         <table className="w-full text-xs">
