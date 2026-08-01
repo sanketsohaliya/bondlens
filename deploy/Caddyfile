@@ -1,5 +1,14 @@
 # DOMAIN comes from .env via compose. With a real domain Caddy provisions
 # Let's Encrypt certs automatically; with the ":80" fallback it serves plain HTTP.
+
+# No HTTP/3: some ISPs mangle UDP 443, and browsers that upgrade via the
+# Alt-Svc hint then show intermittent ERR_SSL_* errors. h1+h2 only.
+{
+	servers {
+		protocols h1 h2
+	}
+}
+
 {$DOMAIN} {
 	encode gzip
 	reverse_proxy web:80
