@@ -36,6 +36,10 @@ services:
     ports:
       - "80:80"
       - "443:443"
+      # Caddy advertises HTTP/3 (Alt-Svc h3) on every response; without the
+      # UDP mapping browsers that upgrade to QUIC hit a black hole and show
+      # intermittent ERR_SSL_* errors.
+      - "443:443/udp"
     environment:
       DOMAIN: ${DOMAIN:-:80}
     volumes:
