@@ -59,8 +59,8 @@ export default function BondDrawer({
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <div className="flex items-center gap-2.5">
-                    <WatchStar isin={bond.isin} />
                     <HoldMark isin={bond.isin} />
+                    <WatchStar isin={bond.isin} />
                     <h2 className="text-lg font-bold">
                       {bond.nse_symbol ?? bond.bse_scrip_id ?? bond.isin}
                     </h2>

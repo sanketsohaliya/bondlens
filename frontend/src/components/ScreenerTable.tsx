@@ -168,8 +168,8 @@ function Row({
     >
       <td className="pl-3 pr-1 py-2.5 w-14">
         <span className="flex items-center gap-1.5">
-          <WatchStar isin={b.isin} />
           <HoldMark isin={b.isin} />
+          <WatchStar isin={b.isin} />
         </span>
       </td>
       <td className="px-3 py-2.5 w-80 max-w-80">
@@ -449,7 +449,22 @@ export function WatchStar({ isin }: { isin: string }) {
   );
 }
 
-/** ◆ opens the add-lot form; filled while the bond is in the portfolio. */
+/** Bookmark shape — filled while held, outline otherwise. */
+export function BookmarkIcon({ filled }: { filled: boolean }) {
+  return (
+    <svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true" className="block">
+      <path
+        d="M4 1.5h8a1 1 0 0 1 1 1v12l-5-3.6-5 3.6v-12a1 1 0 0 1 1-1z"
+        fill={filled ? "currentColor" : "none"}
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+/** Bookmark opens the add-lot form; filled while the bond is in the portfolio. */
 export function HoldMark({ isin }: { isin: string }) {
   const { has } = useHeldIsins();
   const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
@@ -469,10 +484,10 @@ export function HoldMark({ isin }: { isin: string }) {
             y: r.bottom + 6,
           });
         }}
-        className={`text-sm leading-none ${held ? "text-amber-400" : "text-zinc-700 hover:text-zinc-400"}`}
+        className={`leading-none ${held ? "text-amber-400" : "text-zinc-700 hover:text-zinc-400"}`}
         title={held ? "In your portfolio — add another lot" : "Add to portfolio"}
       >
-        {held ? "◆" : "◇"}
+        <BookmarkIcon filled={held} />
       </button>
       {pos && (
         <>

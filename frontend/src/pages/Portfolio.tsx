@@ -10,6 +10,7 @@ import type { PortfolioMonth, PortfolioNews, PortfolioPosition } from "../api/ty
 import Donut from "../components/Donut";
 import LotsPanel from "../components/LotsPanel";
 import RatingBadge from "../components/RatingBadge";
+import { BookmarkIcon } from "../components/ScreenerTable";
 import StatBox from "../components/StatBox";
 import { monthGrid, usePortfolio, type WeightBy, weights } from "../lib/portfolio";
 
@@ -48,8 +49,12 @@ export default function Portfolio({ onSelect }: { onSelect: (isin: string) => vo
       <div className="py-24 text-center space-y-2">
         <div className="text-lg font-semibold text-zinc-300">Your portfolio is empty</div>
         <p className="text-sm text-zinc-500">
-          Click the <span className="text-zinc-300">◇</span> next to any bond in the screener to
-          record a purchase — units, price paid, date and platform.
+          Click the bookmark{" "}
+          <span className="inline-block align-text-bottom text-zinc-300">
+            <BookmarkIcon filled={false} />
+          </span>{" "}
+          next to any bond in the screener to record a purchase — units, price paid, date and
+          platform.
         </p>
       </div>
     );

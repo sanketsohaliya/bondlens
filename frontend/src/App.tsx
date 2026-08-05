@@ -51,12 +51,20 @@ export default function App() {
     <div className="min-h-screen">
       <div className="max-w-screen-2xl mx-auto px-6 py-8">
         <header className="flex items-center gap-4 mb-8">
-          <div className="flex items-center gap-2.5">
+          <button
+            type="button"
+            title="Home"
+            onClick={() => {
+              setPage("screener");
+              setParams({ ...params, q: undefined });
+            }}
+            className="flex items-center gap-2.5 hover:opacity-90 transition-opacity"
+          >
             <Logo size={36} className="rounded-lg ring-1 ring-zinc-800" />
             <h1 className="text-3xl font-extrabold tracking-tight">
               Bond<span className="text-emerald-400">Lens</span>
             </h1>
-          </div>
+          </button>
           <nav className="flex items-center gap-1 ml-4">
             {(
               [
