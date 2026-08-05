@@ -9,6 +9,7 @@ import CopyBtn from "./CopyBtn";
 import OrderBook from "./OrderBook";
 import RatingTimeline from "./RatingTimeline";
 import { HoldMark, WatchStar } from "./ScreenerTable";
+import StatBox from "./StatBox";
 import Tip from "./Tooltip";
 import TradeChart from "./TradeChart";
 
@@ -199,32 +200,15 @@ function Stat({
   // every box the same height. line-clamp stays as a last-resort safety net.
   const span =
     value.length > 60 ? "col-span-2 md:col-span-4" : value.length > 24 ? "col-span-2" : "";
-  const card = (
-    <div
-      className={`rounded-lg border border-zinc-800 bg-zinc-900/50 px-3 py-2.5 h-full min-h-[64px] ${span}`}
-    >
-      <div className="text-[11px] text-zinc-500">
-        {label}
-        {badge && (
-          <span className="ml-1.5 text-[9px] font-medium px-1 py-0.5 rounded bg-amber-500/15 text-amber-400 border border-amber-500/30">
-            {badge}
-          </span>
-        )}
-        {shownTip && <span className="ml-1 text-zinc-600">ⓘ</span>}
-      </div>
-      <div
-        className={`text-sm font-semibold mt-0.5 break-words line-clamp-2 ${accent ? "text-emerald-400" : "text-zinc-100"}`}
-      >
-        {value}
-      </div>
-    </div>
-  );
-  return shownTip ? (
-    <Tip text={shownTip} className="contents">
-      {card}
-    </Tip>
-  ) : (
-    card
+  return (
+    <StatBox
+      label={label}
+      value={value}
+      accent={accent}
+      badge={badge}
+      tip={shownTip}
+      className={span}
+    />
   );
 }
 
@@ -239,7 +223,7 @@ function StatSection({ title, children }: { title: string; children: ReactNode }
         {title}
         <span className="flex-1 border-t border-zinc-800" />
       </h3>
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5">{children}</div>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2">{children}</div>
     </div>
   );
 }
@@ -397,7 +381,7 @@ function Overview({
   const netQuantity = termNum(t, "net_quantity");
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       <StatSection title="Price & Yield">
         <Stat
           label={`YTM ${b.ytm_exact != null ? "(exact)" : "(approx)"}`}

@@ -9,6 +9,7 @@ import {
 } from "lightweight-charts";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api, fmt } from "../api/client";
+import StatBox from "./StatBox";
 
 const RANGES = [
   ["1D", 1],
@@ -305,13 +306,7 @@ export default function TradeChart({
                 ["Trades (retail)", stats.trades ? stats.trades.toLocaleString("en-IN") : "–"],
               ] as const
             ).map(([label, value]) => (
-              <div
-                key={label}
-                className="rounded-lg border border-zinc-800 bg-zinc-900/50 px-3 py-2"
-              >
-                <div className="text-[10px] text-zinc-500">{label}</div>
-                <div className="text-xs font-semibold text-zinc-200 mt-0.5">{value}</div>
-              </div>
+              <StatBox key={label} label={label} value={value} />
             ))}
           </div>
 
