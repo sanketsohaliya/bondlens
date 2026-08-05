@@ -234,7 +234,11 @@ function StatSection({ title, children }: { title: string; children: ReactNode }
   if (kids.length === 0) return null;
   return (
     <div>
-      <h3 className="text-xs font-bold text-zinc-300 uppercase tracking-wider mb-2">{title}</h3>
+      <h3 className="flex items-center gap-2 text-xs font-bold text-zinc-200 uppercase tracking-wider mb-2.5">
+        <span className="h-3.5 w-1 rounded-full bg-emerald-500/80" />
+        {title}
+        <span className="flex-1 border-t border-zinc-800" />
+      </h3>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5">{children}</div>
     </div>
   );
