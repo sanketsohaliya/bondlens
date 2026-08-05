@@ -195,8 +195,14 @@ function Stat({
   // spelled out in words become numerals.
   const rawTip = tip ?? (value.length > 24 ? value : undefined);
   const shownTip = rawTip ? replaceNumberWords(rawTip) : undefined;
+  // Long values claim extra grid columns instead of growing taller — keeps
+  // every box the same height. line-clamp stays as a last-resort safety net.
+  const span =
+    value.length > 60 ? "col-span-2 md:col-span-4" : value.length > 24 ? "col-span-2" : "";
   const card = (
-    <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 px-3 py-2.5 h-full min-h-[64px]">
+    <div
+      className={`rounded-lg border border-zinc-800 bg-zinc-900/50 px-3 py-2.5 h-full min-h-[64px] ${span}`}
+    >
       <div className="text-[11px] text-zinc-500">
         {label}
         {badge && (
