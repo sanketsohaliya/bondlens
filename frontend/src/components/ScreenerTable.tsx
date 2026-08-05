@@ -233,15 +233,18 @@ function Row({
           e.stopPropagation();
           onSelect(b.isin, "chart");
         }}
-        title={[
-          "Open price chart",
-          b.stale && b.days_since_traded != null
-            ? `No trades seen for ${b.days_since_traded} days — this price and its YTM may be outdated`
-            : null,
-          b.face_value != null && b.ltp != null && b.ltp < b.face_value ? "Below face value" : null,
-        ]
-          .filter(Boolean)
-          .join("\n")}
+        title={
+          [
+            b.stale && b.days_since_traded != null
+              ? `No trades seen for ${b.days_since_traded} days — this price and its YTM may be outdated`
+              : null,
+            b.face_value != null && b.ltp != null && b.ltp < b.face_value
+              ? "Below face value"
+              : null,
+          ]
+            .filter(Boolean)
+            .join("\n") || undefined
+        }
       >
         <div>
           <span className="group-hover/ltp:underline decoration-zinc-600 underline-offset-2">
@@ -273,7 +276,6 @@ function Row({
           e.stopPropagation();
           onSelect(b.isin, "chart");
         }}
-        title="Open price chart"
       >
         {b.nse_turnover == null && b.bse_turnover == null ? (
           <span className="text-zinc-500">–</span>
@@ -304,7 +306,6 @@ function Row({
       >
         <RatingBadge
           rating={b.credit_rating}
-          showAgency={false}
           tone={b.rating_change === "down" ? "down" : b.rating_change === "up" ? "up" : undefined}
           toneTitle={
             b.rating_change === "down"
