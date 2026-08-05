@@ -272,6 +272,29 @@ function fmtIssueSize(v: number | null): string | null {
   return v < 1e5 ? `₹${fmt.num(v)} Cr` : fmt.inr(v);
 }
 
+/** NSDL document names are raw filenames ("CRISIL RATINGS LIMITED_20-02-2026",
+ * "Shelf Prospectus/Information Memorandum/Offer Documents/Tranches/Series") —
+ * tidy them into short human labels; the full name stays in the title attr. */
+function docLabel(name: string | null | undefined): string {
+  if (!name) return "document";
+  const s = name
+    .replace(/_+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/[\s·-]+$/, "");
+  if (/prospectus|memorandum|offer document/i.test(s)) return "Prospectus / IM";
+  // Rating agency press releases: "<AGENCY> <dd-mm-yyyy>" -> "<Agency> PR · <date>"
+  const m = s.match(/^(.*?)\s*(\d{2}-\d{2}-\d{4})$/);
+  if (m) {
+    const agency = m[1]
+      .replace(/\b(RATINGS?|LIMITED|LTD\.?|PVT\.?|PRIVATE|AND|RESEARCH)\b/gi, " ")
+      .replace(/[\s.]+/g, " ")
+      .trim();
+    return `${agency || m[1]} PR · ${m[2]}`;
+  }
+  return s;
+}
+
 const EX_INTEREST_TIP =
   "Negative accrued: the record date for the next coupon has passed, so a buyer settling now " +
   "misses that entire coupon — the seller receives it, including the days the buyer will own " +
@@ -580,22 +603,27 @@ function Overview({
         </div>
       )}
 
-      {b.documents.length > 0 && (
-        <div className="text-xs text-zinc-500">
-          {b.documents
-            .filter((d) => d.download_link)
-            .slice(0, 5)
-            .map((d, i) => (
-              <a
-                key={i}
-                href={d.download_link!}
-                target="_blank"
-                rel="noreferrer"
-                className="text-emerald-500 hover:underline mr-3"
-              >
-                {d.doc_name ?? "document"} ↗
-              </a>
-            ))}
+      {b.documents.filter((d) => d.download_link).length > 0 && (
+        <div>
+          <h3 className="text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-2">
+            Documents ({b.documents.filter((d) => d.download_link).length})
+          </h3>
+          <div className="flex flex-wrap gap-1.5">
+            {b.documents
+              .filter((d) => d.download_link)
+              .map((d, i) => (
+                <a
+                  key={i}
+                  href={d.download_link!}
+                  target="_blank"
+                  rel="noreferrer"
+                  title={d.doc_name ?? undefined}
+                  className="text-xs px-2.5 py-1.5 rounded-md border border-zinc-800 bg-zinc-900/50 text-zinc-400 hover:border-zinc-600 hover:text-zinc-200 transition-colors max-w-56 truncate"
+                >
+                  {docLabel(d.doc_name)} ↗
+                </a>
+              ))}
+          </div>
         </div>
       )}
     </div>
