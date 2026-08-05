@@ -414,7 +414,7 @@ function WatchlistChip({ modes, onModes }: { modes: ListModes; onModes: (m: List
   const label = selected ? selected.name : "Watchlist";
   const active = modes.watchlist
     ? "border-zinc-400 text-zinc-100 bg-zinc-800/60"
-    : "border-zinc-700 text-zinc-400 hover:border-zinc-500";
+    : "border-zinc-700 text-zinc-400 hover:border-zinc-500 hover:text-zinc-300";
 
   const close = () => {
     setOpen(false);
@@ -443,12 +443,14 @@ function WatchlistChip({ modes, onModes }: { modes: ListModes; onModes: (m: List
   };
 
   return (
-    <span className="relative flex">
+    <span
+      className={`relative flex items-stretch rounded-md border text-xs font-medium transition-colors ${active}`}
+    >
       <button
         type="button"
         title={selected ? `Only bonds in ${selected.name}` : "Only your starred bonds"}
         onClick={() => onModes({ ...modes, watchlist: !modes.watchlist })}
-        className={`pl-2.5 pr-1.5 py-1.5 rounded-l-md border border-r-0 text-xs font-medium transition-colors whitespace-nowrap max-w-40 truncate ${active}`}
+        className="pl-2.5 pr-2 py-1.5 rounded-l-md whitespace-nowrap max-w-40 truncate hover:bg-zinc-800/60"
       >
         ★ {label}
       </button>
@@ -456,9 +458,17 @@ function WatchlistChip({ modes, onModes }: { modes: ListModes; onModes: (m: List
         type="button"
         title="Choose or manage watchlists"
         onClick={() => (open ? close() : setOpen(true))}
-        className={`pl-1 pr-1.5 py-1.5 rounded-r-md border border-l-0 text-[10px] transition-colors ${active}`}
+        className="px-1.5 rounded-r-md border-l border-zinc-700/70 hover:bg-zinc-800/60 flex items-center"
       >
-        ▾
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+          <path
+            d="M4 6l4 4 4-4"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
       </button>
       {open && (
         <>
