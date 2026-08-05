@@ -298,7 +298,7 @@ def bond_row(isin: str) -> dict | None:
         r = conn.execute("""
             SELECT b.*, COALESCE(i.issuer_name, b.issuer_name) AS issuer_name,
                    i.sector, i.industry, i.basic_industry, i.macro,
-                   i.cin, i.lei
+                   i.cin, i.lei, i.sec_type_desc, i.instrument_type
             FROM bonds b LEFT JOIN bond_info i ON i.isin = b.isin
             WHERE b.isin = %s
         """, (isin,)).fetchone()
@@ -310,6 +310,14 @@ def bond_terms(isin: str) -> dict | None:
         r = conn.execute(
             "SELECT * FROM bond_terms WHERE isin = %s", (isin,)).fetchone()
     return dict(r) if r else None
+
+
+def bond_trustee(isin: str) -> str | None:
+    with db._conn() as conn:
+        r = conn.execute(
+            "SELECT trustee_name FROM bond_contacts WHERE isin = %s",
+            (isin,)).fetchone()
+    return r["trustee_name"] if r else None
 
 
 def bond_cashflows(isin: str) -> list[dict]:

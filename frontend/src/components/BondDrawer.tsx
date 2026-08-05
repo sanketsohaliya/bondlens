@@ -1,5 +1,5 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import { api, fmt } from "../api/client";
 import type { BondDetail } from "../api/types";
 import { buildBondPrompt } from "../lib/aiPrompt";
@@ -181,11 +181,13 @@ function Stat({
   value,
   accent,
   tip,
+  badge,
 }: {
   label: string;
   value: string;
   accent?: boolean;
   tip?: string | null;
+  badge?: string;
 }) {
   const card = (
     <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 px-3 py-2.5">
@@ -194,9 +196,14 @@ function Stat({
         {tip && <span className="ml-1 text-zinc-600">ⓘ</span>}
       </div>
       <div
-        className={`text-sm font-semibold mt-0.5 ${accent ? "text-emerald-400" : "text-zinc-100"}`}
+        className={`text-sm font-semibold mt-0.5 truncate ${accent ? "text-emerald-400" : "text-zinc-100"}`}
       >
         {value}
+        {badge && (
+          <span className="ml-1.5 align-middle text-[9px] font-medium px-1 py-0.5 rounded bg-amber-500/15 text-amber-400 border border-amber-500/30">
+            {badge}
+          </span>
+        )}
       </div>
     </div>
   );
@@ -208,6 +215,56 @@ function Stat({
     card
   );
 }
+
+/** Section of stat boxes; renders nothing when every box was omitted. */
+function StatSection({ title, children }: { title: string; children: ReactNode }) {
+  const kids = (Array.isArray(children) ? children : [children]).filter(Boolean);
+  if (kids.length === 0) return null;
+  return (
+    <div>
+      <h3 className="text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-2">{title}</h3>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5">{children}</div>
+    </div>
+  );
+}
+
+// NSDL terms values arrive as an untyped ragged dict; coerce defensively.
+const _TERM_NULLS = new Set([
+  "",
+  "-",
+  "NA",
+  "N.A",
+  "N.A.",
+  "None",
+  "Not applicable",
+  "NOT APPLICABLE",
+  "Not Applicable",
+]);
+function termStr(terms: BondDetail["terms"], key: string): string | null {
+  const v = terms?.[key];
+  if (v == null) return null;
+  const s = String(v).trim();
+  return _TERM_NULLS.has(s) ? null : s;
+}
+function termNum(terms: BondDetail["terms"], key: string): number | null {
+  const v = terms?.[key];
+  if (v == null) return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+/** NSDL's totalIssueSize has no documented unit; observed values are in
+ * rupees for most issues. Values under 1e5 are almost certainly ₹Cr. */
+function fmtIssueSize(v: number | null): string | null {
+  if (v == null || v <= 0) return null;
+  return v < 1e5 ? `₹${fmt.num(v)} Cr` : fmt.inr(v);
+}
+
+const EX_INTEREST_TIP =
+  "Negative accrued: the record date for the next coupon has passed, so a buyer settling now " +
+  "misses that entire coupon — the seller receives it, including the days the buyer will own " +
+  "the bond. The buyer is compensated by paying less than the clean price (dirty < clean). " +
+  "Standard exchange convention for ex-interest trading.";
 
 const PERIODS: Record<string, [number, string]> = {
   monthly: [12, "monthly"],
@@ -259,9 +316,50 @@ function Overview({
   setWhatIf: (v: string) => void;
   onSelect?: (isin: string) => void;
 }) {
+  const t = b.terms;
+  const secured = termStr(t, "secured");
+  const securedDetails = termStr(t, "secured_details");
+  const assetCover = termNum(t, "asset_cover_percent");
+  const taxFree = termStr(t, "tax_free");
+  const couponType = termStr(t, "coupon_type");
+  const couponBasis = termStr(t, "coupon_basis");
+  const payFreq = termStr(t, "interest_payment_frequency") ?? b.frequency;
+  const freqDesc = termStr(t, "frequency_description");
+  const dayCount = termStr(t, "day_count_convention");
+  const seniority = termStr(t, "category");
+  const secClass = b.sec_type_desc ?? b.instrument_type;
+  const issueSize = fmtIssueSize(termNum(t, "total_issue_size"));
+  const amountRaised = fmtIssueSize(termNum(t, "amount_raised"));
+  const modeOfIssue = termStr(t, "mode_of_issue");
+  const hasCall = (termStr(t, "call_indicator") ?? "").toLowerCase() === "yes";
+  const hasPut = (termStr(t, "put_indicator") ?? "").toLowerCase() === "yes";
+  const instrumentDesc = termStr(t, "instrument_desc");
+  const redemptionType = termStr(t, "redemption_type");
+  const redemptionNotes = [
+    termStr(t, "early_redemption_details"),
+    termStr(t, "redemption_premium_details"),
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  // Non-plain shapes change what a buyer actually receives — surface them.
+  const shapeNote: Record<string, string> = {
+    staggered: "Principal repaid in parts over time — not one lump sum at maturity.",
+    zero_coupon: "No coupons — issued at a discount, single payment at maturity.",
+    cumulative: "Interest accumulates and is paid together with principal at maturity.",
+    perpetual: "No maturity date — priced to the earliest call.",
+    irregular: "Payment schedule resists standard classification — check Cashflows tab.",
+  };
+  const listedOn =
+    [b.on_nse ? `NSE${b.nse_series ? ` (${b.nse_series})` : ""}` : null, b.on_bse ? "BSE" : null]
+      .filter(Boolean)
+      .join(" · ") || null;
+  const tenorMonths = (termNum(t, "tenure_years") ?? 0) * 12 + (termNum(t, "tenure_months") ?? 0);
+  const issuePrice = termNum(t, "issue_price");
+  const netQuantity = termNum(t, "net_quantity");
+
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5">
+      <StatSection title="Price & Yield">
         <Stat
           label={`YTM ${b.ytm_exact != null ? "(exact)" : "(approx)"}`}
           value={fmt.pct(b.ytm)}
@@ -274,7 +372,25 @@ function Overview({
         <Stat label="Current yield" value={fmt.pct(b.current_yield)} />
         <Stat label="LTP (dirty)" value={fmt.inrFull(b.ltp)} />
         <Stat label="Clean price" value={fmt.inrFull(b.clean_price)} />
-        <Stat label="Accrued" value={fmt.inrFull(b.accrued)} />
+        <Stat
+          label="Accrued"
+          value={fmt.inrFull(b.accrued)}
+          badge={b.accrued != null && b.accrued < 0 ? "ex-interest" : undefined}
+          tip={b.accrued != null && b.accrued < 0 ? EX_INTEREST_TIP : undefined}
+        />
+        {b.otc_price_pct != null && (
+          <Stat
+            label="OTC (clean %)"
+            value={`${fmt.num(b.otc_price_pct)}% @ ${fmt.pct(b.otc_yield)}`}
+          />
+        )}
+        <Stat
+          label="Last traded"
+          value={b.trade_date ? `${fmt.date(b.trade_date)} (${b.exchange})` : "never"}
+        />
+      </StatSection>
+
+      <StatSection title="Coupon & Payments">
         <Stat
           label="Coupon"
           value={
@@ -291,7 +407,60 @@ function Overview({
               : undefined
           }
         />
-        <Stat label="Face value" value={fmt.inrFull(b.face_value)} />
+        {payFreq && <Stat label="Payment frequency" value={payFreq} tip={freqDesc} />}
+        {couponType && <Stat label="Coupon type" value={couponType} tip={couponBasis} />}
+        {dayCount && <Stat label="Day count" value={dayCount} />}
+        {(redemptionType || shapeNote[b.schedule_shape]) && (
+          <Stat
+            label="Redemption"
+            value={redemptionType ?? b.schedule_shape.replace("_", " ")}
+            badge={shapeNote[b.schedule_shape] ? b.schedule_shape.replace("_", " ") : undefined}
+            tip={
+              [shapeNote[b.schedule_shape], redemptionNotes].filter(Boolean).join(" ") || undefined
+            }
+          />
+        )}
+      </StatSection>
+
+      <StatSection title="Structure & Risk">
+        {b.credit_rating && <Stat label="Rating" value={b.credit_rating} />}
+        {secured && (
+          <Stat
+            label="Secured"
+            value={secured}
+            tip={
+              securedDetails || assetCover != null
+                ? [securedDetails, assetCover != null ? `Asset cover: ${assetCover}%` : null]
+                    .filter(Boolean)
+                    .join(" · ")
+                : undefined
+            }
+          />
+        )}
+        {seniority && <Stat label="Seniority" value={seniority} />}
+        {secClass && <Stat label="Security class" value={secClass} tip={instrumentDesc} />}
+        {taxFree && (
+          <Stat
+            label="Tax status"
+            value={taxFree.toLowerCase() === "yes" ? "Tax-free" : "Taxable"}
+          />
+        )}
+        {(hasCall || hasPut) && (
+          <Stat
+            label="Options"
+            value={[hasCall ? "Callable" : null, hasPut ? "Puttable" : null]
+              .filter(Boolean)
+              .join(" · ")}
+            tip={b.call_dates.length > 0 ? `Next call: ${fmt.date(b.call_dates[0])}` : undefined}
+          />
+        )}
+      </StatSection>
+
+      <StatSection title="Dates & Tenure">
+        <Stat label="Matures" value={fmt.date(b.maturity_date)} />
+        {b.years_to_maturity != null && (
+          <Stat label="Remaining" value={fmt.yearsMonths(b.years_to_maturity)} />
+        )}
         <Stat
           label="Issued"
           value={
@@ -302,18 +471,38 @@ function Overview({
               : "–"
           }
         />
-        <Stat label="Matures" value={fmt.date(b.maturity_date)} />
-        <Stat
-          label="Last traded"
-          value={b.trade_date ? `${fmt.date(b.trade_date)} (${b.exchange})` : "never"}
-        />
-        {b.otc_price_pct != null && (
+        {b.duration != null && (
           <Stat
-            label="OTC (clean %)"
-            value={`${fmt.num(b.otc_price_pct)}% @ ${fmt.pct(b.otc_yield)}`}
+            label="Mod. duration"
+            value={fmt.num(b.duration)}
+            tip="Approximate % price change for a 1% move in yield."
           />
         )}
-      </div>
+        {tenorMonths > 0 && (
+          <Stat label="Original tenor" value={fmt.yearsMonths(tenorMonths / 12)} />
+        )}
+      </StatSection>
+
+      <StatSection title="Issue Details">
+        <Stat label="Face value" value={fmt.inrFull(b.face_value)} />
+        {issueSize && <Stat label="Issue size" value={issueSize} />}
+        {amountRaised && amountRaised !== issueSize && (
+          <Stat label="Amount raised" value={amountRaised} />
+        )}
+        {issuePrice != null && issuePrice !== b.face_value && (
+          <Stat
+            label="Issue price"
+            value={fmt.inrFull(issuePrice)}
+            tip="Differs from face value — issued at a discount/premium."
+          />
+        )}
+        {netQuantity != null && netQuantity > 0 && (
+          <Stat label="Units outstanding" value={fmt.num(netQuantity, 0)} />
+        )}
+        {listedOn && <Stat label="Listed on" value={listedOn} />}
+        {modeOfIssue && <Stat label="Mode of issue" value={modeOfIssue} />}
+        {b.trustee_name && <Stat label="Trustee" value={b.trustee_name} tip={b.trustee_name} />}
+      </StatSection>
 
       <label className="flex items-center gap-3 text-xs text-zinc-400">
         What-if price:

@@ -129,10 +129,13 @@ class BondDetail(BaseModel):
     macro: str | None
     cin: str | None
     lei: str | None
+    sec_type_desc: str | None
+    instrument_type: str | None
     first_seen: datetime | None
     last_seen: datetime | None
     # Terms (full bond_terms row; ragged NSDL columns stay untyped)
     terms: dict[str, Any] | None
+    trustee_name: str | None
     kite_url: str | None
     # Pricing
     ltp: float | None

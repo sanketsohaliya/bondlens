@@ -233,6 +233,7 @@ def bond_detail(isin: str, price: float | None = Query(None, gt=0)):
     return {
         **row,
         "terms": terms,
+        "trustee_name": queries.bond_trustee(isin),
         "kite_url": kite.kite_url(row.get("nse_symbol"), row.get("nse_series"),
                                   row.get("bse_scrip_id"),
                                   prefer=core.get("exchange")),

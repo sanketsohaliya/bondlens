@@ -283,6 +283,14 @@ export type BondDetail = {
      */
     lei: string | null;
     /**
+     * Sec Type Desc
+     */
+    sec_type_desc: string | null;
+    /**
+     * Instrument Type
+     */
+    instrument_type: string | null;
+    /**
      * First Seen
      */
     first_seen: string | null;
@@ -296,6 +304,10 @@ export type BondDetail = {
     terms: {
         [key: string]: unknown;
     } | null;
+    /**
+     * Trustee Name
+     */
+    trustee_name: string | null;
     /**
      * Kite Url
      */
