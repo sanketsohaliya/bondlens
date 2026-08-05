@@ -86,18 +86,127 @@ def get_user(user_id: int) -> dict[str, Any] | None:
         ).fetchone()
 
 
-def get_user_lists(user_id: int) -> dict[str, list[str]]:
-    """{'watchlist': [isin...], 'holdings': [isin...]} for a user."""
-    out: dict[str, list[str]] = {"watchlist": [], "holdings": []}
+def get_user_lists(user_id: int) -> dict[str, Any]:
+    """{'holdings': [isin...], 'watchlists': [{id, name, isins}...]}."""
     with _conn() as conn:
+        holdings = [
+            r["isin"] for r in conn.execute(
+                "SELECT isin FROM user_lists "
+                "WHERE user_id = %s AND list = 'holdings' ORDER BY added_at",
+                (user_id,),
+            ).fetchall()
+        ]
         rows = conn.execute(
-            "SELECT list, isin FROM user_lists WHERE user_id = %s "
-            "ORDER BY added_at",
+            "SELECT w.id, w.name, i.isin "
+            "FROM user_watchlists w "
+            "LEFT JOIN user_watchlist_items i ON i.watchlist_id = w.id "
+            "WHERE w.user_id = %s "
+            "ORDER BY w.created_at, w.id, i.added_at",
             (user_id,),
         ).fetchall()
+    watchlists: list[dict[str, Any]] = []
+    by_id: dict[int, dict[str, Any]] = {}
     for r in rows:
-        out[r["list"]].append(r["isin"])
-    return out
+        wl = by_id.get(r["id"])
+        if wl is None:
+            wl = {"id": r["id"], "name": r["name"], "isins": []}
+            by_id[r["id"]] = wl
+            watchlists.append(wl)
+        if r["isin"] is not None:
+            wl["isins"].append(r["isin"])
+    return {"holdings": holdings, "watchlists": watchlists}
+
+
+MAX_WATCHLISTS = 20
+
+
+class WatchlistError(Exception):
+    """Raised with a user-facing message; app.py maps it to an HTTP error."""
+    def __init__(self, status: int, detail: str):
+        super().__init__(detail)
+        self.status = status
+        self.detail = detail
+
+
+def create_watchlist(user_id: int, name: str) -> dict[str, Any]:
+    name = name.strip()
+    if not 1 <= len(name) <= 40:
+        raise WatchlistError(400, "List name must be 1-40 characters")
+    with _conn() as conn:
+        count_row = conn.execute(
+            "SELECT COUNT(*) AS n FROM user_watchlists WHERE user_id = %s",
+            (user_id,),
+        ).fetchone()
+        if count_row is not None and count_row["n"] >= MAX_WATCHLISTS:
+            raise WatchlistError(400, f"At most {MAX_WATCHLISTS} watchlists")
+        row = conn.execute(
+            "INSERT INTO user_watchlists (user_id, name) VALUES (%s, %s) "
+            "ON CONFLICT (user_id, name) DO NOTHING RETURNING id, name",
+            (user_id, name),
+        ).fetchone()
+    if row is None:
+        raise WatchlistError(409, f"A list named '{name}' already exists")
+    return {"id": row["id"], "name": row["name"], "isins": []}
+
+
+def rename_watchlist(user_id: int, watchlist_id: int, name: str) -> None:
+    name = name.strip()
+    if not 1 <= len(name) <= 40:
+        raise WatchlistError(400, "List name must be 1-40 characters")
+    with _conn() as conn:
+        dup = conn.execute(
+            "SELECT 1 FROM user_watchlists "
+            "WHERE user_id = %s AND name = %s AND id <> %s",
+            (user_id, name, watchlist_id),
+        ).fetchone()
+        if dup is not None:
+            raise WatchlistError(409, f"A list named '{name}' already exists")
+        cur = conn.execute(
+            "UPDATE user_watchlists SET name = %s "
+            "WHERE id = %s AND user_id = %s",
+            (name, watchlist_id, user_id),
+        )
+        if cur.rowcount == 0:
+            raise WatchlistError(404, "Watchlist not found")
+
+
+def delete_watchlist(user_id: int, watchlist_id: int) -> None:
+    with _conn() as conn:
+        cur = conn.execute(
+            "DELETE FROM user_watchlists WHERE id = %s AND user_id = %s",
+            (watchlist_id, user_id),
+        )
+        if cur.rowcount == 0:
+            raise WatchlistError(404, "Watchlist not found")
+
+
+def add_watchlist_item(user_id: int, watchlist_id: int, isin: str) -> None:
+    with _conn() as conn:
+        cur = conn.execute(
+            "INSERT INTO user_watchlist_items (watchlist_id, isin) "
+            "SELECT id, %s FROM user_watchlists "
+            "WHERE id = %s AND user_id = %s "
+            "ON CONFLICT DO NOTHING",
+            (isin, watchlist_id, user_id),
+        )
+        # 0 rows means either duplicate (fine) or foreign list; tell them apart
+        if cur.rowcount == 0:
+            owned = conn.execute(
+                "SELECT 1 FROM user_watchlists WHERE id = %s AND user_id = %s",
+                (watchlist_id, user_id),
+            ).fetchone()
+            if owned is None:
+                raise WatchlistError(404, "Watchlist not found")
+
+
+def remove_watchlist_item(user_id: int, watchlist_id: int, isin: str) -> None:
+    with _conn() as conn:
+        conn.execute(
+            "DELETE FROM user_watchlist_items i USING user_watchlists w "
+            "WHERE i.watchlist_id = w.id AND w.id = %s AND w.user_id = %s "
+            "AND i.isin = %s",
+            (watchlist_id, user_id, isin),
+        )
 
 
 def add_to_user_list(user_id: int, list_name: str, isin: str):

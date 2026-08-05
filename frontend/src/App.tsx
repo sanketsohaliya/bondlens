@@ -7,13 +7,17 @@ import FilterBar, { DEFAULT_FILTERS, type ListModes } from "./components/FilterB
 import Logo from "./components/Logo";
 import ScreenerTable from "./components/ScreenerTable";
 import { useAuth } from "./lib/auth";
-import { HOLDINGS_KEY, useStoredList, WATCHLIST_KEY } from "./lib/lists";
+import { HOLDINGS_KEY, unionIsins, useStoredList, useWatchlists } from "./lib/lists";
 
 export default function App() {
   const [params, setParams] = useState<ScreenerParams>(DEFAULT_FILTERS);
-  const [modes, setModes] = useState<ListModes>({ watchlist: false, holdings: false });
+  const [modes, setModes] = useState<ListModes>({
+    watchlist: false,
+    watchlistId: null,
+    holdings: false,
+  });
   const [selected, setSelected] = useState<{ isin: string; tab?: Tab } | null>(null);
-  const watchlist = useStoredList(WATCHLIST_KEY);
+  const { lists: watchlists } = useWatchlists();
   const holdings = useStoredList(HOLDINGS_KEY);
 
   // A search means "find me this bond" — the screener filters would only
@@ -24,7 +28,7 @@ export default function App() {
   const listIsins = listMode
     ? [
         ...new Set([
-          ...(modes.watchlist ? watchlist.items : []),
+          ...(modes.watchlist ? unionIsins(watchlists, modes.watchlistId) : []),
           ...(modes.holdings ? holdings.items : []),
         ]),
       ]

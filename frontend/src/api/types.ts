@@ -17,9 +17,15 @@ export type {
 
 // Hand-added pending codegen (backend models exist; run `npm run codegen`
 // against a live API to fold these into ./generated).
-export type { DepthLevel, DepthSide, OrderBook, YtmAtPrice } from "./generated/types.gen";
+export type {
+  DepthLevel,
+  DepthSide,
+  OrderBook,
+  Watchlist,
+  YtmAtPrice,
+} from "./generated/types.gen";
 
-export type ListName = "watchlist" | "holdings";
+export type ListName = "holdings";
 
 // Screener query params (request side; hand-maintained).
 export interface ScreenerParams {

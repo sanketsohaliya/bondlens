@@ -65,10 +65,10 @@ def auth_logout(response: Response):
 
 
 # --------------------------------------------------------------------------
-# Per-user lists (watchlist / holdings)
+# Per-user lists (named watchlists / holdings)
 # --------------------------------------------------------------------------
 
-ListName = Literal["watchlist", "holdings"]
+ListName = Literal["holdings"]
 
 
 @router.get("/api/lists", response_model=models.ListsResponse)
@@ -88,6 +88,52 @@ def list_remove(list_name: ListName, isin: str,
                 user_id: int = Depends(auth.require_user)):
     db.remove_from_user_list(user_id, list_name, isin.strip().upper())
     return {"list": list_name, "isin": isin, "present": False}
+
+
+def _watchlist_call(fn, *args):
+    """Run a db watchlist helper, mapping WatchlistError to HTTP."""
+    try:
+        return fn(*args)
+    except db.WatchlistError as e:
+        raise HTTPException(status_code=e.status, detail=e.detail) from e
+
+
+@router.post("/api/watchlists", response_model=models.Watchlist)
+def watchlist_create(body: models.WatchlistName,
+                     user_id: int = Depends(auth.require_user)):
+    return _watchlist_call(db.create_watchlist, user_id, body.name)
+
+
+@router.patch("/api/watchlists/{watchlist_id}", response_model=models.Ok)
+def watchlist_rename(watchlist_id: int, body: models.WatchlistName,
+                     user_id: int = Depends(auth.require_user)):
+    _watchlist_call(db.rename_watchlist, user_id, watchlist_id, body.name)
+    return {"ok": True}
+
+
+@router.delete("/api/watchlists/{watchlist_id}", response_model=models.Ok)
+def watchlist_delete(watchlist_id: int,
+                     user_id: int = Depends(auth.require_user)):
+    _watchlist_call(db.delete_watchlist, user_id, watchlist_id)
+    return {"ok": True}
+
+
+@router.put("/api/watchlists/{watchlist_id}/{isin}",
+            response_model=models.WatchlistToggle)
+def watchlist_add_isin(watchlist_id: int, isin: str,
+                       user_id: int = Depends(auth.require_user)):
+    _watchlist_call(db.add_watchlist_item, user_id, watchlist_id,
+                    isin.strip().upper())
+    return {"watchlist_id": watchlist_id, "isin": isin, "present": True}
+
+
+@router.delete("/api/watchlists/{watchlist_id}/{isin}",
+               response_model=models.WatchlistToggle)
+def watchlist_remove_isin(watchlist_id: int, isin: str,
+                          user_id: int = Depends(auth.require_user)):
+    _watchlist_call(db.remove_watchlist_item, user_id, watchlist_id,
+                    isin.strip().upper())
+    return {"watchlist_id": watchlist_id, "isin": isin, "present": False}
 
 
 # --------------------------------------------------------------------------

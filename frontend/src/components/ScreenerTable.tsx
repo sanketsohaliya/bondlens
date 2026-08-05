@@ -1,7 +1,7 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { fmt } from "../api/client";
 import type { Bond } from "../api/types";
-import { HOLDINGS_KEY, useStoredList, WATCHLIST_KEY } from "../lib/lists";
+import { HOLDINGS_KEY, nextListName, useStoredList, useWatchlists } from "../lib/lists";
 import CopyBtn from "./CopyBtn";
 import RatingBadge from "./RatingBadge";
 
@@ -343,21 +343,108 @@ function Row({
   );
 }
 
+/** Star with a watchlist-picker popover: checkbox per list + inline
+    "new list" creation. Filled while the bond is in at least one list. */
 export function WatchStar({ isin }: { isin: string }) {
-  const { has, toggle } = useStoredList(WATCHLIST_KEY);
-  const watched = has(isin);
+  const { lists, starred, toggle, create } = useWatchlists();
+  const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
+  const [draft, setDraft] = useState<string | null>(null);
+  const wrapRef = useRef<HTMLSpanElement>(null);
+  const watched = starred(isin);
+
+  useEffect(() => {
+    if (!pos) return;
+    const onDown = (e: MouseEvent) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setPos(null);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setPos(null);
+    };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [pos]);
+
+  const submitDraft = () => {
+    const name = draft?.trim();
+    if (name) create(name, isin);
+    setDraft(null);
+  };
+
   return (
-    <button
-      type="button"
-      onClick={(e) => {
-        e.stopPropagation();
-        toggle(isin);
-      }}
-      className={`text-base leading-none ${watched ? "text-amber-400" : "text-zinc-700 hover:text-zinc-400"}`}
-      title={watched ? "Remove from watchlist" : "Add to watchlist"}
-    >
-      {watched ? "★" : "☆"}
-    </button>
+    <span ref={wrapRef} className="relative" onClick={(e) => e.stopPropagation()}>
+      <button
+        type="button"
+        onClick={(e) => {
+          if (pos) {
+            setPos(null);
+            return;
+          }
+          const r = e.currentTarget.getBoundingClientRect();
+          setPos({
+            x: Math.max(8, Math.min(r.left, window.innerWidth - 232)),
+            y: r.bottom + 6,
+          });
+          setDraft(lists.length === 0 ? "Watchlist 1" : null);
+        }}
+        className={`text-base leading-none ${watched ? "text-amber-400" : "text-zinc-700 hover:text-zinc-400"}`}
+        title={watched ? "In your watchlists — click to manage" : "Add to a watchlist"}
+      >
+        {watched ? "★" : "☆"}
+      </button>
+      {pos && (
+        <span
+          className="fixed z-50 w-56 py-1 rounded-md border border-zinc-700 bg-zinc-900 shadow-xl text-left"
+          style={{ left: pos.x, top: pos.y }}
+        >
+          {lists.map((l) => (
+            <label
+              key={l.id}
+              className="flex items-center gap-2 px-3 py-1.5 text-xs text-zinc-200 hover:bg-zinc-800 cursor-pointer"
+            >
+              <input
+                type="checkbox"
+                checked={l.isins.includes(isin)}
+                onChange={() => toggle(l.id, isin)}
+                className="accent-amber-400"
+              />
+              <span className="truncate">{l.name}</span>
+            </label>
+          ))}
+          {draft == null ? (
+            <button
+              type="button"
+              onClick={() => setDraft(nextListName(lists))}
+              className="w-full px-3 py-1.5 text-left text-xs text-emerald-400 hover:bg-zinc-800"
+            >
+              + New list
+            </button>
+          ) : (
+            <span className="block px-3 py-1.5">
+              <input
+                // biome-ignore lint/a11y/noAutofocus: the user just asked to type a list name
+                autoFocus
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") submitDraft();
+                  if (e.key === "Escape") {
+                    e.stopPropagation();
+                    setDraft(null);
+                  }
+                }}
+                onBlur={submitDraft}
+                placeholder="List name"
+                className="w-full bg-transparent border border-zinc-600 rounded px-2 py-1 text-xs text-zinc-100 focus:outline-none focus:border-zinc-400"
+              />
+            </span>
+          )}
+        </span>
+      )}
+    </span>
   );
 }
 

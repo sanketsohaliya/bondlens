@@ -218,13 +218,29 @@ class User(BaseModel):
     picture: str | None
 
 
+class Watchlist(BaseModel):
+    id: int
+    name: str
+    isins: list[str]
+
+
 class ListsResponse(BaseModel):
-    watchlist: list[str]
     holdings: list[str]
+    watchlists: list[Watchlist]
+
+
+class WatchlistName(BaseModel):
+    name: str
+
+
+class WatchlistToggle(BaseModel):
+    watchlist_id: int
+    isin: str
+    present: bool
 
 
 class ListToggle(BaseModel):
-    list: Literal["watchlist", "holdings"]
+    list: Literal["holdings"]
     isin: str
     present: bool
 

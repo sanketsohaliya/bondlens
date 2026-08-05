@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { api, fmt } from "../api/client";
 import type { Filters, ScreenerParams } from "../api/types";
+import { nextListName, useWatchlists } from "../lib/lists";
 
 /* What a fresh screen starts with: decent yield, real retail liquidity,
    investment-grade, at least a year to run, recently traded. */
@@ -43,6 +44,8 @@ export function describeFilters(p: ScreenerParams): string[] {
 
 export interface ListModes {
   watchlist: boolean;
+  /** null = all watchlists combined; otherwise a single list id. */
+  watchlistId: number | null;
   holdings: boolean;
 }
 
@@ -371,18 +374,7 @@ function FilterFields({
       </div>
 
       <span className="flex items-end gap-2 self-end">
-        <button
-          type="button"
-          title="Only your starred bonds"
-          onClick={() => onModes({ ...modes, watchlist: !modes.watchlist })}
-          className={`px-2.5 py-1.5 rounded-md border text-xs font-medium transition-colors whitespace-nowrap ${
-            modes.watchlist
-              ? "border-zinc-400 text-zinc-100 bg-zinc-800/60"
-              : "border-zinc-700 text-zinc-400 hover:border-zinc-500"
-          }`}
-        >
-          ★ Watchlist
-        </button>
+        <WatchlistChip modes={modes} onModes={onModes} />
         <button
           type="button"
           title="Only bonds you hold"
@@ -405,5 +397,174 @@ function FilterFields({
         </button>
       </span>
     </div>
+  );
+}
+
+/* Split chip: the label toggles watchlist view (all lists, or the picked
+   one); the caret opens a dropdown to pick / rename / delete / create
+   lists. Same footprint as the old single-purpose chip. */
+function WatchlistChip({ modes, onModes }: { modes: ListModes; onModes: (m: ListModes) => void }) {
+  const { lists, create, rename, remove } = useWatchlists();
+  const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState<{ id: number; name: string } | null>(null);
+  const [confirmId, setConfirmId] = useState<number | null>(null);
+  const [draft, setDraft] = useState<string | null>(null);
+
+  const selected = modes.watchlistId != null ? lists.find((l) => l.id === modes.watchlistId) : null;
+  const label = selected ? selected.name : "Watchlist";
+  const active = modes.watchlist
+    ? "border-zinc-400 text-zinc-100 bg-zinc-800/60"
+    : "border-zinc-700 text-zinc-400 hover:border-zinc-500";
+
+  const close = () => {
+    setOpen(false);
+    setEditing(null);
+    setConfirmId(null);
+    setDraft(null);
+  };
+
+  const pick = (id: number | null) => {
+    onModes({ ...modes, watchlist: true, watchlistId: id });
+    close();
+  };
+
+  const submitDraft = () => {
+    const name = draft?.trim();
+    if (name) create(name);
+    setDraft(null);
+  };
+
+  const submitEdit = () => {
+    if (editing) {
+      const name = editing.name.trim();
+      if (name) rename(editing.id, name);
+    }
+    setEditing(null);
+  };
+
+  return (
+    <span className="relative flex">
+      <button
+        type="button"
+        title={selected ? `Only bonds in ${selected.name}` : "Only your starred bonds"}
+        onClick={() => onModes({ ...modes, watchlist: !modes.watchlist })}
+        className={`pl-2.5 pr-1.5 py-1.5 rounded-l-md border border-r-0 text-xs font-medium transition-colors whitespace-nowrap max-w-40 truncate ${active}`}
+      >
+        ★ {label}
+      </button>
+      <button
+        type="button"
+        title="Choose or manage watchlists"
+        onClick={() => (open ? close() : setOpen(true))}
+        className={`pl-1 pr-1.5 py-1.5 rounded-r-md border border-l-0 text-[10px] transition-colors ${active}`}
+      >
+        ▾
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-20" onClick={close} aria-hidden="true" />
+          <div className="absolute right-0 top-full mt-2 z-30 w-56 rounded-lg border border-zinc-700 bg-zinc-900 shadow-xl py-1">
+            <button
+              type="button"
+              onClick={() => pick(null)}
+              className={`w-full px-3 py-2 text-xs text-left hover:bg-zinc-800 ${
+                modes.watchlistId == null ? "text-zinc-100 font-medium" : "text-zinc-300"
+              }`}
+            >
+              All watchlists
+            </button>
+            {lists.map((l) =>
+              editing?.id === l.id ? (
+                <span key={l.id} className="block px-3 py-1.5">
+                  <input
+                    // biome-ignore lint/a11y/noAutofocus: the user just asked to rename this list
+                    autoFocus
+                    value={editing.name}
+                    onChange={(e) => setEditing({ id: l.id, name: e.target.value })}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") submitEdit();
+                      if (e.key === "Escape") setEditing(null);
+                    }}
+                    onBlur={submitEdit}
+                    className="w-full bg-transparent border border-zinc-600 rounded px-2 py-1 text-xs text-zinc-100 focus:outline-none focus:border-zinc-400"
+                  />
+                </span>
+              ) : (
+                <span key={l.id} className="group flex items-center hover:bg-zinc-800">
+                  <button
+                    type="button"
+                    onClick={() => pick(l.id)}
+                    className={`flex-1 min-w-0 px-3 py-2 text-xs text-left truncate ${
+                      modes.watchlistId === l.id ? "text-zinc-100 font-medium" : "text-zinc-300"
+                    }`}
+                  >
+                    {l.name}
+                    <span className="ml-1.5 text-zinc-600">{l.isins.length}</span>
+                  </button>
+                  <button
+                    type="button"
+                    title={`Rename ${l.name}`}
+                    onClick={() => {
+                      setConfirmId(null);
+                      setEditing({ id: l.id, name: l.name });
+                    }}
+                    className="px-1 text-zinc-600 hover:text-zinc-200 text-xs opacity-0 group-hover:opacity-100"
+                  >
+                    ✎
+                  </button>
+                  <button
+                    type="button"
+                    title={confirmId === l.id ? "Click again to delete" : `Delete ${l.name}`}
+                    onClick={() => {
+                      if (confirmId === l.id) {
+                        remove(l.id);
+                        setConfirmId(null);
+                        if (modes.watchlistId === l.id) {
+                          onModes({ ...modes, watchlistId: null });
+                        }
+                      } else {
+                        setConfirmId(l.id);
+                      }
+                    }}
+                    className={`px-1.5 text-xs ${
+                      confirmId === l.id
+                        ? "text-red-400"
+                        : "text-zinc-600 hover:text-red-400 opacity-0 group-hover:opacity-100"
+                    }`}
+                  >
+                    {confirmId === l.id ? "sure?" : "✕"}
+                  </button>
+                </span>
+              ),
+            )}
+            {draft == null ? (
+              <button
+                type="button"
+                onClick={() => setDraft(nextListName(lists))}
+                className="w-full px-3 py-2 text-xs text-left text-emerald-400 hover:bg-zinc-800"
+              >
+                + New list
+              </button>
+            ) : (
+              <span className="block px-3 py-1.5">
+                <input
+                  // biome-ignore lint/a11y/noAutofocus: the user just asked to type a list name
+                  autoFocus
+                  value={draft}
+                  onChange={(e) => setDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") submitDraft();
+                    if (e.key === "Escape") setDraft(null);
+                  }}
+                  onBlur={submitDraft}
+                  placeholder="List name"
+                  className="w-full bg-transparent border border-zinc-600 rounded px-2 py-1 text-xs text-zinc-100 focus:outline-none focus:border-zinc-400"
+                />
+              </span>
+            )}
+          </div>
+        </>
+      )}
+    </span>
   );
 }

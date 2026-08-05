@@ -660,17 +660,35 @@ export type ListToggle = {
 };
 
 /**
+ * Watchlist
+ */
+export type Watchlist = {
+    /**
+     * Id
+     */
+    id: number;
+    /**
+     * Name
+     */
+    name: string;
+    /**
+     * Isins
+     */
+    isins: Array<string>;
+};
+
+/**
  * ListsResponse
  */
 export type ListsResponse = {
     /**
-     * Watchlist
-     */
-    watchlist: Array<string>;
-    /**
      * Holdings
      */
     holdings: Array<string>;
+    /**
+     * Watchlists
+     */
+    watchlists: Array<Watchlist>;
 };
 
 /**

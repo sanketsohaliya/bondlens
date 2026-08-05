@@ -9,6 +9,7 @@ import type {
   Status,
   TradesResponse,
   User,
+  Watchlist,
 } from "./types";
 
 /** Fired when any API call returns 401 — AuthProvider flips to the
@@ -62,6 +63,15 @@ export const api = {
     add: (list: ListName, isin: string) => request<unknown>("PUT", `/api/lists/${list}/${isin}`),
     remove: (list: ListName, isin: string) =>
       request<unknown>("DELETE", `/api/lists/${list}/${isin}`),
+  },
+  watchlists: {
+    create: (name: string) => request<Watchlist>("POST", "/api/watchlists", { name }),
+    rename: (id: number, name: string) =>
+      request<unknown>("PATCH", `/api/watchlists/${id}`, { name }),
+    remove: (id: number) => request<unknown>("DELETE", `/api/watchlists/${id}`),
+    addIsin: (id: number, isin: string) => request<unknown>("PUT", `/api/watchlists/${id}/${isin}`),
+    removeIsin: (id: number, isin: string) =>
+      request<unknown>("DELETE", `/api/watchlists/${id}/${isin}`),
   },
 };
 
