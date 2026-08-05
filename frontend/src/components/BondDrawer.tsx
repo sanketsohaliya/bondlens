@@ -3,6 +3,7 @@ import { type ReactNode, useEffect, useState } from "react";
 import { api, fmt } from "../api/client";
 import type { BondDetail } from "../api/types";
 import { buildBondPrompt } from "../lib/aiPrompt";
+import { replaceNumberWords } from "../lib/numberWords";
 import CashflowTable from "./CashflowTable";
 import CopyBtn from "./CopyBtn";
 import OrderBook from "./OrderBook";
@@ -190,23 +191,25 @@ function Stat({
   badge?: string;
 }) {
   // Long NSDL prose gets clamped to two lines — surface the full text as a
-  // tooltip so nothing is lost (explicit tips take precedence).
-  const shownTip = tip ?? (value.length > 24 ? value : undefined);
+  // tooltip so nothing is lost (explicit tips take precedence). Amounts
+  // spelled out in words become numerals.
+  const rawTip = tip ?? (value.length > 24 ? value : undefined);
+  const shownTip = rawTip ? replaceNumberWords(rawTip) : undefined;
   const card = (
     <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 px-3 py-2.5 h-full min-h-[64px]">
       <div className="text-[11px] text-zinc-500">
         {label}
+        {badge && (
+          <span className="ml-1.5 text-[9px] font-medium px-1 py-0.5 rounded bg-amber-500/15 text-amber-400 border border-amber-500/30">
+            {badge}
+          </span>
+        )}
         {shownTip && <span className="ml-1 text-zinc-600">ⓘ</span>}
       </div>
       <div
         className={`text-sm font-semibold mt-0.5 break-words line-clamp-2 ${accent ? "text-emerald-400" : "text-zinc-100"}`}
       >
         {value}
-        {badge && (
-          <span className="ml-1.5 align-middle text-[9px] font-medium px-1 py-0.5 rounded bg-amber-500/15 text-amber-400 border border-amber-500/30">
-            {badge}
-          </span>
-        )}
       </div>
     </div>
   );
