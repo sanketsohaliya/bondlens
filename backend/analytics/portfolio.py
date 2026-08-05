@@ -17,6 +17,11 @@ from . import ratings
 from .schedule import Flow
 
 
+def _f(v: Any) -> float | None:
+    """Postgres numeric columns arrive as Decimal; summary math needs float."""
+    return float(v) if v is not None else None
+
+
 def _weighted_price(lots: list[dict[str, Any]]) -> float | None:
     """Units-weighted average paid price; None unless every lot has one."""
     if any(lot["price"] is None for lot in lots):
@@ -37,8 +42,8 @@ def build_positions(lots: list[dict[str, Any]],
     for isin, isin_lots in by_isin.items():
         core = core_by_isin.get(isin) or {}
         units = sum(lot["units"] for lot in isin_lots)
-        face = float(core["face_value"]) if core.get("face_value") else None
-        ltp = float(core["ltp"]) if core.get("ltp") else None
+        face = _f(core.get("face_value"))
+        ltp = _f(core.get("ltp"))
         paid = _weighted_price(isin_lots)
 
         basis = paid if paid is not None else face
@@ -61,10 +66,10 @@ def build_positions(lots: list[dict[str, Any]],
                             if rank is not None else None,
             "sector": core.get("sector"),
             "maturity_date": core.get("maturity_date"),
-            "years_to_maturity": core.get("years_to_maturity"),
+            "years_to_maturity": _f(core.get("years_to_maturity")),
             "face_value": face,
             "ltp": ltp,
-            "ytm": core.get("ytm"),
+            "ytm": _f(core.get("ytm")),
             "units": units,
             "invested": round(invested, 2) if invested is not None else None,
             "value": round(value, 2) if value is not None else None,

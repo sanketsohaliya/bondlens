@@ -4,6 +4,7 @@ The db layer is faked in-memory (CI has no Postgres); the aggregation
 math in backend/analytics/portfolio.py is tested directly.
 """
 from datetime import date
+from decimal import Decimal
 from typing import Any
 
 import pytest
@@ -64,6 +65,21 @@ def test_unknown_isin_survives():
     [p] = pf.build_positions([lot(price=None)], {})
     assert p["invested"] is None and p["value"] is None
     assert p["issuer_name"] is None and p["rating_grade"] is None
+
+
+def test_decimal_analytics_from_postgres():
+    # psycopg returns numeric columns as Decimal; the math must not blow
+    # up mixing them with float lot units/prices (prod regression).
+    decimal_core = core(face_value=Decimal("1000"), ltp=Decimal("1050.5"),
+                        ytm=Decimal("9.5"),
+                        years_to_maturity=Decimal("2.50"))
+    [p] = pf.build_positions([lot(units=10, price=1000)],
+                             {"INE000A00001": decimal_core})
+    s = pf.summarize([p])
+    assert p["value"] == pytest.approx(10505)
+    assert isinstance(p["ytm"], float)
+    assert s["weighted_ytm"] == pytest.approx(9.5)
+    assert s["weighted_years"] == pytest.approx(2.5)
 
 
 def test_summary_weights_by_value():
