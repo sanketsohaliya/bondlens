@@ -5,10 +5,10 @@ describe("default filters", () => {
   it("starts with the five essentials", () => {
     expect(DEFAULT_FILTERS).toEqual({
       min_ytm: 8,
-      min_turnover: 100000,
-      min_rating: "A-",
+      min_turnover: 51000,
+      min_rating: "BBB-",
       min_years: 1,
-      traded_within: 7,
+      traded_within: 1,
     });
   });
 });
@@ -16,11 +16,11 @@ describe("default filters", () => {
 describe("describeFilters", () => {
   it("summarizes the default filter set", () => {
     expect(describeFilters(DEFAULT_FILTERS)).toEqual([
-      "rating ≥ A-",
+      "rating ≥ BBB-",
       "YTM ≥ 8%",
       "maturity ≥ 1y",
-      "retail traded ≥ ₹1.00 L",
-      "traded ≤ 7d ago",
+      "retail traded ≥ ₹51,000",
+      "traded ≤ 1d ago",
     ]);
   });
 

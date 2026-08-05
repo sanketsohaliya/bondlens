@@ -7,10 +7,10 @@ import type { Filters, ScreenerParams } from "../api/types";
    investment-grade, at least a year to run, recently traded. */
 export const DEFAULT_FILTERS: ScreenerParams = {
   min_ytm: 8,
-  min_turnover: 100000,
-  min_rating: "A-",
+  min_turnover: 51000,
+  min_rating: "BBB-",
   min_years: 1,
-  traded_within: 7,
+  traded_within: 1,
 };
 
 /** v1's describeFilters(): human-readable summary of active filters. */
