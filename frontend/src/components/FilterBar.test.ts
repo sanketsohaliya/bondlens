@@ -4,7 +4,7 @@ import { DEFAULT_FILTERS, describeFilters } from "./FilterBar";
 describe("default filters", () => {
   it("starts with the five essentials", () => {
     expect(DEFAULT_FILTERS).toEqual({
-      min_ytm: 8,
+      min_ytm: 10,
       min_turnover: 51000,
       min_rating: "BBB-",
       min_years: 1,
@@ -17,7 +17,7 @@ describe("describeFilters", () => {
   it("summarizes the default filter set", () => {
     expect(describeFilters(DEFAULT_FILTERS)).toEqual([
       "rating ≥ BBB-",
-      "YTM ≥ 8%",
+      "YTM ≥ 10%",
       "maturity ≥ 1y",
       "retail traded ≥ ₹51,000",
       "traded ≤ 1d ago",

@@ -7,7 +7,7 @@ import { nextListName, useWatchlists } from "../lib/lists";
 /* What a fresh screen starts with: decent yield, real retail liquidity,
    investment-grade, at least a year to run, recently traded. */
 export const DEFAULT_FILTERS: ScreenerParams = {
-  min_ytm: 8,
+  min_ytm: 10,
   min_turnover: 51000,
   min_rating: "BBB-",
   min_years: 1,
