@@ -69,8 +69,18 @@ jobs:
           ssh -i ~/.ssh/deploy_key root@162.35.184.182 \
             'cd /opt/bondlens && docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build --remove-orphans && docker image prune -f'
 
+      # The api container needs a moment to boot after the rebuild, so poll
+      # instead of a fixed sleep — a single early curl was flaking the job.
       - name: Smoke test
         run: |
-          sleep 5
-          curl -sf -o /dev/null https://bondlens.in/
-          curl -s https://bondlens.in/api/auth/me | grep -q 'Sign in required'
+          for i in $(seq 1 12); do
+            if curl -sf -o /dev/null https://bondlens.in/ &&
+               curl -s https://bondlens.in/api/auth/me | grep -q 'Sign in required'; then
+              echo "Smoke test passed (attempt $i)"
+              exit 0
+            fi
+            echo "Not ready yet (attempt $i) — retrying in 5s"
+            sleep 5
+          done
+          echo "Smoke test failed after 60s"
+          exit 1
