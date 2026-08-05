@@ -189,14 +189,17 @@ function Stat({
   tip?: string | null;
   badge?: string;
 }) {
+  // Long NSDL prose gets clamped to two lines — surface the full text as a
+  // tooltip so nothing is lost (explicit tips take precedence).
+  const shownTip = tip ?? (value.length > 24 ? value : undefined);
   const card = (
-    <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 px-3 py-2.5">
+    <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 px-3 py-2.5 h-full min-h-[64px]">
       <div className="text-[11px] text-zinc-500">
         {label}
-        {tip && <span className="ml-1 text-zinc-600">ⓘ</span>}
+        {shownTip && <span className="ml-1 text-zinc-600">ⓘ</span>}
       </div>
       <div
-        className={`text-sm font-semibold mt-0.5 truncate ${accent ? "text-emerald-400" : "text-zinc-100"}`}
+        className={`text-sm font-semibold mt-0.5 break-words line-clamp-2 ${accent ? "text-emerald-400" : "text-zinc-100"}`}
       >
         {value}
         {badge && (
@@ -207,8 +210,8 @@ function Stat({
       </div>
     </div>
   );
-  return tip ? (
-    <Tip text={tip} className="contents">
+  return shownTip ? (
+    <Tip text={shownTip} className="contents">
       {card}
     </Tip>
   ) : (
