@@ -139,6 +139,28 @@ def rating_history(isin: str | None = None) -> dict[str, list[dict]]:
     return out
 
 
+def ratings_for_isins(isins: list[str], limit: int = 25) -> list[dict]:
+    """Most recent rating events across a set of ISINs (portfolio news).
+    Undated rows are useless as news and are skipped."""
+    if not isins:
+        return []
+    with db._conn() as conn:
+        rows = conn.execute(
+            "SELECT r.isin, a.issuer_name, r.agency, r.rating, "
+            "       r.rating_action AS action, "
+            "       COALESCE(r.rating_change_date, r.rating_date) AS rating_date, "
+            "       r.press_release_link AS press_release "
+            "FROM bond_ratings r "
+            "LEFT JOIN bond_analytics a ON a.isin = r.isin "
+            "WHERE r.isin = ANY(%s) "
+            "  AND COALESCE(r.rating_change_date, r.rating_date) IS NOT NULL "
+            "ORDER BY COALESCE(r.rating_change_date, r.rating_date) DESC "
+            "LIMIT %s",
+            (isins, limit),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
 def defaulted_isins() -> set:
     """ISINs with any payment-default record."""
     with db._conn() as conn:

@@ -1,50 +1,24 @@
-// Per-user bond lists (named watchlists / holdings), stored server-side.
+// Per-user bond lists (named watchlists + the portfolio-derived held
+// set), stored server-side.
 //
-// One query holds everything; toggles are optimistic mutations so the
-// star/diamond flips instantly and rolls back if the server disagrees.
+// One query holds everything; watchlist toggles are optimistic mutations
+// so the star flips instantly and rolls back if the server disagrees.
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback } from "react";
 import { api } from "../api/client";
 import type { ListsResponse, Watchlist } from "../api/types";
 
-export const HOLDINGS_KEY = "holdings" as const;
-
 const QK = ["lists"] as const;
 const EMPTY: string[] = [];
 const NO_LISTS: Watchlist[] = [];
 
-/** The server-backed holdings ISIN list, shared live across components. */
-export function useStoredList(_key: typeof HOLDINGS_KEY) {
-  const qc = useQueryClient();
+/** ISINs with at least one portfolio lot (drives the ◆ held markers).
+    Read-only: lots are managed through the portfolio mutations. */
+export function useHeldIsins() {
   const query = useQuery({ queryKey: QK, queryFn: api.lists.get });
   const items = query.data?.holdings ?? EMPTY;
-
-  const mutation = useMutation({
-    mutationFn: ({ isin, present }: { isin: string; present: boolean }) =>
-      present ? api.lists.add(HOLDINGS_KEY, isin) : api.lists.remove(HOLDINGS_KEY, isin),
-    onMutate: async ({ isin, present }) => {
-      await qc.cancelQueries({ queryKey: QK });
-      const prev = qc.getQueryData<ListsResponse>(QK);
-      if (prev) {
-        qc.setQueryData<ListsResponse>(QK, {
-          ...prev,
-          holdings: present ? [...prev.holdings, isin] : prev.holdings.filter((x) => x !== isin),
-        });
-      }
-      return { prev };
-    },
-    onError: (_e, _v, ctx) => {
-      if (ctx?.prev) qc.setQueryData(QK, ctx.prev);
-    },
-    onSettled: () => qc.invalidateQueries({ queryKey: QK }),
-  });
-
   const has = useCallback((isin: string) => items.includes(isin), [items]);
-  const toggle = useCallback(
-    (isin: string) => mutation.mutate({ isin, present: !items.includes(isin) }),
-    [items, mutation],
-  );
-  return { items, has, toggle };
+  return { items, has };
 }
 
 /** Union of watchlist ISINs: all lists (id == null) or a single one. */

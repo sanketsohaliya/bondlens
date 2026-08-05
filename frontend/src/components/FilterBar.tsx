@@ -46,7 +46,6 @@ export interface ListModes {
   watchlist: boolean;
   /** null = all watchlists combined; otherwise a single list id. */
   watchlistId: number | null;
-  holdings: boolean;
 }
 
 export default function FilterBar({
@@ -375,18 +374,6 @@ function FilterFields({
 
       <span className="flex items-end gap-2 self-end">
         <WatchlistChip modes={modes} onModes={onModes} />
-        <button
-          type="button"
-          title="Only bonds you hold"
-          onClick={() => onModes({ ...modes, holdings: !modes.holdings })}
-          className={`px-2.5 py-1.5 rounded-md border text-xs font-medium transition-colors whitespace-nowrap ${
-            modes.holdings
-              ? "border-zinc-400 text-zinc-100 bg-zinc-800/60"
-              : "border-zinc-700 text-zinc-400 hover:border-zinc-500"
-          }`}
-        >
-          ◆ Holdings
-        </button>
         <button
           type="button"
           title="Remove all filters and show everything"

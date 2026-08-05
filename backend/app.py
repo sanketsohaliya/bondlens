@@ -7,11 +7,11 @@ The API is stateless: the screener is a filtered SELECT; only the
 per-bond detail view computes yields live (it supports what-if pricing).
 """
 from datetime import date
-from typing import Literal
 
 from fastapi import APIRouter, Body, Depends, FastAPI, HTTPException, Query, Response
 
 from . import auth, db, depth, kite, models, queries
+from .analytics import portfolio as pf
 from .analytics import ratings, schedule, yields
 from .analytics.compute import STALE_AFTER_DAYS
 
@@ -65,29 +65,12 @@ def auth_logout(response: Response):
 
 
 # --------------------------------------------------------------------------
-# Per-user lists (named watchlists / holdings)
+# Per-user lists (named watchlists; holdings mirror the portfolio)
 # --------------------------------------------------------------------------
-
-ListName = Literal["holdings"]
-
 
 @router.get("/api/lists", response_model=models.ListsResponse)
 def lists(user_id: int = Depends(auth.require_user)):
     return db.get_user_lists(user_id)
-
-
-@router.put("/api/lists/{list_name}/{isin}", response_model=models.ListToggle)
-def list_add(list_name: ListName, isin: str,
-             user_id: int = Depends(auth.require_user)):
-    db.add_to_user_list(user_id, list_name, isin.strip().upper())
-    return {"list": list_name, "isin": isin, "present": True}
-
-
-@router.delete("/api/lists/{list_name}/{isin}", response_model=models.ListToggle)
-def list_remove(list_name: ListName, isin: str,
-                user_id: int = Depends(auth.require_user)):
-    db.remove_from_user_list(user_id, list_name, isin.strip().upper())
-    return {"list": list_name, "isin": isin, "present": False}
 
 
 def _watchlist_call(fn, *args):
@@ -134,6 +117,68 @@ def watchlist_remove_isin(watchlist_id: int, isin: str,
     _watchlist_call(db.remove_watchlist_item, user_id, watchlist_id,
                     isin.strip().upper())
     return {"watchlist_id": watchlist_id, "isin": isin, "present": False}
+
+
+# --------------------------------------------------------------------------
+# Portfolio
+# --------------------------------------------------------------------------
+
+@router.post("/api/portfolio/lots", response_model=models.PortfolioLot)
+def lot_add(body: models.LotCreate,
+            user_id: int = Depends(auth.require_user)):
+    return _watchlist_call(db.add_lot, user_id, body.isin.strip().upper(),
+                           body.units, body.price, body.purchase_date,
+                           body.platform)
+
+
+@router.patch("/api/portfolio/lots/{lot_id}", response_model=models.PortfolioLot)
+def lot_update(lot_id: int, body: models.LotUpdate,
+               user_id: int = Depends(auth.require_user)):
+    return _watchlist_call(db.update_lot, user_id, lot_id, body.units,
+                           body.price, body.purchase_date, body.platform)
+
+
+@router.delete("/api/portfolio/lots/{lot_id}", response_model=models.Ok)
+def lot_delete(lot_id: int, user_id: int = Depends(auth.require_user)):
+    _watchlist_call(db.delete_lot, user_id, lot_id)
+    return {"ok": True}
+
+
+@router.get("/api/portfolio", response_model=models.PortfolioResponse)
+def portfolio(user_id: int = Depends(auth.require_user)):
+    """Everything the portfolio page needs in one response: positions
+    (lots x precomputed analytics), headline summary, monthly future
+    cashflows (record-date accurate) and recent rating events as news."""
+    lots = db.get_portfolio_lots(user_id)
+    isins = sorted({lot["isin"] for lot in lots})
+    today = date.today()
+
+    core_by_isin: dict[str, dict] = {}
+    flows_by_isin: dict[str, list[schedule.Flow]] = {}
+    for isin in isins:  # a portfolio holds few ISINs; per-ISIN reads are fine
+        core_by_isin[isin] = queries.analytics_row(isin, STALE_AFTER_DAYS) or {}
+        sched = schedule.build(isin, queries.bond_cashflows(isin),
+                               queries.bond_terms(isin), today=today)
+        flows_by_isin[isin] = sched.flows
+
+    positions = pf.build_positions(lots, core_by_isin)
+    for p in positions:
+        nxt = next((f for f in flows_by_isin[p["isin"]]
+                    if f.amount and f.receivable_by_buyer(today)), None)
+        p["next_payment"] = None if nxt is None else {
+            "event": nxt.event, "due_date": nxt.due_date,
+            "record_date": nxt.record_date,
+            "amount": round(nxt.amount * p["units"], 2) if nxt.amount else None,
+            "estimated": nxt.estimated, "future": True,
+        }
+
+    return {
+        "summary": pf.summarize(positions),
+        "positions": positions,
+        "cashflows": pf.monthly_cashflows(
+            {p["isin"]: p["units"] for p in positions}, flows_by_isin, today),
+        "news": queries.ratings_for_isins(isins),
+    }
 
 
 # --------------------------------------------------------------------------

@@ -87,12 +87,14 @@ def get_user(user_id: int) -> dict[str, Any] | None:
 
 
 def get_user_lists(user_id: int) -> dict[str, Any]:
-    """{'holdings': [isin...], 'watchlists': [{id, name, isins}...]}."""
+    """{'holdings': [isin...], 'watchlists': [{id, name, isins}...]}.
+
+    holdings = distinct portfolio ISINs (feeds the ◆ held markers)."""
     with _conn() as conn:
         holdings = [
             r["isin"] for r in conn.execute(
-                "SELECT isin FROM user_lists "
-                "WHERE user_id = %s AND list = 'holdings' ORDER BY added_at",
+                "SELECT isin FROM user_portfolio_lots WHERE user_id = %s "
+                "GROUP BY isin ORDER BY min(created_at)",
                 (user_id,),
             ).fetchall()
         ]
@@ -209,21 +211,88 @@ def remove_watchlist_item(user_id: int, watchlist_id: int, isin: str) -> None:
         )
 
 
-def add_to_user_list(user_id: int, list_name: str, isin: str):
-    with _conn() as conn:
-        conn.execute(
-            "INSERT INTO user_lists (user_id, list, isin) VALUES (%s, %s, %s) "
-            "ON CONFLICT DO NOTHING",
-            (user_id, list_name, isin),
-        )
+# --- Portfolio lots ---------------------------------------------------------
+
+MAX_LOTS = 500
+
+_LOT_COLS = "id, isin, units, price, purchase_date, platform"
 
 
-def remove_from_user_list(user_id: int, list_name: str, isin: str):
+def _lot_row(r: dict[str, Any]) -> dict[str, Any]:
+    """numeric -> float for JSON; char(12) isin comes back clean."""
+    return {**r, "isin": r["isin"].strip(),
+            "units": float(r["units"]),
+            "price": float(r["price"]) if r["price"] is not None else None}
+
+
+def get_portfolio_lots(user_id: int) -> list[dict[str, Any]]:
     with _conn() as conn:
-        conn.execute(
-            "DELETE FROM user_lists WHERE user_id = %s AND list = %s AND isin = %s",
-            (user_id, list_name, isin),
+        rows = conn.execute(
+            f"SELECT {_LOT_COLS} FROM user_portfolio_lots "
+            "WHERE user_id = %s ORDER BY isin, purchase_date NULLS LAST, id",
+            (user_id,),
+        ).fetchall()
+    return [_lot_row(r) for r in rows]
+
+
+def _validate_lot(units: float, price: float | None, platform: str | None):
+    if not units > 0:
+        raise WatchlistError(400, "Units must be positive")
+    if price is not None and not price > 0:
+        raise WatchlistError(400, "Price must be positive")
+    if platform is not None and len(platform) > 40:
+        raise WatchlistError(400, "Platform must be at most 40 characters")
+
+
+def add_lot(user_id: int, isin: str, units: float, price: float | None,
+            purchase_date: Any, platform: str | None) -> dict[str, Any]:
+    _validate_lot(units, price, platform)
+    with _conn() as conn:
+        known = conn.execute("SELECT 1 FROM bonds WHERE isin = %s",
+                             (isin,)).fetchone()
+        if known is None:
+            raise WatchlistError(404, "Unknown ISIN")
+        count = conn.execute(
+            "SELECT count(*) AS n FROM user_portfolio_lots WHERE user_id = %s",
+            (user_id,),
+        ).fetchone()
+        if count is not None and count["n"] >= MAX_LOTS:
+            raise WatchlistError(400, f"At most {MAX_LOTS} lots")
+        row = conn.execute(
+            "INSERT INTO user_portfolio_lots "
+            "(user_id, isin, units, price, purchase_date, platform) "
+            "VALUES (%s, %s, %s, %s, %s, %s) "
+            f"RETURNING {_LOT_COLS}",
+            (user_id, isin, units, price, purchase_date, platform or None),
+        ).fetchone()
+        assert row is not None
+    return _lot_row(row)
+
+
+def update_lot(user_id: int, lot_id: int, units: float, price: float | None,
+               purchase_date: Any, platform: str | None) -> dict[str, Any]:
+    _validate_lot(units, price, platform)
+    with _conn() as conn:
+        row = conn.execute(
+            "UPDATE user_portfolio_lots "
+            "SET units = %s, price = %s, purchase_date = %s, platform = %s "
+            "WHERE id = %s AND user_id = %s "
+            f"RETURNING {_LOT_COLS}",
+            (units, price, purchase_date, platform or None, lot_id, user_id),
+        ).fetchone()
+        if row is None:
+            raise WatchlistError(404, "Lot not found")
+    return _lot_row(row)
+
+
+def delete_lot(user_id: int, lot_id: int) -> None:
+    with _conn() as conn:
+        cur = conn.execute(
+            "DELETE FROM user_portfolio_lots WHERE id = %s AND user_id = %s",
+            (lot_id, user_id),
         )
+        if cur.rowcount == 0:
+            raise WatchlistError(404, "Lot not found")
 
 
 # --- Bond universe (daily-tracked listed set) -----------------------------

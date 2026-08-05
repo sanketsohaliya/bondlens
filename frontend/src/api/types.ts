@@ -21,11 +21,23 @@ export type {
   DepthLevel,
   DepthSide,
   OrderBook,
+  PortfolioLot,
+  PortfolioMonth,
+  PortfolioNews,
+  PortfolioPosition,
+  PortfolioResponse,
+  PortfolioSummary,
   Watchlist,
   YtmAtPrice,
 } from "./generated/types.gen";
 
-export type ListName = "holdings";
+// Lot create/update request bodies (hand-maintained).
+export interface LotInput {
+  units: number;
+  price?: number | null;
+  purchase_date?: string | null;
+  platform?: string | null;
+}
 
 // Screener query params (request side; hand-maintained).
 export interface ScreenerParams {

@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { fmt } from "../api/client";
 import type { Bond } from "../api/types";
-import { HOLDINGS_KEY, nextListName, useStoredList, useWatchlists } from "../lib/lists";
+import { nextListName, useHeldIsins, useWatchlists } from "../lib/lists";
+import AddLotPopover from "./AddLotPopover";
 import CopyBtn from "./CopyBtn";
 import RatingBadge from "./RatingBadge";
 
@@ -448,20 +449,41 @@ export function WatchStar({ isin }: { isin: string }) {
   );
 }
 
+/** ◆ opens the add-lot form; filled while the bond is in the portfolio. */
 export function HoldMark({ isin }: { isin: string }) {
-  const { has, toggle } = useStoredList(HOLDINGS_KEY);
+  const { has } = useHeldIsins();
+  const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
   const held = has(isin);
   return (
-    <button
-      type="button"
-      onClick={(e) => {
-        e.stopPropagation();
-        toggle(isin);
-      }}
-      className={`text-sm leading-none ${held ? "text-amber-400" : "text-zinc-700 hover:text-zinc-400"}`}
-      title={held ? "Remove from holdings" : "Add to holdings"}
-    >
-      {held ? "◆" : "◇"}
-    </button>
+    <span className="relative" onClick={(e) => e.stopPropagation()}>
+      <button
+        type="button"
+        onClick={(e) => {
+          if (pos) {
+            setPos(null);
+            return;
+          }
+          const r = e.currentTarget.getBoundingClientRect();
+          setPos({
+            x: Math.max(8, Math.min(r.left, window.innerWidth - 248)),
+            y: r.bottom + 6,
+          });
+        }}
+        className={`text-sm leading-none ${held ? "text-amber-400" : "text-zinc-700 hover:text-zinc-400"}`}
+        title={held ? "In your portfolio — add another lot" : "Add to portfolio"}
+      >
+        {held ? "◆" : "◇"}
+      </button>
+      {pos && (
+        <>
+          <span
+            className="fixed inset-0 z-40 block"
+            onClick={() => setPos(null)}
+            aria-hidden="true"
+          />
+          <AddLotPopover isin={isin} held={held} pos={pos} onClose={() => setPos(null)} />
+        </>
+      )}
+    </span>
   );
 }

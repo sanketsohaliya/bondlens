@@ -138,6 +138,8 @@ def test_list_cap(client):
     assert client.post("/api/watchlists", json={"name": "over"}).status_code == 400
 
 
-def test_old_watchlist_route_gone(client):
-    # only holdings survives on the legacy /api/lists/{name} routes
-    assert client.put("/api/lists/watchlist/INE002A08AB1").status_code == 422
+def test_old_list_routes_gone(client):
+    # the legacy /api/lists/{name}/{isin} toggles were replaced by
+    # watchlist routes and portfolio lots
+    assert client.put("/api/lists/watchlist/INE002A08AB1").status_code == 404
+    assert client.put("/api/lists/holdings/INE002A08AB1").status_code == 404

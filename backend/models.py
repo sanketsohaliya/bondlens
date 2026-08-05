@@ -239,10 +239,83 @@ class WatchlistToggle(BaseModel):
     present: bool
 
 
-class ListToggle(BaseModel):
-    list: Literal["holdings"]
+class PortfolioLot(BaseModel):
+    id: int
     isin: str
-    present: bool
+    units: float
+    price: float | None
+    purchase_date: date | None
+    platform: str | None
+
+
+class LotCreate(BaseModel):
+    isin: str
+    units: float
+    price: float | None = None
+    purchase_date: date | None = None
+    platform: str | None = None
+
+
+class LotUpdate(BaseModel):
+    units: float
+    price: float | None = None
+    purchase_date: date | None = None
+    platform: str | None = None
+
+
+class PortfolioPosition(BaseModel):
+    isin: str
+    issuer_name: str | None
+    credit_rating: str | None
+    rating_rank: int | None
+    rating_grade: str | None
+    sector: str | None
+    maturity_date: date | None
+    years_to_maturity: float | None
+    face_value: float | None
+    ltp: float | None
+    ytm: float | None
+    units: float
+    invested: float | None
+    value: float | None
+    gain: float | None
+    gain_pct: float | None
+    lots: list[PortfolioLot]
+    next_payment: Cashflow | None  # amount is x units (position-level)
+
+
+class PortfolioSummary(BaseModel):
+    invested: float
+    value: float
+    gain: float | None
+    weighted_ytm: float | None
+    weighted_years: float | None
+    issuers: int
+    bonds: int
+
+
+class PortfolioMonth(BaseModel):
+    month: str  # "YYYY-MM"
+    interest: float
+    principal: float
+    estimated: bool
+
+
+class PortfolioNews(BaseModel):
+    isin: str
+    issuer_name: str | None
+    agency: str | None
+    rating: str | None
+    action: str | None
+    rating_date: date | None
+    press_release: str | None
+
+
+class PortfolioResponse(BaseModel):
+    summary: PortfolioSummary
+    positions: list[PortfolioPosition]
+    cashflows: list[PortfolioMonth]
+    news: list[PortfolioNews]
 
 
 class Ok(BaseModel):

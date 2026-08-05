@@ -2,9 +2,11 @@ import type {
   BondDetail,
   BondsResponse,
   Filters,
-  ListName,
   ListsResponse,
+  LotInput,
   OrderBook,
+  PortfolioLot,
+  PortfolioResponse,
   ScreenerParams,
   Status,
   TradesResponse,
@@ -60,9 +62,14 @@ export const api = {
   },
   lists: {
     get: () => get<ListsResponse>("/api/lists"),
-    add: (list: ListName, isin: string) => request<unknown>("PUT", `/api/lists/${list}/${isin}`),
-    remove: (list: ListName, isin: string) =>
-      request<unknown>("DELETE", `/api/lists/${list}/${isin}`),
+  },
+  portfolio: {
+    get: () => get<PortfolioResponse>("/api/portfolio"),
+    addLot: (isin: string, lot: LotInput) =>
+      request<PortfolioLot>("POST", "/api/portfolio/lots", { isin, ...lot }),
+    updateLot: (id: number, lot: LotInput) =>
+      request<PortfolioLot>("PATCH", `/api/portfolio/lots/${id}`, lot),
+    deleteLot: (id: number) => request<unknown>("DELETE", `/api/portfolio/lots/${id}`),
   },
   watchlists: {
     create: (name: string) => request<Watchlist>("POST", "/api/watchlists", { name }),

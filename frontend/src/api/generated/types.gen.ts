@@ -660,6 +660,88 @@ export type ListToggle = {
 };
 
 /**
+ * PortfolioLot
+ */
+export type PortfolioLot = {
+    id: number;
+    isin: string;
+    units: number;
+    price: number | null;
+    purchase_date: string | null;
+    platform: string | null;
+};
+
+/**
+ * PortfolioPosition
+ */
+export type PortfolioPosition = {
+    isin: string;
+    issuer_name: string | null;
+    credit_rating: string | null;
+    rating_rank: number | null;
+    rating_grade: string | null;
+    sector: string | null;
+    maturity_date: string | null;
+    years_to_maturity: number | null;
+    face_value: number | null;
+    ltp: number | null;
+    ytm: number | null;
+    units: number;
+    invested: number | null;
+    value: number | null;
+    gain: number | null;
+    gain_pct: number | null;
+    lots: Array<PortfolioLot>;
+    next_payment: Cashflow | null;
+};
+
+/**
+ * PortfolioSummary
+ */
+export type PortfolioSummary = {
+    invested: number;
+    value: number;
+    gain: number | null;
+    weighted_ytm: number | null;
+    weighted_years: number | null;
+    issuers: number;
+    bonds: number;
+};
+
+/**
+ * PortfolioMonth
+ */
+export type PortfolioMonth = {
+    month: string;
+    interest: number;
+    principal: number;
+    estimated: boolean;
+};
+
+/**
+ * PortfolioNews
+ */
+export type PortfolioNews = {
+    isin: string;
+    issuer_name: string | null;
+    agency: string | null;
+    rating: string | null;
+    action: string | null;
+    rating_date: string | null;
+    press_release: string | null;
+};
+
+/**
+ * PortfolioResponse
+ */
+export type PortfolioResponse = {
+    summary: PortfolioSummary;
+    positions: Array<PortfolioPosition>;
+    cashflows: Array<PortfolioMonth>;
+    news: Array<PortfolioNews>;
+};
+
+/**
  * Watchlist
  */
 export type Watchlist = {
