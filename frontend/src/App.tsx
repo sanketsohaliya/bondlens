@@ -4,7 +4,7 @@ import { api } from "./api/client";
 import type { ExploreParams } from "./api/types";
 import { GOTO_PORTFOLIO_EVENT } from "./components/AddLotPopover";
 import BondDrawer, { type Tab } from "./components/BondDrawer";
-import ExploreTable from "./components/ExploreTable";
+import ExploreTable, { type SortState } from "./components/ExploreTable";
 import FilterBar, { DEFAULT_FILTERS, type ListModes } from "./components/FilterBar";
 import Logo from "./components/Logo";
 import { useAuth } from "./lib/auth";
@@ -21,6 +21,7 @@ export default function App() {
     watchlistId: null,
   });
   const [selected, setSelected] = useState<{ isin: string; tab?: Tab } | null>(null);
+  const [sort, setSort] = useState<SortState>({ key: "turnover", dir: -1 });
   const { lists: watchlists } = useWatchlists();
 
   // Deep components (add-lot popover) can ask to open the portfolio page.
@@ -41,9 +42,13 @@ export default function App() {
     : listMode
       ? { isins: listIsins.join(",") }
       : params;
+  // The sort travels to the API so the 1000-row page is cut in the same
+  // order the table displays — otherwise sorting only rearranges whatever
+  // the default turnover ordering happened to include.
+  const sortParams = { sort: sort.key, dir: sort.dir === 1 ? ("asc" as const) : ("desc" as const) };
   const bonds = useQuery({
-    queryKey: ["bonds", effectiveParams],
-    queryFn: () => api.bonds({ ...effectiveParams, limit: 1000 }),
+    queryKey: ["bonds", effectiveParams, sortParams],
+    queryFn: () => api.bonds({ ...effectiveParams, ...sortParams, limit: 1000 }),
     enabled: !listMode || listIsins.length > 0,
   });
 
@@ -134,6 +139,7 @@ export default function App() {
                 loading={bonds.isLoading && (!listMode || listIsins.length > 0)}
                 error={bonds.error?.message ?? null}
                 onSelect={(isin, tab) => setSelected({ isin, tab })}
+                onSortChange={setSort}
               />
             </>
           )}

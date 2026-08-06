@@ -221,6 +221,10 @@ def bonds(
         None, description="Comma-separated ISIN list "
                           "(e.g. watchlist/portfolio contents)"),
     q: str | None = Query(None, description="Search ISIN / symbol / issuer"),
+    sort: str | None = Query(
+        None, description="Page ordering: ytm, ltp, turnover, rating_rank, "
+                          "years_to_maturity or days_since_traded"),
+    sort_dir: str = Query("desc", alias="dir", pattern="^(asc|desc)$"),
     limit: int = Query(500, le=5000),
     offset: int = Query(0, ge=0),
 ):
@@ -245,6 +249,7 @@ def bonds(
         "isins": [s.strip().upper() for s in isins.split(",") if s.strip()]
                  if isins else None,
         "q": q,
+        "sort": sort, "dir": sort_dir,
         "limit": limit, "offset": offset,
     }, STALE_AFTER_DAYS)
     return {"count": total, "bonds": rows, "as_of": as_of}

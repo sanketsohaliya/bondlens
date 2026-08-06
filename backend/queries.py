@@ -284,13 +284,30 @@ def explorer(f: dict, stale_days: int) -> tuple[list[dict], int, float | None]:
             "coalesce(a.issuer_name, '') ILIKE %(q)s)",
             q=f"%{f['q'].strip()}%")
 
+    # The UI sorts a paged result, so the page must be cut in that same
+    # order — sorting 1000 rows client-side hides whatever the default
+    # turnover ordering pushed past the limit (e.g. untraded D-rated paper).
+    sortable: dict[str, LiteralString] = {
+        "ytm": "a.ytm",
+        "ltp": "a.ltp",
+        "turnover": "coalesce(a.turnover, 0)",
+        "rating_rank": "a.rating_rank",
+        "years_to_maturity": "a.maturity_date",
+        "days_since_traded": "a.trade_date",
+    }
+    sort_col = sortable.get(f.get("sort") or "", "coalesce(a.turnover, 0)")
+    sort_dir: LiteralString = "ASC" if f.get("dir") == "asc" else "DESC"
+    if f.get("sort") == "days_since_traded":
+        # days since = inverse of trade_date: recent-first means date DESC.
+        sort_dir = "DESC" if sort_dir == "ASC" else "ASC"
+
     where: LiteralString = ("WHERE " + " AND ".join(conds)) if conds else ""
     with db._conn() as conn:
         total = conn.execute(
             f"SELECT count(*) AS n FROM bond_analytics a {where}", p).fetchone()
         rows = conn.execute(
             f"{_EXPLORER_SELECT} {where} "
-            "ORDER BY coalesce(a.turnover, 0) DESC, a.isin "
+            f"ORDER BY {sort_col} {sort_dir} NULLS LAST, a.isin "
             "LIMIT %(limit)s OFFSET %(offset)s",
             {**p, "limit": f.get("limit", 500), "offset": f.get("offset", 0)},
         ).fetchall()

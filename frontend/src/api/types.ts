@@ -65,5 +65,7 @@ export interface ExploreParams {
   downgraded_only?: boolean;
   isins?: string;
   q?: string;
+  sort?: string;
+  dir?: "asc" | "desc";
   limit?: number;
 }

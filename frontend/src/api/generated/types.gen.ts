@@ -1331,6 +1331,16 @@ export type BondsApiBondsGetData = {
          */
         q?: string | null;
         /**
+         * Sort
+         *
+         * Page ordering: ytm, ltp, turnover, rating_rank, years_to_maturity or days_since_traded
+         */
+        sort?: string | null;
+        /**
+         * Dir
+         */
+        dir?: 'asc' | 'desc';
+        /**
          * Limit
          */
         limit?: number;

@@ -38,18 +38,28 @@ const COLS: { key: SortKey | null; label: string; right?: boolean }[] = [
 const COLUMN_WIDTHS_KEY = "explore-col-widths";
 const LEGACY_COLUMN_WIDTHS_KEY = "screener-col-widths";
 
+export type SortState = { key: SortKey; dir: 1 | -1 };
+
 export default function ExploreTable({
   bonds,
   loading,
   error,
   onSelect,
+  onSortChange,
 }: {
   bonds: Bond[];
   loading: boolean;
   error: string | null;
   onSelect: (isin: string, tab?: "ratings" | "chart") => void;
+  onSortChange?: (s: SortState) => void;
 }) {
-  const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: "turnover", dir: -1 });
+  const [sort, setSortState] = useState<SortState>({ key: "turnover", dir: -1 });
+  const setSort = (update: (s: SortState) => SortState) =>
+    setSortState((s) => {
+      const next = update(s);
+      onSortChange?.(next);
+      return next;
+    });
   const tableRef = useRef<HTMLTableElement>(null);
   const [widths, setWidths] = useState<number[] | null>(() => {
     try {
