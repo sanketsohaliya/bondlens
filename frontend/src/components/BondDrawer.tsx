@@ -239,15 +239,28 @@ function Stat({
 }
 
 /** Section of stat boxes; renders nothing when every box was omitted. */
-function StatSection({ title, children }: { title: string; children: ReactNode }) {
+function StatSection({
+  title,
+  action,
+  hypothetical,
+  children,
+}: {
+  title: string;
+  action?: ReactNode;
+  hypothetical?: boolean;
+  children: ReactNode;
+}) {
   const kids = (Array.isArray(children) ? children : [children]).filter(Boolean);
   if (kids.length === 0) return null;
   return (
     <div>
       <h3 className="flex items-center gap-2 text-xs font-bold text-zinc-200 uppercase tracking-wider mb-2.5">
-        <span className="h-3.5 w-1 rounded-full bg-emerald-500/80" />
+        <span
+          className={`h-3.5 w-1 rounded-full ${hypothetical ? "bg-amber-400/80" : "bg-emerald-500/80"}`}
+        />
         {title}
         <span className="flex-1 border-t border-zinc-800" />
+        {action && <span className="normal-case font-normal tracking-normal">{action}</span>}
       </h3>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-2">{children}</div>
     </div>
@@ -408,7 +421,31 @@ function Overview({
 
   return (
     <div className="space-y-6">
-      <StatSection title="Price & Yield">
+      <StatSection
+        title="Price & Yield"
+        hypothetical={!!whatIf}
+        action={
+          <label className="flex items-center gap-1.5 text-xs text-zinc-400">
+            what-if ₹
+            <input
+              type="number"
+              placeholder={b.ltp != null ? String(b.ltp) : "price"}
+              value={whatIf}
+              onChange={(e) => setWhatIf(e.target.value)}
+              className="bg-zinc-900 border border-zinc-700 rounded-md px-2 py-1 text-xs w-28 text-zinc-100 focus:outline-none focus:border-emerald-500"
+            />
+            {whatIf && (
+              <button
+                type="button"
+                onClick={() => setWhatIf("")}
+                className="text-red-400 hover:underline"
+              >
+                reset
+              </button>
+            )}
+          </label>
+        }
+      >
         <Stat
           label={`YTM ${b.ytm_exact != null ? "(exact)" : "(approx)"}`}
           value={fmt.pct(b.ytm)}
@@ -552,26 +589,6 @@ function Overview({
         {modeOfIssue && <Stat label="Mode of issue" value={modeOfIssue} />}
         {b.trustee_name && <Stat label="Trustee" value={b.trustee_name} tip={b.trustee_name} />}
       </StatSection>
-
-      <label className="flex items-center gap-3 text-xs text-zinc-400">
-        What-if price:
-        <input
-          type="number"
-          placeholder={b.ltp != null ? String(b.ltp) : "price ₹"}
-          value={whatIf}
-          onChange={(e) => setWhatIf(e.target.value)}
-          className="bg-zinc-900 border border-zinc-700 rounded-md px-2 py-1.5 text-sm w-40 focus:outline-none focus:border-emerald-500"
-        />
-        {whatIf && (
-          <button
-            type="button"
-            onClick={() => setWhatIf("")}
-            className="text-red-400 hover:underline"
-          >
-            reset
-          </button>
-        )}
-      </label>
 
       {b.schedule_warnings.length > 0 && (
         <div className="text-xs text-amber-500/90 bg-amber-500/5 border border-amber-500/20 rounded-lg p-3 space-y-1">
