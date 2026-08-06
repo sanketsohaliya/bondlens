@@ -1,6 +1,6 @@
 # BondLens
 
-Personal data platform and screener for Indian listed corporate bonds.
+Personal data platform and explorer for Indian listed corporate bonds.
 
 Scheduled jobs track the full NSE+BSE corporate-bond universe, enrich it
 with NSDL's issue data (terms, cashflow schedules, credit ratings,
@@ -8,7 +8,7 @@ defaults) and capture end-of-day trade data from all four exchange
 streams (NSE/BSE × retail order book / OTC reported) back to 2010.
 A FastAPI backend computes schedule-exact YTMs, accrued interest,
 durations and rating signals on top; a React frontend serves the
-screener.
+explorer.
 
 ## Stack
 
@@ -65,9 +65,9 @@ npm test          # vitest
   issue-level rescaling, estimated amounts); `yields.py` does day-count-
   aware YTM/YTW/accrued/duration; `ratings.py` derives composite grades,
   change flags and default status from agency rating trails.
-- **Precomputed screener**: `scripts/compute_analytics.py` (run by the
+- **Precomputed explorer**: `scripts/compute_analytics.py` (run by the
   jobs container after every parse) writes per-bond analytics into
-  `bond_analytics`; the API serves the screener as a stateless indexed
+  `bond_analytics`; the API serves the explorer as a stateless indexed
   SELECT. Date-relative fields (staleness, years to maturity) are
   derived in SQL at read time.
 - **Contract-first API**: responses are validated against Pydantic

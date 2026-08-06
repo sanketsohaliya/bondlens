@@ -1,6 +1,6 @@
-"""Read-side SQL for the API: screener core, bond detail, trade history.
+"""Read-side SQL for the API: explorer core, bond detail, trade history.
 
-Everything here is read-only. The screener core loads the whole joined
+Everything here is read-only. The explorer core loads the whole joined
 universe in a handful of set-based queries (not per-ISIN loops) and is
 cached by the app layer — data only changes when the daily jobs run.
 """
@@ -22,7 +22,7 @@ ORDER BY isin, trade_date DESC, turnover DESC NULLS LAST
 """
 
 
-def screener_core() -> dict[str, dict]:
+def explorer_core() -> dict[str, dict]:
     """One dict per listed bond with identity, terms, info and the latest
     retail + OTC trades. Keyed by ISIN. Analytics are layered on top by
     the app (schedules need the cashflow table separately)."""
@@ -63,7 +63,7 @@ def screener_core() -> dict[str, dict]:
 
         # Retail turnover and close on each bond's previous trading day
         # (turnover summed across venues; close from the day's biggest-
-        # turnover row) for the screener's up/down markers.
+        # turnover row) for the explorer's up/down markers.
         for r in conn.execute("""
             WITH daily AS (
                 SELECT isin, trade_date, SUM(turnover) AS turnover,
@@ -122,7 +122,7 @@ def current_ratings() -> dict[str, list[dict]]:
 
 def rating_history(isin: str | None = None) -> dict[str, list[dict]]:
     """Full rating trail per ISIN (one ISIN, or everything for the
-    screener's change detection). rating_date carries the event date
+    explorer's change detection). rating_date carries the event date
     (NSDL ratingChangeDate), falling back to the assignment date for
     initial \"New\" rows that have no change date."""
     out: dict[str, list[dict]] = {}
@@ -171,9 +171,9 @@ def defaulted_isins() -> set:
     return {r["isin"] for r in rows}
 
 
-# --- Screener over the precomputed bond_analytics table ---------------------
+# --- Explorer over the precomputed bond_analytics table ---------------------
 
-_SCREENER_SELECT = """
+_EXPLORER_SELECT = """
 SELECT a.*,
        CASE WHEN a.maturity_date > CURRENT_DATE
             THEN round((a.maturity_date - CURRENT_DATE) / 365.0, 2)
@@ -188,8 +188,8 @@ FROM bond_analytics a
 """
 
 
-def screener(f: dict, stale_days: int) -> tuple[list[dict], int, float | None]:
-    """Filtered screener rows from bond_analytics.
+def explorer(f: dict, stale_days: int) -> tuple[list[dict], int, float | None]:
+    """Filtered explorer rows from bond_analytics.
 
     ``f`` mirrors the API query params. Returns (page, total, as_of_epoch).
     """
@@ -282,7 +282,7 @@ def screener(f: dict, stale_days: int) -> tuple[list[dict], int, float | None]:
         total = conn.execute(
             f"SELECT count(*) AS n FROM bond_analytics a {where}", p).fetchone()
         rows = conn.execute(
-            f"{_SCREENER_SELECT} {where} "
+            f"{_EXPLORER_SELECT} {where} "
             "ORDER BY coalesce(a.turnover, 0) DESC, a.isin "
             "LIMIT %(limit)s OFFSET %(offset)s",
             {**p, "limit": f.get("limit", 500), "offset": f.get("offset", 0)},
@@ -296,12 +296,12 @@ def screener(f: dict, stale_days: int) -> tuple[list[dict], int, float | None]:
 
 def analytics_row(isin: str, stale_days: int) -> dict | None:
     with db._conn() as conn:
-        r = conn.execute(f"{_SCREENER_SELECT} WHERE a.isin = %(isin)s",
+        r = conn.execute(f"{_EXPLORER_SELECT} WHERE a.isin = %(isin)s",
                          {"isin": isin, "stale_days": stale_days}).fetchone()
     return dict(r) if r else None
 
 
-def screener_filters() -> dict:
+def explorer_filters() -> dict:
     with db._conn() as conn:
         sectors = conn.execute(
             "SELECT DISTINCT sector FROM bond_analytics "

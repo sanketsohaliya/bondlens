@@ -1,7 +1,7 @@
-"""Precompute per-bond screener analytics into the bond_analytics table.
+"""Precompute per-bond explorer analytics into the bond_analytics table.
 
 Runs inside the jobs container after the NSDL and EOD parsers (the only
-events that change the inputs). The API then serves the screener as a
+events that change the inputs). The API then serves the explorer as a
 plain indexed SELECT — no in-process cache, no cold start.
 
 Date-relative fields (staleness, years to maturity) are intentionally NOT
@@ -78,7 +78,7 @@ def build_rows(today: date | None = None) -> list[dict]:
     """Compute one analytics row per listed bond (pure; no writes)."""
     today = today or date.today()
     computed_at = datetime.now(UTC)
-    core = queries.screener_core()
+    core = queries.explorer_core()
     cashflows = queries.all_cashflows()
     terms_map = queries.all_terms()
     current = queries.current_ratings()
@@ -169,7 +169,7 @@ def build_rows(today: date | None = None) -> list[dict]:
             "current_yield": yields.current_yield(price, coupon, face),
             "duration": yields.modified_duration(price, sched, ytm, today)
                         if ytm_method in ("exact", "estimated") else None,
-            # Screener shows (and filters on) the most recent agency action
+            # Explorer shows (and filters on) the most recent agency action
             # only; the full multi-agency picture lives in the drawer timeline.
             "credit_rating": ratings.composite(ratings.latest(cur)),
             "rating_rank": ratings.best_rank(ratings.latest(cur)),

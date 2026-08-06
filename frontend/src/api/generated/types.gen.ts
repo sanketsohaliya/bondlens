@@ -17,7 +17,7 @@ export type BodyAuthGoogleApiAuthGooglePost = {
 /**
  * Bond
  *
- * One screener row (bond_analytics + read-time derived fields).
+ * One explorer row (bond_analytics + read-time derived fields).
  */
 export type Bond = {
     /**

@@ -27,7 +27,7 @@ _UP_WORDS = ("upgrade", "raised")
 _WITHDRAWN_WORDS = ("withdraw",)
 _DEFAULT_GRADES = {"D"}
 # Placeholder "ratings" in the feed that carry no grade: a withdrawn/junk
-# row must not displace another agency's live rating in the screener.
+# row must not displace another agency's live rating in the explorer.
 _JUNK_RATING = re.compile(r"^\s*(withdrawn|suspended|not\s*rated|nr|0)\s*$",
                           re.IGNORECASE)
 

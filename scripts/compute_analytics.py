@@ -1,4 +1,4 @@
-"""Recompute the bond_analytics screener table.
+"""Recompute the bond_analytics explorer table.
 
 Cron: runs after the NSDL parse (07:00) and after each EOD parse
 (19:00 / 07:15) — the only jobs that change its inputs.

@@ -1,13 +1,13 @@
 import type {
   BondDetail,
   BondsResponse,
+  ExploreParams,
   Filters,
   ListsResponse,
   LotInput,
   OrderBook,
   PortfolioLot,
   PortfolioResponse,
-  ScreenerParams,
   Status,
   TradesResponse,
   User,
@@ -44,7 +44,7 @@ async function get<T>(path: string, params?: Record<string, unknown>): Promise<T
 }
 
 export const api = {
-  bonds: (params: ScreenerParams) =>
+  bonds: (params: ExploreParams) =>
     get<BondsResponse>("/api/bonds", params as Record<string, unknown>),
   bond: (isin: string, price?: number) =>
     get<BondDetail>(`/api/bonds/${isin}`, price ? { price } : undefined),

@@ -80,7 +80,7 @@ export default function SignIn({ onSignedIn }: { onSignedIn: (user: User) => voi
               Bond<span className="text-emerald-400">Lens</span>
             </h1>
           </div>
-          <p className="mt-2 text-sm text-zinc-400">Indian corporate-bond screener</p>
+          <p className="mt-2 text-sm text-zinc-400">Indian corporate bond explorer</p>
           <p className="mt-1 text-xs text-zinc-600">Sign in to continue</p>
 
           {/* [color-scheme:light] stops the browser painting an opaque white

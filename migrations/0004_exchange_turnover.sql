@@ -1,4 +1,4 @@
--- Per-venue turnover for the screener's traded-value breakdown:
+-- Per-venue turnover for the explorer's traded-value breakdown:
 -- NSE and BSE retail figures from each exchange's latest trade day
 -- (bond_analytics.turnover keeps the best single-venue number used
 -- for sorting; otc_turnover arrived in 0003).

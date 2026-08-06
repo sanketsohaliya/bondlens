@@ -10,7 +10,7 @@ export default function RatingBadge({
   rating: string | null;
   showAgency?: boolean;
   /** Recent rating action: "down" adds a red ▼, "up" a green ▲ — same
-      palette as the screener's price/turnover arrows. */
+      palette as the explorer's price/turnover arrows. */
   tone?: "down" | "up";
   /** Tooltip for the ▲/▼ change arrow (e.g. "Upgraded on … — was …"). */
   toneTitle?: string;

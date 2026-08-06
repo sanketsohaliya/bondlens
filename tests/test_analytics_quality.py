@@ -1,4 +1,4 @@
-"""Regression tests for the screener data-quality fixes:
+"""Regression tests for the explorer data-quality fixes:
 secured mapping, perpetual YTC, YTM reliability flag, rating dedupe."""
 from datetime import date
 

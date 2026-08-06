@@ -67,7 +67,7 @@ def check(now: datetime | None = None) -> list[str]:
             problems.append(
                 f"eod: latest trades {r['d']} (expected >= {expected})")
 
-        # 4) Screener analytics recomputed within ~a day.
+        # 4) Explorer analytics recomputed within ~a day.
         r = conn.execute(
             "SELECT max(computed_at) AS t FROM bond_analytics").fetchone()
         if r is None or r["t"] is None:

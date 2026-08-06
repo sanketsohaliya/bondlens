@@ -1,21 +1,21 @@
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { api } from "./api/client";
-import type { ScreenerParams } from "./api/types";
+import type { ExploreParams } from "./api/types";
 import { GOTO_PORTFOLIO_EVENT } from "./components/AddLotPopover";
 import BondDrawer, { type Tab } from "./components/BondDrawer";
+import ExploreTable from "./components/ExploreTable";
 import FilterBar, { DEFAULT_FILTERS, type ListModes } from "./components/FilterBar";
 import Logo from "./components/Logo";
-import ScreenerTable from "./components/ScreenerTable";
 import { useAuth } from "./lib/auth";
 import { unionIsins, useWatchlists } from "./lib/lists";
 import Portfolio from "./pages/Portfolio";
 
-type Page = "screener" | "portfolio";
+type Page = "explore" | "portfolio";
 
 export default function App() {
-  const [page, setPage] = useState<Page>("screener");
-  const [params, setParams] = useState<ScreenerParams>(DEFAULT_FILTERS);
+  const [page, setPage] = useState<Page>("explore");
+  const [params, setParams] = useState<ExploreParams>(DEFAULT_FILTERS);
   const [modes, setModes] = useState<ListModes>({
     watchlist: false,
     watchlistId: null,
@@ -30,13 +30,13 @@ export default function App() {
     return () => window.removeEventListener(GOTO_PORTFOLIO_EVENT, go);
   }, []);
 
-  // A search means "find me this bond" — the screener filters would only
+  // A search means "find me this bond" — the explore filters would only
   // hide what the user is explicitly looking for, so q bypasses them.
   // Watchlist mode works the same way: the stored lists are fetched by
   // explicit ISINs, never narrowed by the other filters.
   const listMode = modes.watchlist;
   const listIsins = listMode ? unionIsins(watchlists, modes.watchlistId) : [];
-  const effectiveParams: ScreenerParams = params.q
+  const effectiveParams: ExploreParams = params.q
     ? { q: params.q }
     : listMode
       ? { isins: listIsins.join(",") }
@@ -55,7 +55,7 @@ export default function App() {
             type="button"
             title="Home"
             onClick={() => {
-              setPage("screener");
+              setPage("explore");
               setParams({ ...params, q: undefined });
             }}
             className="flex items-center gap-2.5 hover:opacity-90 transition-opacity"
@@ -68,7 +68,7 @@ export default function App() {
           <nav className="flex items-center gap-1 ml-4">
             {(
               [
-                ["screener", "Screener"],
+                ["explore", "Explore"],
                 ["portfolio", "Portfolio"],
               ] as const
             ).map(([id, label]) => (
@@ -93,7 +93,7 @@ export default function App() {
                 value={params.q ?? ""}
                 onChange={(e) => {
                   setParams({ ...params, q: e.target.value || undefined });
-                  if (e.target.value) setPage("screener");
+                  if (e.target.value) setPage("explore");
                 }}
               />
               {params.q && (
@@ -129,7 +129,7 @@ export default function App() {
                       : undefined
                 }
               />
-              <ScreenerTable
+              <ExploreTable
                 bonds={listMode && listIsins.length === 0 ? [] : (bonds.data?.bonds ?? [])}
                 loading={bonds.isLoading && (!listMode || listIsins.length > 0)}
                 error={bonds.error?.message ?? null}

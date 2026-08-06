@@ -13,7 +13,7 @@ YtmMethod = Literal["exact", "estimated", "approx", "ytc"]
 
 
 class Bond(BaseModel):
-    """One screener row (bond_analytics + read-time derived fields)."""
+    """One explorer row (bond_analytics + read-time derived fields)."""
     isin: str
     issuer_name: str | None
     sector: str | None

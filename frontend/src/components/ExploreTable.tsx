@@ -34,7 +34,10 @@ const COLS: { key: SortKey | null; label: string; right?: boolean }[] = [
   { key: "days_since_traded", label: "Last traded", right: true },
 ];
 
-export default function ScreenerTable({
+const COLUMN_WIDTHS_KEY = "explore-col-widths";
+const LEGACY_COLUMN_WIDTHS_KEY = "screener-col-widths";
+
+export default function ExploreTable({
   bonds,
   loading,
   error,
@@ -49,7 +52,13 @@ export default function ScreenerTable({
   const tableRef = useRef<HTMLTableElement>(null);
   const [widths, setWidths] = useState<number[] | null>(() => {
     try {
-      const saved = JSON.parse(localStorage.getItem("screener-col-widths") ?? "null");
+      const current = localStorage.getItem(COLUMN_WIDTHS_KEY);
+      const legacy = current === null ? localStorage.getItem(LEGACY_COLUMN_WIDTHS_KEY) : null;
+      const saved = JSON.parse(current ?? legacy ?? "null");
+      if (legacy !== null) {
+        localStorage.setItem(COLUMN_WIDTHS_KEY, legacy);
+        localStorage.removeItem(LEGACY_COLUMN_WIDTHS_KEY);
+      }
       return Array.isArray(saved) && saved.length === COLS.length ? saved : null;
     } catch {
       return null;
@@ -74,7 +83,7 @@ export default function ScreenerTable({
     const up = () => {
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
-      localStorage.setItem("screener-col-widths", JSON.stringify(next));
+      localStorage.setItem(COLUMN_WIDTHS_KEY, JSON.stringify(next));
     };
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up);

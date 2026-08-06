@@ -2,8 +2,8 @@
 
 No fetch endpoints: the jobs container keeps the database current
 (universe daily, NSDL daily, EOD trades nightly) and precomputes the
-screener analytics into bond_analytics (scripts/compute_analytics.py).
-The API is stateless: the screener is a filtered SELECT; only the
+explorer analytics into bond_analytics (scripts/compute_analytics.py).
+The API is stateless: the explorer is a filtered SELECT; only the
 per-bond detail view computes yields live (it supports what-if pricing).
 """
 from datetime import date
@@ -182,7 +182,7 @@ def portfolio(user_id: int = Depends(auth.require_user)):
 
 
 # --------------------------------------------------------------------------
-# Screener
+# Explorer
 # --------------------------------------------------------------------------
 
 @router.get("/api/bonds", response_model=models.BondsResponse)
@@ -230,7 +230,7 @@ def bonds(
         floor = ratings.RATING_RANK.get(min_rating.strip().upper())
         if floor is None:  # unknown grade string matches nothing
             return {"count": 0, "bonds": [], "as_of": None}
-    rows, total, as_of = queries.screener({
+    rows, total, as_of = queries.explorer({
         "min_ytm": min_ytm, "max_ytm": max_ytm, "rating": rating,
         "min_rating_rank": floor, "sector": sector, "industry": industry,
         "issuer": issuer, "exchange": exchange, "frequency": frequency,
@@ -255,7 +255,7 @@ def bonds(
 @router.get("/api/filters", response_model=models.Filters)
 def filters():
     """Distinct values for filter dropdowns."""
-    return {**queries.screener_filters(), "ratings": list(ratings.RATING_ORDER)}
+    return {**queries.explorer_filters(), "ratings": list(ratings.RATING_ORDER)}
 
 
 # --------------------------------------------------------------------------

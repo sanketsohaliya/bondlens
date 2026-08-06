@@ -39,8 +39,8 @@ export interface LotInput {
   platform?: string | null;
 }
 
-// Screener query params (request side; hand-maintained).
-export interface ScreenerParams {
+// Explorer query params (request side; hand-maintained).
+export interface ExploreParams {
   min_ytm?: number;
   max_ytm?: number;
   min_rating?: string;

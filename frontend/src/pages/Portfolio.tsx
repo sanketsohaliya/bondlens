@@ -8,9 +8,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { fmt } from "../api/client";
 import type { PortfolioMonth, PortfolioNews, PortfolioPosition } from "../api/types";
 import Donut from "../components/Donut";
+import { BookmarkIcon } from "../components/ExploreTable";
 import LotsPanel from "../components/LotsPanel";
 import RatingBadge from "../components/RatingBadge";
-import { BookmarkIcon } from "../components/ScreenerTable";
 import StatBox from "../components/StatBox";
 import { monthGrid, usePortfolio, type WeightBy, weights } from "../lib/portfolio";
 
@@ -53,8 +53,7 @@ export default function Portfolio({ onSelect }: { onSelect: (isin: string) => vo
           <span className="inline-block align-text-bottom text-zinc-300">
             <BookmarkIcon filled={false} />
           </span>{" "}
-          next to any bond in the screener to record a purchase — units, price paid, date and
-          platform.
+          next to any bond in Explore to record a purchase — units, price paid, date and platform.
         </p>
       </div>
     );

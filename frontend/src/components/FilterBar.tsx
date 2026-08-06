@@ -1,12 +1,12 @@
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { api, fmt } from "../api/client";
-import type { Filters, ScreenerParams } from "../api/types";
+import type { ExploreParams, Filters } from "../api/types";
 import { nextListName, useWatchlists } from "../lib/lists";
 
 /* What a fresh screen starts with: decent yield, real retail liquidity,
    investment-grade, at least a year to run, recently traded. */
-export const DEFAULT_FILTERS: ScreenerParams = {
+export const DEFAULT_FILTERS: ExploreParams = {
   min_ytm: 10,
   min_turnover: 51000,
   min_rating: "BBB-",
@@ -15,7 +15,7 @@ export const DEFAULT_FILTERS: ScreenerParams = {
 };
 
 /** v1's describeFilters(): human-readable summary of active filters. */
-export function describeFilters(p: ScreenerParams): string[] {
+export function describeFilters(p: ExploreParams): string[] {
   const parts: string[] = [];
   if (p.min_rating) parts.push(`rating ≥ ${p.min_rating}`);
   if (p.min_ytm != null) parts.push(`YTM ≥ ${p.min_ytm}%`);
@@ -55,15 +55,15 @@ export default function FilterBar({
   onModes,
   dimReason,
 }: {
-  params: ScreenerParams;
-  onChange: (p: ScreenerParams) => void;
+  params: ExploreParams;
+  onChange: (p: ExploreParams) => void;
   modes: ListModes;
   onModes: (m: ListModes) => void;
   dimReason?: string;
 }) {
   const { data: filters } = useQuery({ queryKey: ["filters"], queryFn: api.filters });
 
-  const set = (patch: Partial<ScreenerParams>) => {
+  const set = (patch: Partial<ExploreParams>) => {
     onChange({ ...params, ...patch });
   };
 
@@ -101,8 +101,8 @@ function FilterFields({
   onModes,
   dimReason,
 }: {
-  params: ScreenerParams;
-  set: (patch: Partial<ScreenerParams>) => void;
+  params: ExploreParams;
+  set: (patch: Partial<ExploreParams>) => void;
   filters: Filters | undefined;
   onReset: () => void;
   modes: ListModes;
@@ -128,7 +128,7 @@ function FilterFields({
           className={box(active)}
           value={params[key] ?? ""}
           onChange={(e) =>
-            set({ [key]: e.target.value ? +e.target.value : undefined } as Partial<ScreenerParams>)
+            set({ [key]: e.target.value ? +e.target.value : undefined } as Partial<ExploreParams>)
           }
         />
       </label>
@@ -143,7 +143,7 @@ function FilterFields({
         <select
           className={box(active)}
           value={params[key] ?? ""}
-          onChange={(e) => set({ [key]: e.target.value || undefined } as Partial<ScreenerParams>)}
+          onChange={(e) => set({ [key]: e.target.value || undefined } as Partial<ExploreParams>)}
         >
           <option value="">Any</option>
           {options.map((o) => (
@@ -189,7 +189,7 @@ function FilterFields({
   const [addOpen, setAddOpen] = useState(false);
   const visible = EXTRAS.filter(([id]) => added.includes(id) || extraActive[id]);
 
-  const clearExtra: Record<ExtraId, Partial<ScreenerParams>> = {
+  const clearExtra: Record<ExtraId, Partial<ExploreParams>> = {
     max_ytm: { max_ytm: undefined },
     sector: { sector: undefined },
     frequency: { frequency: undefined },
