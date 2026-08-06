@@ -23,6 +23,7 @@ export type {
   OrderBook,
   PortfolioLot,
   PortfolioMonth,
+  PortfolioMonthBond,
   PortfolioNews,
   PortfolioPosition,
   PortfolioResponse,

@@ -7,6 +7,7 @@ const cf = (month: string, interest: number, principal = 0): PortfolioMonth => (
   interest,
   principal,
   estimated: false,
+  bonds: [],
 });
 
 describe("monthGrid", () => {

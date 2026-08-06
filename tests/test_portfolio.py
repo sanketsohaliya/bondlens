@@ -121,7 +121,8 @@ def test_monthly_cashflows_buckets_and_scales():
               _flow(date(2027, 3, 10), 1000.0, event="redemption")],
         "B": [_flow(date(2026, 3, 5), 25.0)],
     }
-    out = pf.monthly_cashflows({"A": 2, "B": 4}, flows, TODAY)
+    out = pf.monthly_cashflows({"A": 2, "B": 4}, flows, TODAY,
+                               {"A": "875AAA27"})
     assert [m["month"] for m in out] == ["2026-03", "2027-03"]
     m1, m2 = out
     assert m1["interest"] == pytest.approx(40 * 2 + 10 * 2 + 25 * 4)
@@ -129,6 +130,21 @@ def test_monthly_cashflows_buckets_and_scales():
     assert m2["interest"] == pytest.approx(80)
     assert m2["principal"] == pytest.approx(2000)
     assert m2["estimated"] is False
+
+    # Per-bond breakdown: scaled by units, labelled, largest payer first,
+    # and summing exactly to the month's aggregates.
+    b1 = {b["isin"]: b for b in m1["bonds"]}
+    assert b1["A"]["interest"] == pytest.approx(100)
+    assert b1["A"]["label"] == "875AAA27" and b1["A"]["estimated"] is True
+    assert b1["B"]["interest"] == pytest.approx(100)
+    assert b1["B"]["label"] == "B" and b1["B"]["estimated"] is False
+    assert m2["bonds"][0]["isin"] == "A"  # only payer, principal-heavy
+    assert m2["bonds"][0]["principal"] == pytest.approx(2000)
+    for m in out:
+        assert m["interest"] == pytest.approx(
+            sum(b["interest"] for b in m["bonds"]))
+        assert m["principal"] == pytest.approx(
+            sum(b["principal"] for b in m["bonds"]))
 
 
 def test_monthly_cashflows_record_date_excludes_sellers_coupon():

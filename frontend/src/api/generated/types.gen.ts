@@ -717,6 +717,22 @@ export type PortfolioSummary = {
 };
 
 /**
+ * PortfolioMonthBond
+ */
+export type PortfolioMonthBond = {
+    isin: string;
+    /**
+     * Label
+     *
+     * Display symbol (nse/bse) or the ISIN itself
+     */
+    label: string;
+    interest: number;
+    principal: number;
+    estimated: boolean;
+};
+
+/**
  * PortfolioMonth
  */
 export type PortfolioMonth = {
@@ -724,6 +740,12 @@ export type PortfolioMonth = {
     interest: number;
     principal: number;
     estimated: boolean;
+    /**
+     * Bonds
+     *
+     * Largest payer first
+     */
+    bonds: Array<PortfolioMonthBond>;
 };
 
 /**

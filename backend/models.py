@@ -296,11 +296,20 @@ class PortfolioSummary(BaseModel):
     bonds: int
 
 
+class PortfolioMonthBond(BaseModel):
+    isin: str
+    label: str  # display symbol (nse/bse) or the ISIN itself
+    interest: float
+    principal: float
+    estimated: bool
+
+
 class PortfolioMonth(BaseModel):
     month: str  # "YYYY-MM"
     interest: float
     principal: float
     estimated: bool
+    bonds: list[PortfolioMonthBond]  # largest payer first
 
 
 class PortfolioNews(BaseModel):

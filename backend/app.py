@@ -176,7 +176,9 @@ def portfolio(user_id: int = Depends(auth.require_user)):
         "summary": pf.summarize(positions),
         "positions": positions,
         "cashflows": pf.monthly_cashflows(
-            {p["isin"]: p["units"] for p in positions}, flows_by_isin, today),
+            {p["isin"]: p["units"] for p in positions}, flows_by_isin, today,
+            {isin: core.get("nse_symbol") or core.get("bse_scrip_id") or isin
+             for isin, core in core_by_isin.items()}),
         "news": queries.ratings_for_isins(isins),
     }
 

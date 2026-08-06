@@ -381,11 +381,21 @@ function CashflowChart({ cashflows }: { cashflows: PortfolioMonth[] }) {
       }
       const d = new Date(`${cf.month}-01`);
       const money = (v: number) => `₹${v.toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
+      const bondLines = (cf.bonds ?? [])
+        .map(
+          (b) =>
+            `<tr><td style="color:#a1a1aa;padding-right:10px">${b.estimated ? "≈" : ""}${b.label}</td>` +
+            `<td style="text-align:right;font-variant-numeric:tabular-nums">${money(b.interest + b.principal)}</td></tr>`,
+        )
+        .join("");
       el.innerHTML =
         `<div style="color:#71717a;margin-bottom:2px">${d.toLocaleDateString("en-IN", { month: "short", year: "numeric" })}${cf.estimated ? " (≈ est.)" : ""}</div>` +
         `<span style="color:#38bdf8">Interest</span> ${money(cf.interest)}<br/>` +
         `<span style="color:#10b981">Principal</span> ${money(cf.principal)}<br/>` +
-        `<span style="color:#e4e4e7">Total</span> ${money(cf.interest + cf.principal)}`;
+        `<span style="color:#e4e4e7">Total</span> ${money(cf.interest + cf.principal)}` +
+        (bondLines
+          ? `<div style="border-top:1px solid #3f3f46;margin:4px 0 2px"></div><table>${bondLines}</table>`
+          : "");
       el.style.display = "block";
       const w = container.current?.clientWidth ?? 0;
       const flip = param.point.x > w - 160;
@@ -443,6 +453,51 @@ function CashflowChart({ cashflows }: { cashflows: PortfolioMonth[] }) {
   );
 }
 
+/** Hover detail for one grid cell: which bonds pay that month, split
+ * interest/principal. Pure CSS (group-hover) — no state, no listeners. */
+function MonthPopover({
+  m,
+  year,
+  monthIdx,
+  below,
+}: {
+  m: PortfolioMonth;
+  year: number;
+  monthIdx: number;
+  below: boolean;
+}) {
+  return (
+    <div
+      className={`pointer-events-none absolute z-20 hidden group-hover:block w-max rounded-md border border-zinc-700 bg-zinc-900/95 px-2.5 py-1.5 text-left text-[11px] leading-relaxed shadow-xl ${
+        below ? "top-full mt-0.5" : "bottom-full mb-0.5"
+      } ${monthIdx >= 9 ? "right-0" : "left-0"}`}
+    >
+      <div className="text-zinc-500 mb-1">
+        {MONTHS[monthIdx]} {year} · {fmt.inr(m.interest + m.principal)}
+        {m.estimated && " (≈ est.)"}
+      </div>
+      <table className="tabular-nums">
+        <tbody>
+          {m.bonds.map((b) => (
+            <tr key={b.isin}>
+              <td className="pr-3 text-zinc-300">
+                {b.estimated && <span className="text-zinc-500">≈</span>}
+                {b.label}
+              </td>
+              <td className="pr-3 text-right text-sky-400">
+                {b.interest > 0 ? fmt.inr(b.interest) : "–"}
+              </td>
+              <td className="text-right text-emerald-400">
+                {b.principal > 0 ? fmt.inr(b.principal) : "–"}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 function CashflowGrid({ cashflows }: { cashflows: PortfolioMonth[] }) {
   const rows = monthGrid(cashflows);
   return (
@@ -460,25 +515,21 @@ function CashflowGrid({ cashflows }: { cashflows: PortfolioMonth[] }) {
           </tr>
         </thead>
         <tbody>
-          {rows.map((r) => (
+          {rows.map((r, ri) => (
             <tr key={r.year} className="border-b border-zinc-800/60">
               <td className={`${TD} font-medium text-zinc-200`}>{r.year}</td>
               {r.months.map((m, i) => (
                 <td
                   key={MONTHS[i]}
-                  className={`${TD} text-right tabular-nums ${
+                  className={`${TD} group relative text-right tabular-nums ${
                     m && m.principal > 0 ? "text-emerald-400" : "text-zinc-400"
                   }`}
-                  title={
-                    m
-                      ? `Interest ${fmt.inr(m.interest)} · Principal ${fmt.inr(m.principal)}`
-                      : undefined
-                  }
                 >
                   {m ? (
                     <>
                       {m.estimated && <span className="text-zinc-500">≈</span>}
                       {fmt.inr(m.interest + m.principal)}
+                      <MonthPopover m={m} year={r.year} monthIdx={i} below={ri < rows.length / 2} />
                     </>
                   ) : (
                     <span className="text-zinc-700">–</span>

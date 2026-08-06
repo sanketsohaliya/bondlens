@@ -110,12 +110,16 @@ def summarize(positions: list[dict[str, Any]]) -> dict[str, Any]:
 
 def monthly_cashflows(units_by_isin: dict[str, float],
                       flows_by_isin: dict[str, list[Flow]],
-                      today: date) -> list[dict[str, Any]]:
-    """Future receivable flows x units, bucketed per calendar month.
+                      today: date,
+                      labels_by_isin: dict[str, str] | None = None,
+                      ) -> list[dict[str, Any]]:
+    """Future receivable flows x units, bucketed per calendar month, with
+    a per-bond breakdown inside each bucket (largest payer first).
 
     Record-date accurate: a flow whose record date has passed belongs to
     the seller, so it is excluded even if the due date is ahead.
     """
+    labels = labels_by_isin or {}
     buckets: dict[str, dict[str, Any]] = {}
     for isin, flows in flows_by_isin.items():
         units = units_by_isin.get(isin, 0)
@@ -127,12 +131,23 @@ def monthly_cashflows(units_by_isin: dict[str, float],
             month = f.due_date.strftime("%Y-%m")
             b = buckets.setdefault(
                 month, {"month": month, "interest": 0.0, "principal": 0.0,
-                        "estimated": False})
+                        "estimated": False, "_bonds": {}})
             key = "interest" if f.event == "interest" else "principal"
             b[key] += f.amount * units
             b["estimated"] = b["estimated"] or f.estimated
+            bond = b["_bonds"].setdefault(
+                isin, {"isin": isin, "label": labels.get(isin, isin),
+                       "interest": 0.0, "principal": 0.0, "estimated": False})
+            bond[key] += f.amount * units
+            bond["estimated"] = bond["estimated"] or f.estimated
     out = sorted(buckets.values(), key=lambda b: b["month"])
     for b in out:
         b["interest"] = round(b["interest"], 2)
         b["principal"] = round(b["principal"], 2)
+        bonds = sorted(b.pop("_bonds").values(),
+                       key=lambda x: -(x["interest"] + x["principal"]))
+        for bond in bonds:
+            bond["interest"] = round(bond["interest"], 2)
+            bond["principal"] = round(bond["principal"], 2)
+        b["bonds"] = bonds
     return out
