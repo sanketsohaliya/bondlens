@@ -199,14 +199,6 @@ function Row({
               DEFAULT
             </span>
           )}
-          {b.tech_delay && !b.in_default && (
-            <span
-              title="A payment was delayed for technical/investor-side reasons and later paid — see the bond's risk section"
-              className="shrink-0 text-[10px] px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-400 border border-amber-500/30"
-            >
-              TECH DELAY
-            </span>
-          )}
         </div>
         <div className="text-[11px] text-zinc-500 truncate max-w-76">{b.issuer_name ?? b.isin}</div>
       </td>

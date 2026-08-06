@@ -15,6 +15,21 @@ import TradeChart from "./TradeChart";
 
 export type Tab = "overview" | "chart" | "cashflows" | "order book" | "ratings";
 
+/** Factual hover text from the NSDL technical-delay records: when, why. */
+function techDelayTip(records: Array<{ [key: string]: unknown }>): string {
+  const last = records[records.length - 1];
+  if (!last) return "A payment was briefly delayed for technical reasons and later paid";
+  const due = typeof last.payment_due_date === "string" ? fmt.date(last.payment_due_date) : null;
+  const reason = typeof last.failure_reason === "string" ? last.failure_reason : null;
+  return [
+    `Payment${due ? ` due ${due}` : ""} was briefly delayed and later paid`,
+    reason,
+    records.length > 1 ? `(${records.length} such delays on record)` : null,
+  ]
+    .filter(Boolean)
+    .join(" — ");
+}
+
 export default function BondDrawer({
   isin,
   initialTab,
@@ -74,7 +89,7 @@ export default function BondDrawer({
                     )}
                     {bond.tech_delay && !bond.in_default && (
                       <span
-                        title="A payment was delayed for technical/investor-side reasons and later paid — details in the risk section below"
+                        title={techDelayTip(bond.technical_defaults)}
                         className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-400 border border-amber-500/30"
                       >
                         TECH DELAY
