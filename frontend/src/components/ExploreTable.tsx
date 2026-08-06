@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { fmt } from "../api/client";
 import type { Bond } from "../api/types";
 import { nextListName, useHeldIsins, useWatchlists } from "../lib/lists";
@@ -360,12 +361,14 @@ export function WatchStar({ isin }: { isin: string }) {
   const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
   const [draft, setDraft] = useState<string | null>(null);
   const wrapRef = useRef<HTMLSpanElement>(null);
+  const popoverRef = useRef<HTMLSpanElement>(null);
   const watched = starred(isin);
 
   useEffect(() => {
     if (!pos) return;
     const onDown = (e: MouseEvent) => {
-      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setPos(null);
+      const target = e.target as Node;
+      if (!wrapRef.current?.contains(target) && !popoverRef.current?.contains(target)) setPos(null);
     };
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") setPos(null);
@@ -405,55 +408,59 @@ export function WatchStar({ isin }: { isin: string }) {
       >
         {watched ? "★" : "☆"}
       </button>
-      {pos && (
-        <span
-          className="fixed z-50 w-56 py-1 rounded-md border border-zinc-700 bg-zinc-900 shadow-xl text-left"
-          style={{ left: pos.x, top: pos.y }}
-        >
-          {lists.map((l) => (
-            <label
-              key={l.id}
-              className="flex items-center gap-2 px-3 py-1.5 text-xs text-zinc-200 hover:bg-zinc-800 cursor-pointer"
-            >
-              <input
-                type="checkbox"
-                checked={l.isins.includes(isin)}
-                onChange={() => toggle(l.id, isin)}
-                className="accent-amber-400"
-              />
-              <span className="truncate">{l.name}</span>
-            </label>
-          ))}
-          {draft == null ? (
-            <button
-              type="button"
-              onClick={() => setDraft(nextListName(lists))}
-              className="w-full px-3 py-1.5 text-left text-xs text-emerald-400 hover:bg-zinc-800"
-            >
-              + New list
-            </button>
-          ) : (
-            <span className="block px-3 py-1.5">
-              <input
-                // biome-ignore lint/a11y/noAutofocus: the user just asked to type a list name
-                autoFocus
-                value={draft}
-                onChange={(e) => setDraft(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") submitDraft();
-                  if (e.key === "Escape") {
-                    e.stopPropagation();
-                    setDraft(null);
-                  }
-                }}
-                onBlur={submitDraft}
-                placeholder="List name"
-                className="w-full bg-transparent border border-zinc-600 rounded px-2 py-1 text-xs text-zinc-100 focus:outline-none focus:border-zinc-400"
-              />
-            </span>
-          )}
-        </span>
-      )}
+      {pos &&
+        createPortal(
+          <span
+            ref={popoverRef}
+            className="fixed z-50 w-56 py-1 rounded-md border border-zinc-700 bg-zinc-900 shadow-xl text-left"
+            style={{ left: pos.x, top: pos.y }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {lists.map((l) => (
+              <label
+                key={l.id}
+                className="flex items-center gap-2 px-3 py-1.5 text-xs text-zinc-200 hover:bg-zinc-800 cursor-pointer"
+              >
+                <input
+                  type="checkbox"
+                  checked={l.isins.includes(isin)}
+                  onChange={() => toggle(l.id, isin)}
+                  className="accent-amber-400"
+                />
+                <span className="truncate">{l.name}</span>
+              </label>
+            ))}
+            {draft == null ? (
+              <button
+                type="button"
+                onClick={() => setDraft(nextListName(lists))}
+                className="w-full px-3 py-1.5 text-left text-xs text-emerald-400 hover:bg-zinc-800"
+              >
+                + New list
+              </button>
+            ) : (
+              <span className="block px-3 py-1.5">
+                <input
+                  // biome-ignore lint/a11y/noAutofocus: the user just asked to type a list name
+                  autoFocus
+                  value={draft}
+                  onChange={(e) => setDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") submitDraft();
+                    if (e.key === "Escape") {
+                      e.stopPropagation();
+                      setDraft(null);
+                    }
+                  }}
+                  onBlur={submitDraft}
+                  placeholder="List name"
+                  className="w-full bg-transparent border border-zinc-600 rounded px-2 py-1 text-xs text-zinc-100 focus:outline-none focus:border-zinc-400"
+                />
+              </span>
+            )}
+          </span>,
+          document.body,
+        )}
     </span>
   );
 }
@@ -498,16 +505,18 @@ export function HoldMark({ isin }: { isin: string }) {
       >
         <BookmarkIcon filled={held} />
       </button>
-      {pos && (
-        <>
-          <span
-            className="fixed inset-0 z-40 block"
-            onClick={() => setPos(null)}
-            aria-hidden="true"
-          />
-          <AddLotPopover isin={isin} held={held} pos={pos} onClose={() => setPos(null)} />
-        </>
-      )}
+      {pos &&
+        createPortal(
+          <>
+            <span
+              className="fixed inset-0 z-40 block"
+              onClick={() => setPos(null)}
+              aria-hidden="true"
+            />
+            <AddLotPopover isin={isin} held={held} pos={pos} onClose={() => setPos(null)} />
+          </>,
+          document.body,
+        )}
     </span>
   );
 }
