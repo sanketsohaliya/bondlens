@@ -61,6 +61,7 @@ class Bond(BaseModel):
     rating_prev: str | None
     rating_changed_at: date | None
     in_default: bool
+    tech_delay: bool
     computed_at: datetime
 
 
@@ -172,6 +173,7 @@ class BondDetail(BaseModel):
     credit_rating: str | None
     rating_rank: int | None
     in_default: bool
+    tech_delay: bool
     rating_timeline: dict[str, list[RatingEvent]]
     # Cashflows
     cashflows: list[Cashflow]

@@ -65,8 +65,19 @@ export default function BondDrawer({
                       {bond.nse_symbol ?? bond.bse_scrip_id ?? bond.isin}
                     </h2>
                     {bond.in_default && (
-                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-500/15 text-red-400 border border-red-500/30">
+                      <span
+                        title="Issuer has missed payments on this bond"
+                        className="text-[10px] px-1.5 py-0.5 rounded bg-red-500/15 text-red-400 border border-red-500/30"
+                      >
                         DEFAULT
+                      </span>
+                    )}
+                    {bond.tech_delay && !bond.in_default && (
+                      <span
+                        title="A payment was delayed for technical/investor-side reasons and later paid — details in the risk section below"
+                        className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-400 border border-amber-500/30"
+                      >
+                        TECH DELAY
                       </span>
                     )}
                   </div>

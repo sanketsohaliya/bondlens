@@ -209,6 +209,10 @@ export type Bond = {
      */
     in_default: boolean;
     /**
+     * Tech Delay
+     */
+    tech_delay: boolean;
+    /**
      * Computed At
      */
     computed_at: string;
@@ -436,6 +440,10 @@ export type BondDetail = {
      * In Default
      */
     in_default: boolean;
+    /**
+     * Tech Delay
+     */
+    tech_delay: boolean;
     /**
      * Rating Timeline
      */
@@ -1310,10 +1318,6 @@ export type BondsApiBondsGetData = {
          * Downgraded Only
          */
         downgraded_only?: boolean;
-        /**
-         * Exclude Defaulted
-         */
-        exclude_defaulted?: boolean;
         /**
          * Isins
          *

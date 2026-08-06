@@ -55,6 +55,7 @@ const base = {
   credit_rating: "ACUITE BB+",
   rating_rank: 11,
   in_default: false,
+  tech_delay: false,
   rating_timeline: {
     ACUITE: [
       {

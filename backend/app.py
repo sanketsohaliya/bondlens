@@ -217,10 +217,9 @@ def bonds(
         None, ge=1, description="Last retail trade at most N days ago"),
     exact_only: bool = Query(False, description="Only exact-schedule YTMs"),
     downgraded_only: bool = Query(False),
-    exclude_defaulted: bool = Query(True),
     isins: str | None = Query(
-        None, description="Comma-separated ISIN list (e.g. browser-side "
-                          "watchlist/holdings); bypasses default-exclusion"),
+        None, description="Comma-separated ISIN list "
+                          "(e.g. watchlist/portfolio contents)"),
     q: str | None = Query(None, description="Search ISIN / symbol / issuer"),
     limit: int = Query(500, le=5000),
     offset: int = Query(0, ge=0),
@@ -243,7 +242,6 @@ def bonds(
         "fresh_only": fresh_only, "traded_within": traded_within,
         "exact_only": exact_only,
         "downgraded_only": downgraded_only,
-        "exclude_defaulted": exclude_defaulted,
         "isins": [s.strip().upper() for s in isins.split(",") if s.strip()]
                  if isins else None,
         "q": q,
@@ -360,8 +358,8 @@ def bond_detail(isin: str, price: float | None = Query(None, gt=0)):
         "duration": yields.modified_duration(ltp, sched, best, today),
         "credit_rating": ratings.composite(cur),
         "rating_rank": ratings.best_rank(cur),
-        "in_default": ratings.in_default(cur) or bool(extras["defaults"])
-                      or bool(extras["technical_defaults"]),
+        "in_default": ratings.in_default(cur) or bool(extras["defaults"]),
+        "tech_delay": bool(extras["technical_defaults"]),
         "rating_timeline": ratings.timeline(hist),
         "cashflows": flows_out,
         "future_total_per_unit": round(future_total, 2),

@@ -2,7 +2,8 @@
 secured mapping, perpetual YTC, YTM reliability flag, rating dedupe."""
 from datetime import date
 
-from backend.analytics import ratings, yields
+from backend import queries
+from backend.analytics import compute, ratings, yields
 from backend.analytics.compute import _yn, ytm_reliability
 from backend.analytics.schedule import Flow, Schedule
 
@@ -135,3 +136,32 @@ def test_parse_call_dates_prose_style():
                  "AFTER THE EXPIRY OF 5 (FIVE) YEARS FROM THE DEEMED DATE "
                  "OF ALLOTMENT UNLESS NOT PERMITTED UNDER APPLICABLE LAW"}
     assert yields.parse_call_dates(terms) == []
+
+
+# --- technical delays are a soft flag, not defaults --------------------------
+
+def test_tech_delay_does_not_brand_default(monkeypatch):
+    # An IIFL-Samasta-style bond: AA-, one investor-side payment hiccup.
+    # It must surface with tech_delay=True but in_default=False (a real
+    # 0.0002% technical delay used to hide the bond from the explorer).
+    core = {
+        "INETECH00001": {"isin": "INETECH00001", "on_nse": True,
+                         "on_bse": False},
+        "INEDFLT00002": {"isin": "INEDFLT00002", "on_nse": True,
+                         "on_bse": False},
+    }
+    monkeypatch.setattr(queries, "explorer_core", lambda: core)
+    monkeypatch.setattr(queries, "all_cashflows", lambda: {})
+    monkeypatch.setattr(queries, "all_terms", lambda: {})
+    monkeypatch.setattr(queries, "current_ratings", lambda: {})
+    monkeypatch.setattr(queries, "rating_history", lambda: {})
+    monkeypatch.setattr(queries, "defaulted_isins",
+                        lambda: {"INEDFLT00002"})
+    monkeypatch.setattr(queries, "tech_delay_isins",
+                        lambda: {"INETECH00001"})
+
+    rows = {r["isin"]: r for r in compute.build_rows(today=TODAY)}
+    assert rows["INETECH00001"]["tech_delay"] is True
+    assert rows["INETECH00001"]["in_default"] is False
+    assert rows["INEDFLT00002"]["in_default"] is True
+    assert rows["INEDFLT00002"]["tech_delay"] is False

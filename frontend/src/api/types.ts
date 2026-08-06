@@ -63,7 +63,6 @@ export interface ExploreParams {
   traded_within?: number;
   exact_only?: boolean;
   downgraded_only?: boolean;
-  exclude_defaulted?: boolean;
   isins?: string;
   q?: string;
   limit?: number;

@@ -29,7 +29,7 @@ _COLS: list[LiteralString] = [
     "otc_trade_date", "otc_turnover", "ytm", "ytm_method", "ytm_reliable",
     "current_yield", "duration",
     "credit_rating", "rating_rank", "rating_change", "rating_prev",
-    "rating_changed_at", "in_default", "computed_at",
+    "rating_changed_at", "in_default", "tech_delay", "computed_at",
 ]
 
 
@@ -84,6 +84,7 @@ def build_rows(today: date | None = None) -> list[dict]:
     current = queries.current_ratings()
     history = queries.rating_history()
     defaulted = queries.defaulted_isins()
+    tech_delays = queries.tech_delay_isins()
 
     rows = []
     for isin, r in core.items():
@@ -177,6 +178,7 @@ def build_rows(today: date | None = None) -> list[dict]:
             "rating_prev": change["prev_rating"] if change else None,
             "rating_changed_at": change["rating_date"] if change else None,
             "in_default": isin in defaulted or ratings.in_default(cur),
+            "tech_delay": isin in tech_delays,
             "computed_at": computed_at,
         })
     return rows

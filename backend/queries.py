@@ -162,12 +162,20 @@ def ratings_for_isins(isins: list[str], limit: int = 25) -> list[dict]:
 
 
 def defaulted_isins() -> set:
-    """ISINs with any payment-default record."""
+    """ISINs with a real payment-default record. Technical delays (investor
+    account/IFSC issues, cured in days) are tracked separately — branding
+    them defaults hid perfectly sound bonds from the explorer."""
     with db._conn() as conn:
         rows = conn.execute(
-            "SELECT DISTINCT isin FROM bond_defaults "
-            "UNION SELECT DISTINCT isin FROM bond_technical_defaults"
-        ).fetchall()
+            "SELECT DISTINCT isin FROM bond_defaults").fetchall()
+    return {r["isin"] for r in rows}
+
+
+def tech_delay_isins() -> set:
+    """ISINs with an NSDL technical-delay record (soft warning only)."""
+    with db._conn() as conn:
+        rows = conn.execute(
+            "SELECT DISTINCT isin FROM bond_technical_defaults").fetchall()
     return {r["isin"] for r in rows}
 
 
@@ -200,12 +208,11 @@ def explorer(f: dict, stale_days: int) -> tuple[list[dict], int, float | None]:
         conds.append(cond)
         p.update(params)
 
-    # An explicit ISIN list is the user's own watchlist/holdings — show
-    # everything in it, defaulted or not.
+    # Nothing is ever hidden — defaulted bonds carry an in_default flag
+    # the UI renders as a warning. An explicit ISIN list is the user's
+    # own watchlist/portfolio.
     if f.get("isins"):
         add("a.isin = ANY(%(isins)s)", isins=list(f["isins"]))
-    elif f.get("exclude_defaulted", True):
-        add("NOT a.in_default")
     if f.get("min_ytm") is not None:
         add("a.ytm >= %(min_ytm)s", min_ytm=f["min_ytm"])
     if f.get("max_ytm") is not None:
