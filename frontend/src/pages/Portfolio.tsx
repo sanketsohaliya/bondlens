@@ -6,7 +6,12 @@ import {
 } from "lightweight-charts";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { fmt } from "../api/client";
-import type { PortfolioMonth, PortfolioNews, PortfolioPosition } from "../api/types";
+import type {
+  PortfolioIncome,
+  PortfolioMonth,
+  PortfolioNews,
+  PortfolioPosition,
+} from "../api/types";
 import AddLotSearch from "../components/AddLotSearch";
 import Donut from "../components/Donut";
 import { BookmarkIcon } from "../components/ExploreTable";
@@ -14,7 +19,7 @@ import LotsPanel from "../components/LotsPanel";
 import RatingBadge from "../components/RatingBadge";
 import StatBox from "../components/StatBox";
 import { fuzzyMatch } from "../lib/fuzzy";
-import { monthGrid, usePortfolio, type WeightBy, weights } from "../lib/portfolio";
+import { isPastMonth, monthGrid, usePortfolio, type WeightBy, weights } from "../lib/portfolio";
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
@@ -78,7 +83,8 @@ export default function Portfolio({ onSelect }: { onSelect: (isin: string) => vo
     );
   }
 
-  const { summary, positions, cashflows, news } = data;
+  const { summary, positions, cashflows, income, news } = data;
+  const hasUndatedLot = positions.some((p) => p.lots.some((l) => !l.purchase_date));
   const sliced = filter ? positions.filter((p) => filter.isins.includes(p.isin)) : positions;
   const q = nameQuery.trim();
   const shown = q
@@ -158,11 +164,12 @@ export default function Portfolio({ onSelect }: { onSelect: (isin: string) => vo
           {tab === "cashflow" &&
             (cashflows.length > 0 ? (
               <>
+                <IncomeBanner income={income} hasUndatedLot={hasUndatedLot} />
                 <CashflowChart cashflows={cashflows} />
                 <CashflowGrid cashflows={cashflows} />
               </>
             ) : (
-              <div className="py-12 text-center text-sm text-zinc-600">No future cashflows</div>
+              <div className="py-12 text-center text-sm text-zinc-600">No cashflows</div>
             ))}
 
           {tab === "breakdown" && (
@@ -449,6 +456,46 @@ function PositionRow({
 
 // --- Cashflow chart + grid --------------------------------------------------
 
+/** Received-so-far vs projected, from the same month buckets the chart
+ * draws — the numbers cannot disagree. Hidden until something has been
+ * received. */
+function IncomeBanner({
+  income,
+  hasUndatedLot,
+}: {
+  income: PortfolioIncome;
+  hasUndatedLot: boolean;
+}) {
+  const received = income.received_interest + income.received_principal;
+  const projected = income.projected_interest + income.projected_principal;
+  if (received <= 0 && !hasUndatedLot) return null;
+  return (
+    <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1 border-b border-zinc-800 bg-zinc-900/30 px-3 py-2 text-xs">
+      {received > 0 && (
+        <>
+          <span className="text-zinc-400">
+            Received so far <span className="font-semibold text-zinc-100">{fmt.inr(received)}</span>
+            <span className="text-zinc-500">
+              {" "}
+              (interest {fmt.inr(income.received_interest)} · principal{" "}
+              {fmt.inr(income.received_principal)})
+            </span>
+          </span>
+          <span className="text-zinc-400">
+            Projected <span className="font-semibold text-emerald-400">{fmt.inr(projected)}</span>
+          </span>
+        </>
+      )}
+      {hasUndatedLot && (
+        <span className="text-[11px] text-zinc-600">
+          Lots without a purchase date are excluded from received income — add dates to include
+          them.
+        </span>
+      )}
+    </div>
+  );
+}
+
 const CF_RANGES = [
   ["1y", 1],
   ["3y", 3],
@@ -499,18 +546,32 @@ function CashflowChart({ cashflows }: { cashflows: PortfolioMonth[] }) {
     // Both colors fully opaque: the series overlap to fake stacking, and
     // translucent bars alpha-blend into a misleading teal wherever
     // total == principal (interest-free months), shifting on repaints.
+    // Past (received) months keep the hue but drop to solid muted tones —
+    // still opaque, same alpha-blend reasoning.
     const totalSeries = chart.addSeries(HistogramSeries, {
       color: "#38bdf8",
       priceFormat: { type: "volume" },
       priceLineVisible: false,
     });
-    totalSeries.setData(shown.map((c) => ({ time: ts(c.month), value: c.interest + c.principal })));
+    totalSeries.setData(
+      shown.map((c) => ({
+        time: ts(c.month),
+        value: c.interest + c.principal,
+        color: isPastMonth(c.month) ? "#1e5c78" : "#38bdf8",
+      })),
+    );
     const principalSeries: ISeriesApi<"Histogram"> = chart.addSeries(HistogramSeries, {
       color: "#10b981",
       priceFormat: { type: "volume" },
       priceLineVisible: false,
     });
-    principalSeries.setData(shown.map((c) => ({ time: ts(c.month), value: c.principal })));
+    principalSeries.setData(
+      shown.map((c) => ({
+        time: ts(c.month),
+        value: c.principal,
+        color: isPastMonth(c.month) ? "#0e5c44" : "#10b981",
+      })),
+    );
 
     const byTime = new Map(shown.map((c) => [ts(c.month) as number, c]));
     chart.subscribeCrosshairMove((param) => {
@@ -535,7 +596,7 @@ function CashflowChart({ cashflows }: { cashflows: PortfolioMonth[] }) {
         )
         .join("");
       el.innerHTML =
-        `<div style="color:#71717a;margin-bottom:2px">${d.toLocaleDateString("en-IN", { month: "short", year: "numeric" })}${cf.estimated ? " (≈ est.)" : ""}</div>` +
+        `<div style="color:#71717a;margin-bottom:2px">${d.toLocaleDateString("en-IN", { month: "short", year: "numeric" })}${isPastMonth(cf.month) ? " · received" : ""}${cf.estimated ? " (≈ est.)" : ""}</div>` +
         `<table><thead><tr style="color:#71717a">` +
         `<td style="padding-right:2px">Bond</td>` +
         `<td style="${num}">Date</td>` +
@@ -625,6 +686,7 @@ function MonthPopover({ m, year, monthIdx, rect }: HoverCell) {
     >
       <div className="text-zinc-500 mb-1">
         {MONTHS[monthIdx]} {year} · {fmt.inr(m.interest + m.principal)}
+        {isPastMonth(m.month) && <span className="text-zinc-600"> · received</span>}
         {m.estimated && " (≈ est.)"}
       </div>
       <table className="tabular-nums">
@@ -683,7 +745,11 @@ function CashflowGrid({ cashflows }: { cashflows: PortfolioMonth[] }) {
                 <td
                   key={MONTHS[i]}
                   className={`${TD} text-right tabular-nums ${
-                    m && m.principal > 0 ? "text-emerald-400" : "text-zinc-400"
+                    m && isPastMonth(m.month)
+                      ? "text-zinc-600"
+                      : m && m.principal > 0
+                        ? "text-emerald-400"
+                        : "text-zinc-400"
                   }`}
                   onMouseEnter={(e) =>
                     m &&

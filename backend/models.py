@@ -307,10 +307,20 @@ class PortfolioMonthBond(BaseModel):
 
 class PortfolioMonth(BaseModel):
     month: str  # "YYYY-MM"
-    interest: float
+    interest: float    # month total (received + projected)
     principal: float
+    received_interest: float    # past-due portion (holder semantics,
+    received_principal: float   # lots with known purchase dates only)
     estimated: bool
     bonds: list[PortfolioMonthBond]  # largest payer first
+
+
+class PortfolioIncome(BaseModel):
+    """Received-so-far vs projected, summed from the month buckets."""
+    received_interest: float
+    received_principal: float
+    projected_interest: float
+    projected_principal: float
 
 
 class PortfolioNews(BaseModel):
@@ -327,6 +337,7 @@ class PortfolioResponse(BaseModel):
     summary: PortfolioSummary
     positions: list[PortfolioPosition]
     cashflows: list[PortfolioMonth]
+    income: PortfolioIncome
     news: list[PortfolioNews]
 
 

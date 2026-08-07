@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
 import type { PortfolioMonth, PortfolioPosition } from "../api/types";
-import { monthGrid, weights } from "./portfolio";
+import { isPastMonth, monthGrid, weights } from "./portfolio";
 
 const cf = (month: string, interest: number, principal = 0): PortfolioMonth => ({
   month,
   interest,
   principal,
+  received_interest: 0,
+  received_principal: 0,
   estimated: false,
   bonds: [],
 });
@@ -23,6 +25,21 @@ describe("monthGrid", () => {
 
   it("empty in, empty out", () => {
     expect(monthGrid([])).toEqual([]);
+  });
+});
+
+describe("isPastMonth", () => {
+  const now = new Date(2026, 7, 7); // 7 Aug 2026
+  it("month before the current one is past", () => {
+    expect(isPastMonth("2026-07", now)).toBe(true);
+    expect(isPastMonth("2025-12", now)).toBe(true);
+  });
+  it("current month still carries projected flows - not past", () => {
+    expect(isPastMonth("2026-08", now)).toBe(false);
+  });
+  it("future months are not past", () => {
+    expect(isPastMonth("2026-09", now)).toBe(false);
+    expect(isPastMonth("2027-01", now)).toBe(false);
   });
 });
 

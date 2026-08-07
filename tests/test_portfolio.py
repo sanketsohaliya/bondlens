@@ -197,6 +197,70 @@ def test_trade_on_record_date_misses_the_register():
     assert [m["month"] for m in day_before] == ["2026-02"]
 
 
+def test_past_flow_bucketed_as_received():
+    flows = {"A": [_flow(date(2025, 9, 10), 40.0),
+                   _flow(date(2026, 3, 10), 40.0)]}
+    out = pf.monthly_cashflows({"A": _lots(2, date(2025, 1, 1))}, flows, TODAY)
+    assert [m["month"] for m in out] == ["2025-09", "2026-03"]
+    past, future = out
+    assert past["interest"] == pytest.approx(80)
+    assert past["received_interest"] == pytest.approx(80)
+    assert future["received_interest"] == 0 and future["received_principal"] == 0
+
+
+def test_straddling_month_splits_per_flow():
+    # TODAY is mid-month: the 3rd is received, the 25th projected —
+    # split exactly at the flow level, not month granularity.
+    d_past = TODAY.replace(day=3)
+    d_future = TODAY.replace(day=25)
+    assert d_past <= TODAY < d_future  # guard the fixture
+    flows = {"A": [_flow(d_past, 40.0), _flow(d_future, 60.0)]}
+    [m] = pf.monthly_cashflows({"A": _lots(1, date(2025, 1, 1))}, flows, TODAY)
+    assert m["interest"] == pytest.approx(100)
+    assert m["received_interest"] == pytest.approx(40)
+
+
+def test_undated_lot_excluded_from_past_income_only():
+    flows = {"A": [_flow(date(2025, 9, 10), 40.0),
+                   _flow(date(2026, 3, 10), 40.0)]}
+    out = pf.monthly_cashflows({"A": _lots(2)}, flows, TODAY)
+    # No purchase date: no income history, projections unchanged.
+    assert [m["month"] for m in out] == ["2026-03"]
+    assert out[0]["interest"] == pytest.approx(80)
+
+
+def test_past_income_mixed_dated_and_undated_lots():
+    flows = {"A": [_flow(date(2025, 9, 10), 40.0)]}
+    lots = [{"units": 2, "purchase_date": date(2025, 1, 1)},
+            {"units": 3, "purchase_date": None}]
+    [m] = pf.monthly_cashflows({"A": lots}, flows, TODAY)
+    assert m["received_interest"] == pytest.approx(80)  # dated lot only
+
+
+def test_past_flow_respects_record_date():
+    # Lot bought after the past flow's record date -> not on register.
+    flows = {"A": [_flow(date(2025, 9, 10), 40.0, record=date(2025, 8, 25))]}
+    out = pf.monthly_cashflows({"A": _lots(1, date(2025, 8, 28))}, flows, TODAY)
+    assert out == []
+
+
+def test_income_summary_sums_buckets():
+    flows = {"A": [_flow(date(2025, 9, 10), 40.0),
+                   _flow(date(2027, 3, 10), 40.0),
+                   _flow(date(2027, 3, 10), 1000.0, event="redemption")]}
+    months = pf.monthly_cashflows({"A": _lots(2, date(2025, 1, 1))},
+                                  flows, TODAY)
+    s = pf.income_summary(months)
+    assert s == {"received_interest": 80.0, "received_principal": 0.0,
+                 "projected_interest": 80.0, "projected_principal": 2000.0}
+
+
+def test_income_summary_empty():
+    assert pf.income_summary([]) == {
+        "received_interest": 0, "received_principal": 0,
+        "projected_interest": 0, "projected_principal": 0}
+
+
 def test_next_payment_holder_semantics():
     flows = [_flow(date(2026, 2, 1), 50.0, record=date(2026, 1, 10)),
              _flow(date(2026, 8, 1), 50.0, record=date(2026, 7, 10))]
@@ -278,6 +342,9 @@ def test_lot_crud_flow(client):
     assert r.status_code == 200
     body = r.json()
     assert body["summary"]["bonds"] == 1
+    assert body["income"] == {
+        "received_interest": 0, "received_principal": 0,
+        "projected_interest": 0, "projected_principal": 0}
     [p] = body["positions"]
     assert p["units"] == 10 and p["lots"][0]["platform"] == "IndiaBonds"
 

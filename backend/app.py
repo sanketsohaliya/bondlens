@@ -181,13 +181,15 @@ def portfolio(user_id: int = Depends(auth.require_user)):
         p["next_payment"] = pf.next_payment(p["lots"],
                                             flows_by_isin[p["isin"]], today)
 
+    cashflows = pf.monthly_cashflows(
+        {p["isin"]: p["lots"] for p in positions}, flows_by_isin, today,
+        {isin: _cashflow_label(core, isin)
+         for isin, core in core_by_isin.items()})
     return {
         "summary": pf.summarize(positions),
         "positions": positions,
-        "cashflows": pf.monthly_cashflows(
-            {p["isin"]: p["lots"] for p in positions}, flows_by_isin, today,
-            {isin: _cashflow_label(core, isin)
-             for isin, core in core_by_isin.items()}),
+        "cashflows": cashflows,
+        "income": pf.income_summary(cashflows),
         "news": queries.ratings_for_isins(isins),
     }
 

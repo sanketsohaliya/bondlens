@@ -13,6 +13,7 @@ export type {
   Notification,
   NotificationsResponse,
   OrderBook,
+  PortfolioIncome,
   PortfolioLot,
   PortfolioMonth,
   PortfolioMonthBond,

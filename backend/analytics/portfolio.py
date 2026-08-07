@@ -108,13 +108,17 @@ def summarize(positions: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
-def receiving_units(lots: list[dict[str, Any]], flow: Flow) -> float:
+def receiving_units(lots: list[dict[str, Any]], flow: Flow, *,
+                    known_only: bool = False) -> float:
     """Units across lots that receive ``flow`` — holder semantics: a lot
     gets a flow when it was bought before the record date (or before
     the due date when no record date is published). Lots without a
-    purchase date count as held all along."""
+    purchase date count as held all along, EXCEPT with ``known_only``
+    (used for past flows, where "held all along" would fabricate income
+    history the user may never have received)."""
     return sum(lot["units"] for lot in lots
-               if flow.receivable_by_holder(lot.get("purchase_date")))
+               if (lot.get("purchase_date") is not None or not known_only)
+               and flow.receivable_by_holder(lot.get("purchase_date")))
 
 
 def next_payment(lots: list[dict[str, Any]], flows: list[Flow],
@@ -141,13 +145,18 @@ def monthly_cashflows(lots_by_isin: dict[str, list[dict[str, Any]]],
                       today: date,
                       labels_by_isin: dict[str, str] | None = None,
                       ) -> list[dict[str, Any]]:
-    """Future flows x receiving units, bucketed per calendar month, with
-    a per-bond breakdown inside each bucket (largest payer first).
+    """Past AND future flows x receiving units, bucketed per calendar
+    month, with a per-bond breakdown inside each bucket (largest payer
+    first). ``interest``/``principal`` are month totals; the past
+    portion is broken out in ``received_interest``/``received_principal``
+    (split per flow, so a month straddling today is exact).
 
     Holder semantics, record-date accurate per lot: a flow counts for
-    the units bought on/before its record date — a passed record date
+    the units bought before its record date — a passed record date
     does not hide money the holder is still owed, but lots bought after
-    it don't inflate the month either.
+    it don't inflate the month either. Past flows count only lots with
+    a KNOWN purchase date: "held all along" is a fine default for
+    projections but would fabricate received income.
     """
     labels = labels_by_isin or {}
     buckets: dict[str, dict[str, Any]] = {}
@@ -156,17 +165,21 @@ def monthly_cashflows(lots_by_isin: dict[str, list[dict[str, Any]]],
         if not lots:
             continue
         for f in flows:
-            if not f.amount or f.due_date <= today:
+            if not f.amount:
                 continue
-            units = receiving_units(lots, f)
+            past = f.due_date <= today
+            units = receiving_units(lots, f, known_only=past)
             if not units:
                 continue
             month = f.due_date.strftime("%Y-%m")
             b = buckets.setdefault(
                 month, {"month": month, "interest": 0.0, "principal": 0.0,
+                        "received_interest": 0.0, "received_principal": 0.0,
                         "estimated": False, "_bonds": {}})
             key = "interest" if f.event == "interest" else "principal"
             b[key] += f.amount * units
+            if past:
+                b[f"received_{key}"] += f.amount * units
             b["estimated"] = b["estimated"] or f.estimated
             bond = b["_bonds"].setdefault(
                 isin, {"isin": isin, "label": labels.get(isin, isin),
@@ -179,6 +192,8 @@ def monthly_cashflows(lots_by_isin: dict[str, list[dict[str, Any]]],
     for b in out:
         b["interest"] = round(b["interest"], 2)
         b["principal"] = round(b["principal"], 2)
+        b["received_interest"] = round(b["received_interest"], 2)
+        b["received_principal"] = round(b["received_principal"], 2)
         bonds = sorted(b.pop("_bonds").values(),
                        key=lambda x: -(x["interest"] + x["principal"]))
         for bond in bonds:
@@ -187,3 +202,17 @@ def monthly_cashflows(lots_by_isin: dict[str, list[dict[str, Any]]],
             bond["dates"] = sorted(bond.pop("_dates"))
         b["bonds"] = bonds
     return out
+
+
+def income_summary(months: list[dict[str, Any]]) -> dict[str, float]:
+    """Received vs projected totals across the month buckets. Derived
+    from the buckets themselves so the banner can never disagree with
+    the chart."""
+    ri = sum(m["received_interest"] for m in months)
+    rp = sum(m["received_principal"] for m in months)
+    return {
+        "received_interest": round(ri, 2),
+        "received_principal": round(rp, 2),
+        "projected_interest": round(sum(m["interest"] for m in months) - ri, 2),
+        "projected_principal": round(sum(m["principal"] for m in months) - rp, 2),
+    }

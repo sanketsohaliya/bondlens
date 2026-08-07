@@ -838,6 +838,30 @@ export type OrderBook = {
 };
 
 /**
+ * PortfolioIncome
+ *
+ * Received-so-far vs projected, summed from the month buckets.
+ */
+export type PortfolioIncome = {
+    /**
+     * Received Interest
+     */
+    received_interest: number;
+    /**
+     * Received Principal
+     */
+    received_principal: number;
+    /**
+     * Projected Interest
+     */
+    projected_interest: number;
+    /**
+     * Projected Principal
+     */
+    projected_principal: number;
+};
+
+/**
  * PortfolioLot
  */
 export type PortfolioLot = {
@@ -883,6 +907,14 @@ export type PortfolioMonth = {
      * Principal
      */
     principal: number;
+    /**
+     * Received Interest
+     */
+    received_interest: number;
+    /**
+     * Received Principal
+     */
+    received_principal: number;
     /**
      * Estimated
      */
@@ -1045,6 +1077,7 @@ export type PortfolioResponse = {
      * Cashflows
      */
     cashflows: Array<PortfolioMonth>;
+    income: PortfolioIncome;
     /**
      * News
      */

@@ -33,6 +33,13 @@ export function useLotMutations() {
 
 // --- pure helpers (unit-tested) --------------------------------------------
 
+/** "YYYY-MM" strictly before the current month (the current month still
+ * carries projected flows, so it is NOT past). */
+export function isPastMonth(month: string, now: Date = new Date()): boolean {
+  const cur = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  return month < cur;
+}
+
 export interface YearRow {
   year: number;
   total: number;
