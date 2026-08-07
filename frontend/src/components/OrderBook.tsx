@@ -62,20 +62,34 @@ export default function OrderBook({
           )}
         </div>
       ) : (
-        <div className="grid md:grid-cols-2 gap-4">
-          <Ladder
-            name="NSE"
-            side={data.nse}
-            ytmAtAsk={data.ytm_at_ask}
-            fallbackUrl={nseSymbol ? nseQuoteUrl(nseSymbol, nseSeries) : undefined}
-          />
-          <Ladder name="BSE" side={data.bse} ytmAtAsk={data.ytm_at_ask} />
+        <div className="space-y-4">
+          {/* Stacked, with whichever exchange actually has depth on top
+              (BSE wins ties — NSE depth is usually blocked anyway). */}
+          {[
+            { name: "BSE", side: data.bse, fallbackUrl: undefined as string | undefined },
+            {
+              name: "NSE",
+              side: data.nse,
+              fallbackUrl: nseSymbol ? nseQuoteUrl(nseSymbol, nseSeries) : undefined,
+            },
+          ]
+            .sort((a, b) => Number(b.side != null) - Number(a.side != null))
+            .map((x) => (
+              <Ladder
+                key={x.name}
+                name={x.name}
+                side={x.side}
+                ytmAtAsk={data.ytm_at_ask}
+                fallbackUrl={x.fallbackUrl}
+              />
+            ))}
         </div>
       )}
 
       <p className="text-[11px] text-zinc-600">
         Exchange order books are anonymous — no broker/app identity is published. Ask rows show the
-        YTM locked if bought at that price. Quantities are units.
+        YTM locked if bought at that price. Quantities are units; Ticket = price × quantity at that
+        level.
       </p>
     </div>
   );
@@ -86,6 +100,12 @@ function marketOpenNow(): boolean {
   const day = ist.getDay();
   const mins = ist.getHours() * 60 + ist.getMinutes();
   return day >= 1 && day <= 5 && mins >= 555 && mins <= 930;
+}
+
+/** Rupee outlay to fully take a depth level: price × qty. */
+function ticket(level: { price: number | null; qty: number | null } | undefined): string {
+  if (level?.price == null || level.qty == null) return "";
+  return fmt.inrFull(level.price * level.qty);
 }
 
 function Ladder({
@@ -128,7 +148,9 @@ function Ladder({
             <tr className="text-zinc-500 border-b border-zinc-800">
               <th className="px-2 py-1.5 text-right font-normal">Bid qty</th>
               <th className="px-2 py-1.5 text-right font-normal">Bid</th>
+              <th className="px-2 py-1.5 text-right font-normal">Ticket</th>
               <th className="px-2 py-1.5 text-right font-normal">Ask</th>
+              <th className="px-2 py-1.5 text-right font-normal">Ticket</th>
               <th className="px-2 py-1.5 text-right font-normal">Ask qty</th>
               <th className="px-2 py-1.5 text-right font-normal">YTM @ ask</th>
             </tr>
@@ -146,9 +168,11 @@ function Ladder({
                   <td className="px-2 py-1.5 text-right text-emerald-400 font-medium">
                     {bid?.price != null ? fmt.inrFull(bid.price) : ""}
                   </td>
+                  <td className="px-2 py-1.5 text-right text-zinc-500">{ticket(bid)}</td>
                   <td className="px-2 py-1.5 text-right text-red-400 font-medium">
                     {ask?.price != null ? fmt.inrFull(ask.price) : ""}
                   </td>
+                  <td className="px-2 py-1.5 text-right text-zinc-500">{ticket(ask)}</td>
                   <td className="px-2 py-1.5 text-right text-zinc-400">
                     {ask?.qty != null ? fmt.num(ask.qty, 0) : ""}
                   </td>
@@ -161,7 +185,9 @@ function Ladder({
             <tr className="text-zinc-500">
               <td className="px-2 py-1.5 text-right">{fmt.num(side.total_bid_qty, 0)}</td>
               <td className="px-2 py-1.5 text-right text-[10px]">total bid</td>
+              <td />
               <td className="px-2 py-1.5 text-right text-[10px]">total ask</td>
+              <td />
               <td className="px-2 py-1.5 text-right">{fmt.num(side.total_ask_qty, 0)}</td>
               <td />
             </tr>

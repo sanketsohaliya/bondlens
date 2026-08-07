@@ -15,6 +15,10 @@ import TradeChart from "./TradeChart";
 
 export type Tab = "overview" | "chart" | "cashflows" | "order book" | "ratings";
 
+const DRAWER_WIDTH_KEY = "bl.drawerWidth";
+const DEFAULT_DRAWER_WIDTH = 768; // matches the previous max-w-3xl
+const MIN_DRAWER_WIDTH = 600;
+
 /** Factual hover text from the NSDL technical-delay records: when, why. */
 function techDelayTip(records: Array<{ [key: string]: unknown }>): string {
   const last = records[records.length - 1];
@@ -44,6 +48,34 @@ export default function BondDrawer({
   const [tab, setTab] = useState<Tab>(initialTab ?? "overview");
   const [whatIf, setWhatIf] = useState<string>("");
   const [price, setPrice] = useState<number | undefined>(undefined);
+  const [width, setWidth] = useState<number>(() => {
+    const saved = Number(localStorage.getItem(DRAWER_WIDTH_KEY));
+    return Number.isFinite(saved) && saved >= MIN_DRAWER_WIDTH ? saved : DEFAULT_DRAWER_WIDTH;
+  });
+
+  const onResizeStart = (e: React.PointerEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.currentTarget.setPointerCapture(e.pointerId);
+    const onMove = (ev: PointerEvent) => {
+      const w = Math.min(
+        Math.max(window.innerWidth - ev.clientX, MIN_DRAWER_WIDTH),
+        window.innerWidth * 0.9,
+      );
+      setWidth(w);
+    };
+    const onUp = () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      setWidth((w) => {
+        localStorage.setItem(DRAWER_WIDTH_KEY, String(Math.round(w)));
+        return w;
+      });
+      // Charts inside tabs only re-measure on window resize.
+      window.dispatchEvent(new Event("resize"));
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+  };
 
   useEffect(() => {
     const t = setTimeout(() => setPrice(whatIf ? Number(whatIf) : undefined), 400);
@@ -65,7 +97,16 @@ export default function BondDrawer({
   return (
     <div className="fixed inset-0 z-40">
       <div className="absolute inset-0 bg-black/60" onClick={onClose} />
-      <aside className="absolute right-0 top-0 h-full w-full max-w-3xl bg-zinc-950 border-l border-zinc-800 overflow-y-auto scroll-slim">
+      <aside
+        className="absolute right-0 top-0 h-full max-w-[100vw] bg-zinc-950 border-l border-zinc-800 overflow-y-auto scroll-slim"
+        style={{ width }}
+      >
+        <div
+          onPointerDown={onResizeStart}
+          className="fixed top-0 h-full w-1.5 -translate-x-0.5 cursor-col-resize z-20 hover:bg-emerald-500/40 active:bg-emerald-500/60 transition-colors"
+          style={{ right: Math.min(width, window.innerWidth) - 3 }}
+          title="Drag to resize"
+        />
         {isLoading || !bond ? (
           <div className="p-8 text-zinc-500 animate-pulse">Loading {isin}…</div>
         ) : (
