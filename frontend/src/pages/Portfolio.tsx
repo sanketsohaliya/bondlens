@@ -357,14 +357,17 @@ function CashflowChart({ cashflows }: { cashflows: PortfolioMonth[] }) {
 
     const ts = (month: string) => (new Date(`${month}-01`).getTime() / 1000) as UTCTimestamp;
     // Stacked read: total drawn behind, principal in front.
+    // Both colors fully opaque: the series overlap to fake stacking, and
+    // translucent bars alpha-blend into a misleading teal wherever
+    // total == principal (interest-free months), shifting on repaints.
     const totalSeries = chart.addSeries(HistogramSeries, {
-      color: "rgba(56,189,248,0.65)",
+      color: "#38bdf8",
       priceFormat: { type: "volume" },
       priceLineVisible: false,
     });
     totalSeries.setData(shown.map((c) => ({ time: ts(c.month), value: c.interest + c.principal })));
     const principalSeries: ISeriesApi<"Histogram"> = chart.addSeries(HistogramSeries, {
-      color: "rgba(16,185,129,0.9)",
+      color: "#10b981",
       priceFormat: { type: "volume" },
       priceLineVisible: false,
     });
@@ -444,7 +447,7 @@ function CashflowChart({ cashflows }: { cashflows: PortfolioMonth[] }) {
         </div>
         <div className="ml-auto flex items-center gap-3 text-[10px] text-zinc-500">
           <span className="flex items-center gap-1">
-            <span className="w-2 h-2 rounded-sm bg-sky-400/70" /> interest
+            <span className="w-2 h-2 rounded-sm bg-sky-400" /> interest
           </span>
           <span className="flex items-center gap-1">
             <span className="w-2 h-2 rounded-sm bg-emerald-500" /> principal
