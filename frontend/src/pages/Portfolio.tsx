@@ -263,6 +263,7 @@ const HOLDINGS_ACCESSORS: Record<
 };
 
 const HOLDINGS_COLS: Array<{ label: string; key: HoldingsSortKey | null; right?: boolean }> = [
+  { label: "", key: null }, // expand chevron
   { label: "Issuer", key: "issuer" },
   { label: "Rating", key: "rating" },
   { label: "Units", key: "units", right: true },
@@ -273,7 +274,6 @@ const HOLDINGS_COLS: Array<{ label: string; key: HoldingsSortKey | null; right?:
   { label: "YTM", key: "ytm", right: true },
   { label: "Maturity", key: "maturity" },
   { label: "Next payment", key: "next_payment" },
-  { label: "", key: null },
 ];
 
 function HoldingsTable({
@@ -368,8 +368,19 @@ function PositionRow({
       <tr
         onClick={onToggle}
         aria-expanded={open}
+        title={open ? "Click row to hide lots" : "Click row to show lots"}
         className="border-b border-zinc-800/60 hover:bg-zinc-900/60 cursor-pointer"
       >
+        <td className="w-6 pl-3 pr-0">
+          <span
+            className={`inline-block text-zinc-500 transition-transform duration-150 ${
+              open ? "rotate-90 text-emerald-400" : ""
+            }`}
+            aria-hidden="true"
+          >
+            ›
+          </span>
+        </td>
         <td className={TD}>
           <button
             type="button"
@@ -425,14 +436,6 @@ function PositionRow({
           ) : (
             <span className="text-zinc-600">–</span>
           )}
-        </td>
-        <td className={`${TD} text-right`}>
-          <span
-            className="text-zinc-400 whitespace-nowrap px-1"
-            title={open ? "Click row to hide lots" : "Click row to show lots"}
-          >
-            {p.lots.length} lot{p.lots.length > 1 ? "s" : ""} {open ? "▴" : "▾"}
-          </span>
         </td>
       </tr>
       {open && (
