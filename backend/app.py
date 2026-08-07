@@ -123,6 +123,21 @@ def watchlist_remove_isin(watchlist_id: int, isin: str,
 # Portfolio
 # --------------------------------------------------------------------------
 
+def _cashflow_label(core: dict, isin: str) -> str:
+    """Human-readable bond label for cashflow breakdowns, e.g.
+    "9.5% Oxyzo Financial Services Mar'28". Falls back to the exchange
+    symbol, then the ISIN, when the issuer name is missing."""
+    name = core.get("issuer_name")
+    if not name:
+        return core.get("nse_symbol") or core.get("bse_scrip_id") or isin
+    parts = [name]
+    if core.get("coupon"):
+        parts.insert(0, f"{core['coupon']:g}%")
+    if core.get("maturity_date"):
+        parts.append(core["maturity_date"].strftime("%b'%y"))
+    return " ".join(parts)
+
+
 @router.post("/api/portfolio/lots", response_model=models.PortfolioLot)
 def lot_add(body: models.LotCreate,
             user_id: int = Depends(auth.require_user)):
@@ -177,7 +192,7 @@ def portfolio(user_id: int = Depends(auth.require_user)):
         "positions": positions,
         "cashflows": pf.monthly_cashflows(
             {p["isin"]: p["units"] for p in positions}, flows_by_isin, today,
-            {isin: core.get("nse_symbol") or core.get("bse_scrip_id") or isin
+            {isin: _cashflow_label(core, isin)
              for isin, core in core_by_isin.items()}),
         "news": queries.ratings_for_isins(isins),
     }

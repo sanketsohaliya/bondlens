@@ -381,11 +381,14 @@ function CashflowChart({ cashflows }: { cashflows: PortfolioMonth[] }) {
       }
       const d = new Date(`${cf.month}-01`);
       const money = (v: number) => `₹${v.toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
+      const num = `text-align:right;font-variant-numeric:tabular-nums;padding-left:12px`;
       const bondLines = (cf.bonds ?? [])
         .map(
           (b) =>
-            `<tr><td style="color:#a1a1aa;padding-right:10px">${b.estimated ? "≈" : ""}${b.label}</td>` +
-            `<td style="text-align:right;font-variant-numeric:tabular-nums">${money(b.interest + b.principal)}</td></tr>`,
+            `<tr><td style="color:#e4e4e7;padding-right:2px">${b.estimated ? "≈" : ""}${b.label}</td>` +
+            `<td style="color:#38bdf8;${num}">${b.interest > 0 ? money(b.interest) : "–"}</td>` +
+            `<td style="color:#10b981;${num}">${b.principal > 0 ? money(b.principal) : "–"}</td>` +
+            `<td style="color:#a1a1aa;${num}">${money(b.interest + b.principal)}</td></tr>`,
         )
         .join("");
       el.innerHTML =
@@ -394,11 +397,15 @@ function CashflowChart({ cashflows }: { cashflows: PortfolioMonth[] }) {
         `<span style="color:#10b981">Principal</span> ${money(cf.principal)}<br/>` +
         `<span style="color:#e4e4e7">Total</span> ${money(cf.interest + cf.principal)}` +
         (bondLines
-          ? `<div style="border-top:1px solid #3f3f46;margin:4px 0 2px"></div><table>${bondLines}</table>`
+          ? `<div style="border-top:1px solid #3f3f46;margin:4px 0 2px"></div>` +
+            `<table><thead><tr style="color:#71717a">` +
+            `<td>Bond</td><td style="${num}">Int</td><td style="${num}">Prin</td><td style="${num}">Total</td>` +
+            `</tr></thead><tbody>${bondLines}</tbody></table>`
           : "");
       el.style.display = "block";
+      // Flip using the rendered width so long bond names never overflow.
       const w = container.current?.clientWidth ?? 0;
-      const flip = param.point.x > w - 160;
+      const flip = param.point.x + 14 + el.offsetWidth > w;
       el.style.left = flip ? "auto" : `${param.point.x + 14}px`;
       el.style.right = flip ? `${w - param.point.x + 14}px` : "auto";
       el.style.top = `${param.point.y + 10}px`;
@@ -454,29 +461,33 @@ function CashflowChart({ cashflows }: { cashflows: PortfolioMonth[] }) {
 }
 
 /** Hover detail for one grid cell: which bonds pay that month, split
- * interest/principal. Pure CSS (group-hover) — no state, no listeners. */
-function MonthPopover({
-  m,
-  year,
-  monthIdx,
-  below,
-}: {
-  m: PortfolioMonth;
-  year: number;
-  monthIdx: number;
-  below: boolean;
-}) {
+ * interest/principal. Rendered position:fixed so the grid's overflow-x
+ * scroll container cannot clip it (absolute popovers were cut off). */
+type HoverCell = { m: PortfolioMonth; year: number; monthIdx: number; rect: DOMRect };
+
+function MonthPopover({ m, year, monthIdx, rect }: HoverCell) {
+  const alignRight = rect.left > window.innerWidth / 2;
+  const below = rect.top < 240;
   return (
     <div
-      className={`pointer-events-none absolute z-20 hidden group-hover:block w-max rounded-md border border-zinc-700 bg-zinc-900/95 px-2.5 py-1.5 text-left text-[11px] leading-relaxed shadow-xl ${
-        below ? "top-full mt-0.5" : "bottom-full mb-0.5"
-      } ${monthIdx >= 9 ? "right-0" : "left-0"}`}
+      className="pointer-events-none fixed z-30 w-max rounded-md border border-zinc-700 bg-zinc-900/95 px-2.5 py-1.5 text-left text-[11px] leading-relaxed shadow-xl"
+      style={{
+        ...(alignRight ? { right: window.innerWidth - rect.right } : { left: rect.left }),
+        ...(below ? { top: rect.bottom + 2 } : { bottom: window.innerHeight - rect.top + 2 }),
+      }}
     >
       <div className="text-zinc-500 mb-1">
         {MONTHS[monthIdx]} {year} · {fmt.inr(m.interest + m.principal)}
         {m.estimated && " (≈ est.)"}
       </div>
       <table className="tabular-nums">
+        <thead>
+          <tr className="text-zinc-600">
+            <td className="pr-3">Bond</td>
+            <td className="pr-3 text-right">Interest</td>
+            <td className="text-right">Principal</td>
+          </tr>
+        </thead>
         <tbody>
           {m.bonds.map((b) => (
             <tr key={b.isin}>
@@ -500,6 +511,7 @@ function MonthPopover({
 
 function CashflowGrid({ cashflows }: { cashflows: PortfolioMonth[] }) {
   const rows = monthGrid(cashflows);
+  const [hover, setHover] = useState<HoverCell | null>(null);
   return (
     <div className="rounded-lg border border-zinc-800 overflow-x-auto">
       <table className="w-full text-xs">
@@ -515,21 +527,30 @@ function CashflowGrid({ cashflows }: { cashflows: PortfolioMonth[] }) {
           </tr>
         </thead>
         <tbody>
-          {rows.map((r, ri) => (
+          {rows.map((r) => (
             <tr key={r.year} className="border-b border-zinc-800/60">
               <td className={`${TD} font-medium text-zinc-200`}>{r.year}</td>
               {r.months.map((m, i) => (
                 <td
                   key={MONTHS[i]}
-                  className={`${TD} group relative text-right tabular-nums ${
+                  className={`${TD} text-right tabular-nums ${
                     m && m.principal > 0 ? "text-emerald-400" : "text-zinc-400"
                   }`}
+                  onMouseEnter={(e) =>
+                    m &&
+                    setHover({
+                      m,
+                      year: r.year,
+                      monthIdx: i,
+                      rect: e.currentTarget.getBoundingClientRect(),
+                    })
+                  }
+                  onMouseLeave={() => setHover(null)}
                 >
                   {m ? (
                     <>
                       {m.estimated && <span className="text-zinc-500">≈</span>}
                       {fmt.inr(m.interest + m.principal)}
-                      <MonthPopover m={m} year={r.year} monthIdx={i} below={ri < rows.length / 2} />
                     </>
                   ) : (
                     <span className="text-zinc-700">–</span>
@@ -543,6 +564,7 @@ function CashflowGrid({ cashflows }: { cashflows: PortfolioMonth[] }) {
           ))}
         </tbody>
       </table>
+      {hover && <MonthPopover {...hover} />}
     </div>
   );
 }
