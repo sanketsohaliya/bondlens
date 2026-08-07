@@ -353,6 +353,9 @@ function CashflowChart({ cashflows }: { cashflows: PortfolioMonth[] }) {
       crosshair: { mode: 0 },
       handleScroll: false,
       handleScale: false,
+      // Off: hovering the "total" series would draw it over "principal",
+      // flipping the whole chart blue (default is true in v5).
+      hoveredSeriesOnTop: false,
     });
 
     const ts = (month: string) => (new Date(`${month}-01`).getTime() / 1000) as UTCTimestamp;
