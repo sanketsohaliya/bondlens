@@ -14,7 +14,6 @@ from .analytics import ratings, schedule
 from .analytics.compute import STALE_AFTER_DAYS
 
 UPCOMING_DAYS = 7            # heads-up window before a payment
-GRACE_DAYS = 5               # slack after due date before "overdue" (RTA lag)
 CONFIRM_LOOKBACK_DAYS = 60   # how far back to track past payments
 RATING_WINDOW_DAYS = 30      # only recent rating moves alert
 DEFAULT_WINDOW_DAYS = 45     # only recent default filings alert
@@ -59,7 +58,12 @@ def payment_alerts(isin: str, label: str, units: float,
                    flows: list[schedule.Flow], raw_rows: list[dict],
                    today: date) -> list[dict]:
     """Payment lifecycle on a held bond: upcoming -> due today ->
-    confirmed (NSDL actual_payment_date) or overdue/delay-filed.
+    confirmed (NSDL actual_payment_date) or issuer-filed delay.
+
+    A missing actual_payment_date is NOT treated as overdue: NSDL's
+    payment-execution reporting lags or is never filed for many
+    issuers, so silence carries no signal. Only an explicit
+    reason_delay_payment warns.
 
     ``flows`` carry normalized per-unit amounts; ``raw_rows`` are the
     bond_cashflows rows carrying actual_payment_date/reason_delay_payment.
@@ -115,15 +119,6 @@ def payment_alerts(isin: str, label: str, units: float,
                     "kind": "pay_overdue", "severity": "warn", "isin": isin,
                     "title": f"{ev}{amt_txt} due {d:%d %b} delayed \u2014 {label}",
                     "body": f"Issuer-filed reason: {reason}",
-                    "dedupe_key": f"pay_overdue:{isin}:{d}",
-                })
-            elif (today - d).days > GRACE_DAYS:
-                alerts.append({
-                    "kind": "pay_overdue", "severity": "warn", "isin": isin,
-                    "title": f"{ev}{amt_txt} due {d:%d %b} not yet "
-                             f"confirmed \u2014 {label}",
-                    "body": "No payment execution reported to NSDL so far; "
-                            "RTA reporting can lag. Check your bank account.",
                     "dedupe_key": f"pay_overdue:{isin}:{d}",
                 })
     return alerts

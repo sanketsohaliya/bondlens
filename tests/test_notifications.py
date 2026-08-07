@@ -108,19 +108,14 @@ def test_confirmed_late_is_warn_with_days():
     assert "4d late" in a["title"]
 
 
-def test_overdue_after_grace_period():
-    d = TODAY - timedelta(days=nt.GRACE_DAYS + 1)
-    [a] = nt.payment_alerts(ISIN, LABEL, 1, [flow(d)], [raw(d)], TODAY)
-    assert a["kind"] == "pay_overdue"
-    assert a["severity"] == "warn"
-
-
-def test_within_grace_period_is_silent():
-    d = TODAY - timedelta(days=nt.GRACE_DAYS)
+def test_unconfirmed_past_payment_is_silent():
+    # No actual_payment_date carries no signal: NSDL execution reporting
+    # lags or is never filed for many issuers. Only issuer-filed delays warn.
+    d = TODAY - timedelta(days=30)
     assert nt.payment_alerts(ISIN, LABEL, 1, [flow(d)], [raw(d)], TODAY) == []
 
 
-def test_delay_reason_alerts_even_within_grace():
+def test_delay_reason_warns():
     d = TODAY - timedelta(days=1)
     [a] = nt.payment_alerts(ISIN, LABEL, 1, [flow(d)],
                             [raw(d, reason="bank account mismatch")], TODAY)
