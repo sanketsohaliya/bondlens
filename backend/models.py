@@ -299,6 +299,7 @@ class PortfolioSummary(BaseModel):
 class PortfolioMonthBond(BaseModel):
     isin: str
     label: str  # display symbol (nse/bse) or the ISIN itself
+    dates: list[str] = []  # ISO due dates of this bond's flows in the month
     interest: float
     principal: float
     estimated: bool

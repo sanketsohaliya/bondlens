@@ -7,17 +7,25 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react";
 import { fmt } from "../api/client";
 import type { PortfolioMonth, PortfolioNews, PortfolioPosition } from "../api/types";
+import AddLotSearch from "../components/AddLotSearch";
 import Donut from "../components/Donut";
 import { BookmarkIcon } from "../components/ExploreTable";
 import LotsPanel from "../components/LotsPanel";
 import RatingBadge from "../components/RatingBadge";
 import StatBox from "../components/StatBox";
+import { fuzzyMatch } from "../lib/fuzzy";
 import { monthGrid, usePortfolio, type WeightBy, weights } from "../lib/portfolio";
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 const monthYear = (d: string | null) =>
   d ? new Date(d).toLocaleDateString("en-IN", { month: "short", year: "numeric" }) : "–";
+
+/** "2028-03-17" → "17 Mar" — exact payment days inside a month bucket. */
+const dayMonth = (dates: string[]) =>
+  dates
+    .map((d) => new Date(d).toLocaleDateString("en-IN", { day: "numeric", month: "short" }))
+    .join(", ");
 
 interface SliceFilter {
   by: WeightBy;
@@ -28,6 +36,7 @@ interface SliceFilter {
 export default function Portfolio({ onSelect }: { onSelect: (isin: string) => void }) {
   const { data, isLoading, error } = usePortfolio();
   const [filter, setFilter] = useState<SliceFilter | null>(null);
+  const [nameQuery, setNameQuery] = useState("");
 
   const bySlice = useMemo(() => {
     if (!data) return { issuer: [], rating: [], sector: [] };
@@ -60,7 +69,11 @@ export default function Portfolio({ onSelect }: { onSelect: (isin: string) => vo
   }
 
   const { summary, positions, cashflows, news } = data;
-  const shown = filter ? positions.filter((p) => filter.isins.includes(p.isin)) : positions;
+  const sliced = filter ? positions.filter((p) => filter.isins.includes(p.isin)) : positions;
+  const q = nameQuery.trim();
+  const shown = q
+    ? sliced.filter((p) => fuzzyMatch(q, p.issuer_name ?? "") || fuzzyMatch(q, p.isin))
+    : sliced;
 
   const pickSlice = (by: WeightBy) => (label: string | null) => {
     if (label === null) {
@@ -79,33 +92,11 @@ export default function Portfolio({ onSelect }: { onSelect: (isin: string) => vo
         <GainBox gain={summary.gain} invested={summary.invested} />
         <StatBox label="Weighted avg YTM" value={fmt.pct(summary.weighted_ytm)} />
         <StatBox label="Weighted avg maturity" value={fmt.yearsMonths(summary.weighted_years)} />
-        <StatBox label="Issuers" value={`${summary.issuers} · ${summary.bonds} bonds`} />
+        <StatBox
+          label="Diversification"
+          value={`${summary.issuers} issuer${summary.issuers === 1 ? "" : "s"} · ${summary.bonds} bond${summary.bonds === 1 ? "" : "s"}`}
+        />
       </div>
-
-      <section>
-        <SectionTitle>Holdings</SectionTitle>
-        {filter && (
-          <div className="mb-2">
-            <button
-              type="button"
-              onClick={() => setFilter(null)}
-              className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md border border-zinc-600 bg-zinc-800/60 text-xs text-zinc-200 hover:border-zinc-400"
-            >
-              {filter.by}: {filter.label}
-              <span className="text-zinc-500">×</span>
-            </button>
-          </div>
-        )}
-        <HoldingsTable positions={shown} onSelect={onSelect} />
-      </section>
-
-      {cashflows.length > 0 && (
-        <section>
-          <SectionTitle>Cashflow to maturity</SectionTitle>
-          <CashflowChart cashflows={cashflows} />
-          <CashflowGrid cashflows={cashflows} />
-        </section>
-      )}
 
       <section>
         <SectionTitle>Investment breakdown</SectionTitle>
@@ -134,6 +125,45 @@ export default function Portfolio({ onSelect }: { onSelect: (isin: string) => vo
         </p>
       </section>
 
+      {cashflows.length > 0 && (
+        <section>
+          <SectionTitle>Cashflow to maturity</SectionTitle>
+          <CashflowChart cashflows={cashflows} />
+          <CashflowGrid cashflows={cashflows} />
+        </section>
+      )}
+
+      <section>
+        <SectionTitle
+          right={
+            <span className="flex items-center gap-2">
+              <input
+                value={nameQuery}
+                onChange={(e) => setNameQuery(e.target.value)}
+                placeholder="Filter by name / ISIN"
+                className="w-52 bg-transparent border border-zinc-700 rounded-md px-2 py-1 text-[11px] font-medium normal-case tracking-normal focus:outline-none focus:border-zinc-400 placeholder:text-zinc-600"
+              />
+              <AddLotSearch />
+            </span>
+          }
+        >
+          Holdings
+        </SectionTitle>
+        {filter && (
+          <div className="mb-2">
+            <button
+              type="button"
+              onClick={() => setFilter(null)}
+              className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md border border-zinc-600 bg-zinc-800/60 text-xs text-zinc-200 hover:border-zinc-400"
+            >
+              {filter.by}: {filter.label}
+              <span className="text-zinc-500">×</span>
+            </button>
+          </div>
+        )}
+        <HoldingsTable positions={shown} onSelect={onSelect} />
+      </section>
+
       {news.length > 0 && (
         <section>
           <SectionTitle>Market news · rating actions on your issuers</SectionTitle>
@@ -144,12 +174,13 @@ export default function Portfolio({ onSelect }: { onSelect: (isin: string) => vo
   );
 }
 
-function SectionTitle({ children }: { children: React.ReactNode }) {
+function SectionTitle({ children, right }: { children: React.ReactNode; right?: React.ReactNode }) {
   return (
     <h2 className="flex items-center gap-2 text-xs font-bold text-zinc-200 uppercase tracking-wider mb-2.5">
       <span className="h-3.5 w-1 rounded-full bg-emerald-500/80" />
       {children}
       <span className="flex-1 border-t border-zinc-800" />
+      {right}
     </h2>
   );
 }
@@ -177,6 +208,50 @@ function GainBox({ gain, invested }: { gain: number | null; invested: number }) 
 const TH = "px-3 py-2 font-medium whitespace-nowrap";
 const TD = "px-3 py-2 whitespace-nowrap";
 
+type HoldingsSortKey =
+  | "issuer"
+  | "rating"
+  | "units"
+  | "invested"
+  | "ltp"
+  | "value"
+  | "gain"
+  | "ytm"
+  | "maturity"
+  | "next_payment";
+
+/** Sort accessors — semantic, not display, values: rating by rank (lower =
+ * better), maturity by remaining tenor, next payment by due date. */
+const HOLDINGS_ACCESSORS: Record<
+  HoldingsSortKey,
+  (p: PortfolioPosition) => number | string | null | undefined
+> = {
+  issuer: (p) => (p.issuer_name ?? p.isin).toLowerCase(),
+  rating: (p) => p.rating_rank,
+  units: (p) => p.units,
+  invested: (p) => p.invested,
+  ltp: (p) => p.ltp,
+  value: (p) => p.value,
+  gain: (p) => p.gain,
+  ytm: (p) => p.ytm,
+  maturity: (p) => p.years_to_maturity,
+  next_payment: (p) => p.next_payment?.due_date,
+};
+
+const HOLDINGS_COLS: Array<{ label: string; key: HoldingsSortKey | null; right?: boolean }> = [
+  { label: "Issuer", key: "issuer" },
+  { label: "Rating", key: "rating" },
+  { label: "Units", key: "units", right: true },
+  { label: "Invested", key: "invested", right: true },
+  { label: "LTP", key: "ltp", right: true },
+  { label: "Value", key: "value", right: true },
+  { label: "P&L", key: "gain", right: true },
+  { label: "YTM", key: "ytm", right: true },
+  { label: "Maturity", key: "maturity" },
+  { label: "Next payment", key: "next_payment" },
+  { label: "", key: null },
+];
+
 function HoldingsTable({
   positions,
   onSelect,
@@ -185,26 +260,53 @@ function HoldingsTable({
   onSelect: (isin: string) => void;
 }) {
   const [openIsin, setOpenIsin] = useState<string | null>(null);
+  const [sort, setSort] = useState<{ key: HoldingsSortKey; dir: 1 | -1 }>({
+    key: "value",
+    dir: -1, // matches the backend's default biggest-position-first order
+  });
+
+  const sorted = useMemo(() => {
+    const get = HOLDINGS_ACCESSORS[sort.key];
+    const rows = [...positions];
+    rows.sort((a, b) => {
+      const av = get(a);
+      const bv = get(b);
+      if (av == null) return 1; // nulls last in both directions
+      if (bv == null) return -1;
+      return (av < bv ? -1 : av > bv ? 1 : 0) * sort.dir;
+    });
+    return rows;
+  }, [positions, sort]);
+
   return (
     <div className="rounded-lg border border-zinc-800 overflow-x-auto">
       <table className="w-full text-xs">
         <thead>
           <tr className="text-left text-zinc-500 border-b border-zinc-800">
-            <th className={TH}>Issuer</th>
-            <th className={TH}>Rating</th>
-            <th className={`${TH} text-right`}>Units</th>
-            <th className={`${TH} text-right`}>Invested</th>
-            <th className={`${TH} text-right`}>LTP</th>
-            <th className={`${TH} text-right`}>Value</th>
-            <th className={`${TH} text-right`}>P&L</th>
-            <th className={`${TH} text-right`}>YTM</th>
-            <th className={TH}>Maturity</th>
-            <th className={TH}>Next payment</th>
-            <th className={TH} />
+            {HOLDINGS_COLS.map((c, i) => (
+              <th
+                key={c.label || i}
+                className={`${TH} ${c.right ? "text-right" : ""} ${
+                  c.key ? "cursor-pointer select-none hover:text-zinc-300" : ""
+                }`}
+                onClick={() =>
+                  c.key &&
+                  setSort((s) => ({
+                    key: c.key as HoldingsSortKey,
+                    dir: s.key === c.key ? ((s.dir * -1) as 1 | -1) : -1,
+                  }))
+                }
+              >
+                <span className={c.key === sort.key ? "text-zinc-200" : undefined}>{c.label}</span>
+                {c.key === sort.key && (
+                  <span className="ml-1 text-emerald-500/80">{sort.dir === -1 ? "▼" : "▲"}</span>
+                )}
+              </th>
+            ))}
           </tr>
         </thead>
         <tbody>
-          {positions.map((p) => (
+          {sorted.map((p) => (
             <PositionRow
               key={p.isin}
               p={p}
@@ -213,6 +315,13 @@ function HoldingsTable({
               onSelect={() => onSelect(p.isin)}
             />
           ))}
+          {sorted.length === 0 && (
+            <tr>
+              <td colSpan={11} className="px-3 py-6 text-center text-zinc-600">
+                No holdings match
+              </td>
+            </tr>
+          )}
         </tbody>
       </table>
     </div>
@@ -394,6 +503,7 @@ function CashflowChart({ cashflows }: { cashflows: PortfolioMonth[] }) {
         .map(
           (b) =>
             `<tr><td style="color:#e4e4e7;padding-right:2px">${b.estimated ? "≈" : ""}${b.label}</td>` +
+            `<td style="color:#71717a;${num}">${dayMonth(b.dates ?? [])}</td>` +
             `<td style="color:#38bdf8;${num}">${b.interest > 0 ? money(b.interest) : "–"}</td>` +
             `<td style="color:#10b981;${num}">${b.principal > 0 ? money(b.principal) : "–"}</td>` +
             `<td style="color:#a1a1aa;${num}">${money(b.interest + b.principal)}</td></tr>`,
@@ -403,12 +513,13 @@ function CashflowChart({ cashflows }: { cashflows: PortfolioMonth[] }) {
         `<div style="color:#71717a;margin-bottom:2px">${d.toLocaleDateString("en-IN", { month: "short", year: "numeric" })}${cf.estimated ? " (≈ est.)" : ""}</div>` +
         `<table><thead><tr style="color:#71717a">` +
         `<td style="padding-right:2px">Bond</td>` +
+        `<td style="${num}">Date</td>` +
         `<td style="color:#38bdf8;${num}">Interest</td>` +
         `<td style="color:#10b981;${num}">Principal</td>` +
         `<td style="${num}">Total</td>` +
         `</tr></thead><tbody>${bondLines}` +
         `<tr style="border-top:1px solid #3f3f46;font-weight:500">` +
-        `<td style="color:#71717a;padding-right:2px">Total</td>` +
+        `<td style="color:#71717a;padding-right:2px">Total</td><td></td>` +
         `<td style="color:#38bdf8;${num}">${cf.interest > 0 ? money(cf.interest) : "–"}</td>` +
         `<td style="color:#10b981;${num}">${cf.principal > 0 ? money(cf.principal) : "–"}</td>` +
         `<td style="color:#e4e4e7;${num}">${money(cf.interest + cf.principal)}</td>` +
@@ -495,6 +606,7 @@ function MonthPopover({ m, year, monthIdx, rect }: HoverCell) {
         <thead>
           <tr className="text-zinc-600">
             <td className="pr-3">Bond</td>
+            <td className="pr-3 text-right">Date</td>
             <td className="pr-3 text-right">Interest</td>
             <td className="text-right">Principal</td>
           </tr>
@@ -506,6 +618,7 @@ function MonthPopover({ m, year, monthIdx, rect }: HoverCell) {
                 {b.estimated && <span className="text-zinc-500">≈</span>}
                 {b.label}
               </td>
+              <td className="pr-3 text-right text-zinc-500">{dayMonth(b.dates ?? [])}</td>
               <td className="pr-3 text-right text-sky-400">
                 {b.interest > 0 ? fmt.inr(b.interest) : "–"}
               </td>

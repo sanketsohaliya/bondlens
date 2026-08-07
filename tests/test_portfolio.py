@@ -146,6 +146,12 @@ def test_monthly_cashflows_buckets_and_scales():
         assert m["principal"] == pytest.approx(
             sum(b["principal"] for b in m["bonds"]))
 
+    # Exact payment dates ride along, sorted; the same-day interest +
+    # redemption pair collapses to one date.
+    assert b1["A"]["dates"] == ["2026-03-10", "2026-03-20"]
+    assert b1["B"]["dates"] == ["2026-03-05"]
+    assert m2["bonds"][0]["dates"] == ["2027-03-10"]
+
 
 def test_monthly_cashflows_record_date_excludes_sellers_coupon():
     flows = {"A": [_flow(date(2026, 2, 1), 50.0, record=date(2026, 1, 10)),

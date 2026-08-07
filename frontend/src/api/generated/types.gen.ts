@@ -727,6 +727,12 @@ export type PortfolioMonthBond = {
      * Display symbol (nse/bse) or the ISIN itself
      */
     label: string;
+    /**
+     * Dates
+     *
+     * ISO due dates of this bond's flows in the month
+     */
+    dates: Array<string>;
     interest: number;
     principal: number;
     estimated: boolean;

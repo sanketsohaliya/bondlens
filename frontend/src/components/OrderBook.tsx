@@ -146,36 +146,46 @@ function Ladder({
         <table className="w-full text-xs">
           <thead>
             <tr className="text-zinc-500 border-b border-zinc-800">
-              <th className="px-2 py-1.5 text-right font-normal">Bid qty</th>
-              <th className="px-2 py-1.5 text-right font-normal">Bid</th>
+              <th className="px-2 py-1.5 text-right font-normal">Buying at</th>
+              <th className="px-2 py-1.5 text-right font-normal">Qty.</th>
               <th className="px-2 py-1.5 text-right font-normal">Ticket</th>
-              <th className="px-2 py-1.5 text-right font-normal">Ask</th>
+              <th className="px-2 py-1.5 text-right font-normal">Selling at</th>
+              <th className="px-2 py-1.5 text-right font-normal">Qty.</th>
               <th className="px-2 py-1.5 text-right font-normal">Ticket</th>
-              <th className="px-2 py-1.5 text-right font-normal">Ask qty</th>
               <th className="px-2 py-1.5 text-right font-normal">YTM @ ask</th>
             </tr>
           </thead>
           <tbody>
-            {Array.from({ length: Math.max(side.bids.length, side.asks.length) }).map((_, i) => {
+            {/* Fixed minimum of 5 rows (broker-app style): short books pad
+                with ₹0/0 so the ladder height and eye-line stay constant. */}
+            {Array.from({ length: Math.max(5, side.bids.length, side.asks.length) }).map((_, i) => {
               const bid = side.bids[i];
               const ask = side.asks[i];
               const ytm = ask ? ytmFor(ask.price) : null;
               return (
                 <tr key={i} className="border-b border-zinc-900">
-                  <td className="px-2 py-1.5 text-right text-zinc-400">
-                    {bid?.qty != null ? fmt.num(bid.qty, 0) : ""}
+                  <td
+                    className={`px-2 py-1.5 text-right font-medium ${bid?.price != null ? "text-emerald-400" : "text-zinc-600"}`}
+                  >
+                    {bid?.price != null ? fmt.inrFull(bid.price) : "₹0"}
                   </td>
-                  <td className="px-2 py-1.5 text-right text-emerald-400 font-medium">
-                    {bid?.price != null ? fmt.inrFull(bid.price) : ""}
+                  <td
+                    className={`px-2 py-1.5 text-right ${bid?.qty != null ? "text-zinc-400" : "text-zinc-600"}`}
+                  >
+                    {bid?.qty != null ? fmt.num(bid.qty, 0) : "0"}
                   </td>
-                  <td className="px-2 py-1.5 text-right text-zinc-500">{ticket(bid)}</td>
-                  <td className="px-2 py-1.5 text-right text-red-400 font-medium">
-                    {ask?.price != null ? fmt.inrFull(ask.price) : ""}
+                  <td className="px-2 py-1.5 text-right text-zinc-500">{ticket(bid) || "₹0"}</td>
+                  <td
+                    className={`px-2 py-1.5 text-right font-medium ${ask?.price != null ? "text-red-400" : "text-zinc-600"}`}
+                  >
+                    {ask?.price != null ? fmt.inrFull(ask.price) : "₹0"}
                   </td>
-                  <td className="px-2 py-1.5 text-right text-zinc-500">{ticket(ask)}</td>
-                  <td className="px-2 py-1.5 text-right text-zinc-400">
-                    {ask?.qty != null ? fmt.num(ask.qty, 0) : ""}
+                  <td
+                    className={`px-2 py-1.5 text-right ${ask?.qty != null ? "text-zinc-400" : "text-zinc-600"}`}
+                  >
+                    {ask?.qty != null ? fmt.num(ask.qty, 0) : "0"}
                   </td>
+                  <td className="px-2 py-1.5 text-right text-zinc-500">{ticket(ask) || "₹0"}</td>
                   <td className="px-2 py-1.5 text-right text-zinc-300">
                     {ytm != null ? fmt.pct(ytm) : ""}
                   </td>
@@ -183,12 +193,12 @@ function Ladder({
               );
             })}
             <tr className="text-zinc-500">
-              <td className="px-2 py-1.5 text-right">{fmt.num(side.total_bid_qty, 0)}</td>
               <td className="px-2 py-1.5 text-right text-[10px]">total bid</td>
+              <td className="px-2 py-1.5 text-right">{fmt.num(side.total_bid_qty, 0)}</td>
               <td />
               <td className="px-2 py-1.5 text-right text-[10px]">total ask</td>
-              <td />
               <td className="px-2 py-1.5 text-right">{fmt.num(side.total_ask_qty, 0)}</td>
+              <td />
               <td />
             </tr>
           </tbody>

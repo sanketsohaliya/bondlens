@@ -137,9 +137,11 @@ def monthly_cashflows(units_by_isin: dict[str, float],
             b["estimated"] = b["estimated"] or f.estimated
             bond = b["_bonds"].setdefault(
                 isin, {"isin": isin, "label": labels.get(isin, isin),
-                       "interest": 0.0, "principal": 0.0, "estimated": False})
+                       "interest": 0.0, "principal": 0.0, "estimated": False,
+                       "_dates": set()})
             bond[key] += f.amount * units
             bond["estimated"] = bond["estimated"] or f.estimated
+            bond["_dates"].add(f.due_date.isoformat())
     out = sorted(buckets.values(), key=lambda b: b["month"])
     for b in out:
         b["interest"] = round(b["interest"], 2)
@@ -149,5 +151,6 @@ def monthly_cashflows(units_by_isin: dict[str, float],
         for bond in bonds:
             bond["interest"] = round(bond["interest"], 2)
             bond["principal"] = round(bond["principal"], 2)
+            bond["dates"] = sorted(bond.pop("_dates"))
         b["bonds"] = bonds
     return out
