@@ -393,15 +393,18 @@ function CashflowChart({ cashflows }: { cashflows: PortfolioMonth[] }) {
         .join("");
       el.innerHTML =
         `<div style="color:#71717a;margin-bottom:2px">${d.toLocaleDateString("en-IN", { month: "short", year: "numeric" })}${cf.estimated ? " (≈ est.)" : ""}</div>` +
-        `<span style="color:#38bdf8">Interest</span> ${money(cf.interest)}<br/>` +
-        `<span style="color:#10b981">Principal</span> ${money(cf.principal)}<br/>` +
-        `<span style="color:#e4e4e7">Total</span> ${money(cf.interest + cf.principal)}` +
-        (bondLines
-          ? `<div style="border-top:1px solid #3f3f46;margin:4px 0 2px"></div>` +
-            `<table><thead><tr style="color:#71717a">` +
-            `<td>Bond</td><td style="${num}">Int</td><td style="${num}">Prin</td><td style="${num}">Total</td>` +
-            `</tr></thead><tbody>${bondLines}</tbody></table>`
-          : "");
+        `<table><thead><tr style="color:#71717a">` +
+        `<td style="padding-right:2px">Bond</td>` +
+        `<td style="color:#38bdf8;${num}">Interest</td>` +
+        `<td style="color:#10b981;${num}">Principal</td>` +
+        `<td style="${num}">Total</td>` +
+        `</tr></thead><tbody>${bondLines}` +
+        `<tr style="border-top:1px solid #3f3f46;font-weight:500">` +
+        `<td style="color:#71717a;padding-right:2px">Total</td>` +
+        `<td style="color:#38bdf8;${num}">${cf.interest > 0 ? money(cf.interest) : "–"}</td>` +
+        `<td style="color:#10b981;${num}">${cf.principal > 0 ? money(cf.principal) : "–"}</td>` +
+        `<td style="color:#e4e4e7;${num}">${money(cf.interest + cf.principal)}</td>` +
+        `</tr></tbody></table>`;
       el.style.display = "block";
       // Flip using the rendered width so long bond names never overflow.
       const w = container.current?.clientWidth ?? 0;
