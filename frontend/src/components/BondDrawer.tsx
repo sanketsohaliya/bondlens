@@ -4,16 +4,18 @@ import { api, fmt } from "../api/client";
 import type { BondDetail } from "../api/types";
 import { buildBondPrompt } from "../lib/aiPrompt";
 import { replaceNumberWords } from "../lib/numberWords";
+import { usePortfolio } from "../lib/portfolio";
 import CashflowTable from "./CashflowTable";
 import CopyBtn from "./CopyBtn";
 import { HoldMark, WatchStar } from "./ExploreTable";
+import HoldingPanel from "./HoldingPanel";
 import OrderBook from "./OrderBook";
 import RatingTimeline from "./RatingTimeline";
 import StatBox from "./StatBox";
 import Tip from "./Tooltip";
 import TradeChart from "./TradeChart";
 
-export type Tab = "overview" | "chart" | "cashflows" | "order book" | "ratings";
+export type Tab = "overview" | "chart" | "cashflows" | "order book" | "ratings" | "holding";
 
 const DRAWER_WIDTH_KEY = "bl.drawerWidth";
 const DEFAULT_DRAWER_WIDTH = 768; // matches the previous max-w-3xl
@@ -87,6 +89,22 @@ export default function BondDrawer({
     queryFn: () => api.bond(isin, price),
     placeholderData: keepPreviousData,
   });
+
+  // The "holding" tab only exists while the bond is in the portfolio;
+  // deleting the last lot from inside the tab kicks back to overview.
+  const { data: portfolio } = usePortfolio();
+  const held = portfolio?.positions.some((p) => p.isin === isin) ?? false;
+  const tabs: Tab[] = [
+    "overview",
+    "chart",
+    "cashflows",
+    "order book",
+    "ratings",
+    ...(held ? (["holding"] as Tab[]) : []),
+  ];
+  useEffect(() => {
+    if (tab === "holding" && portfolio && !held) setTab("overview");
+  }, [tab, portfolio, held]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
@@ -174,7 +192,7 @@ export default function BondDrawer({
                 </div>
               </div>
               <nav className="flex gap-1 mt-3 -mb-px">
-                {(["overview", "chart", "cashflows", "order book", "ratings"] as Tab[]).map((t) => (
+                {tabs.map((t) => (
                   <button
                     type="button"
                     key={t}
@@ -206,6 +224,7 @@ export default function BondDrawer({
                 />
               )}
               {tab === "ratings" && <RatingTimeline timeline={bond.rating_timeline} />}
+              {tab === "holding" && <HoldingPanel isin={bond.isin} />}
             </div>
           </>
         )}

@@ -66,6 +66,29 @@ export function monthGrid(cashflows: PortfolioMonth[]): YearRow[] {
     .sort((a, b) => a.year - b.year);
 }
 
+/** Received vs projected income from ONE bond across the month buckets.
+ * Month-level approximation: the API splits received/projected per month,
+ * not per bond, so the current month (which may straddle today) counts
+ * fully as projected. */
+export function bondIncome(
+  cashflows: PortfolioMonth[],
+  isin: string,
+  now: Date = new Date(),
+): { received: number; projected: number } {
+  let received = 0;
+  let projected = 0;
+  for (const m of cashflows) {
+    const b = m.bonds.find((x) => x.isin === isin);
+    if (!b) continue;
+    if (isPastMonth(m.month, now)) received += b.interest + b.principal;
+    else projected += b.interest + b.principal;
+  }
+  return {
+    received: Math.round(received * 100) / 100,
+    projected: Math.round(projected * 100) / 100,
+  };
+}
+
 export interface Slice {
   label: string;
   value: number;

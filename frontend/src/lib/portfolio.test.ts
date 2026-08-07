@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { PortfolioMonth, PortfolioPosition } from "../api/types";
-import { isPastMonth, monthGrid, weights } from "./portfolio";
+import { bondIncome, isPastMonth, monthGrid, weights } from "./portfolio";
 
 const cf = (month: string, interest: number, principal = 0): PortfolioMonth => ({
   month,
@@ -25,6 +25,40 @@ describe("monthGrid", () => {
 
   it("empty in, empty out", () => {
     expect(monthGrid([])).toEqual([]);
+  });
+});
+
+describe("bondIncome", () => {
+  const now = new Date(2026, 7, 7); // 7 Aug 2026
+  const bond = (isin: string, interest: number, principal = 0) => ({
+    isin,
+    label: isin,
+    interest,
+    principal,
+    estimated: false,
+    dates: [],
+  });
+  const months: PortfolioMonth[] = [
+    { ...cf("2026-05", 100), bonds: [bond("A", 60), bond("B", 40)] },
+    { ...cf("2026-08", 50), bonds: [bond("A", 50)] }, // current month
+    { ...cf("2027-03", 80, 1000), bonds: [bond("A", 80, 1000)] },
+  ];
+
+  it("splits past vs future months for one isin", () => {
+    expect(bondIncome(months, "A", now)).toEqual({ received: 60, projected: 1130 });
+  });
+
+  it("current month counts as projected", () => {
+    expect(bondIncome(months, "A", now).projected).toBe(50 + 80 + 1000);
+  });
+
+  it("skips months where the bond does not pay", () => {
+    expect(bondIncome(months, "B", now)).toEqual({ received: 40, projected: 0 });
+  });
+
+  it("unknown isin and empty input yield zeros", () => {
+    expect(bondIncome(months, "Z", now)).toEqual({ received: 0, projected: 0 });
+    expect(bondIncome([], "A", now)).toEqual({ received: 0, projected: 0 });
   });
 });
 
