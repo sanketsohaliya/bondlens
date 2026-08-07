@@ -20,6 +20,8 @@ export type {
 export type {
   DepthLevel,
   DepthSide,
+  Notification,
+  NotificationsResponse,
   OrderBook,
   PortfolioLot,
   PortfolioMonth,

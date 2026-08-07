@@ -199,6 +199,25 @@ def portfolio(user_id: int = Depends(auth.require_user)):
 
 
 # --------------------------------------------------------------------------
+# Notifications
+# --------------------------------------------------------------------------
+
+@router.get("/api/notifications", response_model=models.NotificationsResponse)
+def notifications(limit: int = Query(50, ge=1, le=200),
+                  user_id: int = Depends(auth.require_user)):
+    """Newest-first portfolio notification feed with the unread count.
+    Rows are produced by the scheduled generator, not this API."""
+    return db.get_notifications(user_id, limit)
+
+
+@router.post("/api/notifications/read", response_model=models.Ok)
+def notifications_read(user_id: int = Depends(auth.require_user)):
+    """Mark every notification read (the bell panel calls this on open)."""
+    db.mark_notifications_read(user_id)
+    return {"ok": True}
+
+
+# --------------------------------------------------------------------------
 # Explorer
 # --------------------------------------------------------------------------
 

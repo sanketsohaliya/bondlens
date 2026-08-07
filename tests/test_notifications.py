@@ -1,0 +1,263 @@
+"""Notification detection (pure functions) + API route tests.
+
+The detectors in backend/notifications.py take plain data and return
+alert dicts, so no database is needed. The API layer is faked like the
+watchlist tests (CI has no Postgres).
+"""
+from datetime import date, timedelta
+from typing import Any
+
+import pytest
+from fastapi.testclient import TestClient
+
+from backend import auth, db
+from backend import notifications as nt
+from backend.analytics import schedule
+from backend.app import app
+
+TODAY = date(2026, 1, 15)
+ISIN = "INE000A00001"
+LABEL = "ACME Finance"
+
+
+def flow(due: date, amount: float | None = 50.0, event: str = "interest",
+         **kw) -> schedule.Flow:
+    return schedule.Flow(event=event, due_date=due,
+                         record_date=kw.get("record_date"),
+                         amount=amount, estimated=kw.get("estimated", False))
+
+
+def raw(due: date, paid: date | None = None,
+        reason: str | None = None) -> dict[str, Any]:
+    return {"due_date": due, "actual_payment_date": paid,
+            "reason_delay_payment": reason}
+
+
+# --- rating_alerts ----------------------------------------------------------
+
+def hist(rating_date: date, rating="AA-", prev="AA") -> list[dict]:
+    return [
+        {"agency": "CRISIL", "rating": prev,
+         "rating_date": rating_date - timedelta(days=200)},
+        {"agency": "CRISIL", "rating": rating, "rating_date": rating_date},
+    ]
+
+
+def test_rating_downgrade_alerts_warn():
+    [a] = nt.rating_alerts(ISIN, LABEL, hist(TODAY - timedelta(days=3)), TODAY)
+    assert a["kind"] == "rating"
+    assert a["severity"] == "warn"
+    assert "downgraded" in a["title"]
+    assert "AA \u2192 AA-" in a["title"]
+    assert a["dedupe_key"] == f"rating:{ISIN}:{TODAY - timedelta(days=3)}:AA-"
+
+
+def test_rating_upgrade_is_info():
+    [a] = nt.rating_alerts(
+        ISIN, LABEL, hist(TODAY - timedelta(days=3), rating="AA+", prev="AA"),
+        TODAY)
+    assert a["severity"] == "info"
+    assert "upgraded" in a["title"]
+
+
+def test_old_rating_change_is_silent():
+    assert nt.rating_alerts(
+        ISIN, LABEL, hist(TODAY - timedelta(days=45)), TODAY) == []
+
+
+def test_unchanged_trail_is_silent():
+    history = [{"agency": "CRISIL", "rating": "AA",
+                "rating_date": TODAY - timedelta(days=5)}]
+    assert nt.rating_alerts(ISIN, LABEL, history, TODAY) == []
+
+
+# --- payment_alerts ---------------------------------------------------------
+
+def test_upcoming_window_edges():
+    flows = [flow(TODAY + timedelta(days=1)), flow(TODAY + timedelta(days=7)),
+             flow(TODAY + timedelta(days=8))]
+    alerts = nt.payment_alerts(ISIN, LABEL, 10, flows, [], TODAY)
+    assert [a["kind"] for a in alerts] == ["pay_upcoming", "pay_upcoming"]
+
+
+def test_upcoming_amount_scales_by_units():
+    [a] = nt.payment_alerts(ISIN, LABEL, 10, [flow(TODAY + timedelta(days=2),
+                                                   amount=41.5)], [], TODAY)
+    assert "\u20b9415" in a["title"]
+
+
+def test_due_today():
+    [a] = nt.payment_alerts(ISIN, LABEL, 1, [flow(TODAY)], [], TODAY)
+    assert a["kind"] == "pay_today"
+    assert "Due today" in a["title"]
+
+
+def test_confirmed_on_time_is_info():
+    d = TODAY - timedelta(days=10)
+    [a] = nt.payment_alerts(ISIN, LABEL, 1, [flow(d)], [raw(d, paid=d)], TODAY)
+    assert a["kind"] == "pay_confirmed"
+    assert a["severity"] == "info"
+
+
+def test_confirmed_late_is_warn_with_days():
+    d = TODAY - timedelta(days=10)
+    [a] = nt.payment_alerts(ISIN, LABEL, 1, [flow(d)],
+                            [raw(d, paid=d + timedelta(days=4))], TODAY)
+    assert a["kind"] == "pay_confirmed"
+    assert a["severity"] == "warn"
+    assert "4d late" in a["title"]
+
+
+def test_overdue_after_grace_period():
+    d = TODAY - timedelta(days=nt.GRACE_DAYS + 1)
+    [a] = nt.payment_alerts(ISIN, LABEL, 1, [flow(d)], [raw(d)], TODAY)
+    assert a["kind"] == "pay_overdue"
+    assert a["severity"] == "warn"
+
+
+def test_within_grace_period_is_silent():
+    d = TODAY - timedelta(days=nt.GRACE_DAYS)
+    assert nt.payment_alerts(ISIN, LABEL, 1, [flow(d)], [raw(d)], TODAY) == []
+
+
+def test_delay_reason_alerts_even_within_grace():
+    d = TODAY - timedelta(days=1)
+    [a] = nt.payment_alerts(ISIN, LABEL, 1, [flow(d)],
+                            [raw(d, reason="bank account mismatch")], TODAY)
+    assert a["kind"] == "pay_overdue"
+    assert "bank account mismatch" in a["body"]
+
+
+def test_past_flow_without_raw_row_is_skipped():
+    # Estimated schedules have no NSDL row to confirm against.
+    d = TODAY - timedelta(days=30)
+    assert nt.payment_alerts(ISIN, LABEL, 1, [flow(d, estimated=True)],
+                             [], TODAY) == []
+
+
+def test_confirmation_lookback_bounded():
+    d = TODAY - timedelta(days=nt.CONFIRM_LOOKBACK_DAYS + 1)
+    assert nt.payment_alerts(ISIN, LABEL, 1, [flow(d)],
+                             [raw(d, paid=d)], TODAY) == []
+
+
+# --- default_alerts ---------------------------------------------------------
+
+def test_recent_default_is_critical():
+    rows = [{"verification_date": TODAY - timedelta(days=5),
+             "default_details": "interest unpaid"}]
+    [a] = nt.default_alerts(ISIN, LABEL, rows, [], TODAY)
+    assert a["kind"] == "default"
+    assert a["severity"] == "critical"
+    assert "interest unpaid" in a["body"]
+
+
+def test_recent_technical_delay_is_warn():
+    rows = [{"payment_due_date": TODAY - timedelta(days=5),
+             "update_date": TODAY - timedelta(days=3),
+             "amount_to_be_paid": 100000, "amount_paid": 0,
+             "failure_reason": "IFSC mismatch"}]
+    [a] = nt.default_alerts(ISIN, LABEL, [], rows, TODAY)
+    assert a["kind"] == "default"
+    assert a["severity"] == "warn"
+    assert "IFSC mismatch" in a["body"]
+
+
+def test_old_filings_are_silent():
+    old = TODAY - timedelta(days=nt.DEFAULT_WINDOW_DAYS + 1)
+    defaults = [{"verification_date": old, "default_details": "x"}]
+    tech = [{"payment_due_date": old, "update_date": old}]
+    assert nt.default_alerts(ISIN, LABEL, defaults, tech, TODAY) == []
+
+
+# --- anomaly_alerts ---------------------------------------------------------
+
+def sessions(*prices: float, last: float,
+             last_day: date = TODAY) -> list[tuple[date, float]]:
+    days = [(last_day - timedelta(days=len(prices) - i), p)
+            for i, p in enumerate(prices)]
+    return days + [(last_day, last)]
+
+
+def test_price_drop_alerts_warn():
+    [a] = nt.anomaly_alerts(
+        ISIN, LABEL, sessions(1000, 1001, 999, 1000, 1002, last=920), TODAY)
+    assert a["kind"] == "anomaly"
+    assert a["severity"] == "warn"
+    assert "below" in a["title"]
+
+
+def test_price_spike_is_info():
+    [a] = nt.anomaly_alerts(
+        ISIN, LABEL, sessions(1000, 1001, 999, 1000, 1002, last=1080), TODAY)
+    assert a["severity"] == "info"
+    assert "above" in a["title"]
+
+
+def test_small_move_is_silent():
+    assert nt.anomaly_alerts(
+        ISIN, LABEL, sessions(1000, 1001, 999, 1000, 1002, last=1030),
+        TODAY) == []
+
+
+def test_too_few_sessions_is_silent():
+    assert nt.anomaly_alerts(
+        ISIN, LABEL, sessions(1000, 1001, last=900), TODAY) == []
+
+
+def test_stale_last_trade_is_silent():
+    old = TODAY - timedelta(days=nt.ANOMALY_STALE_DAYS + 1)
+    assert nt.anomaly_alerts(
+        ISIN, LABEL,
+        sessions(1000, 1001, 999, 1000, 1002, last=920, last_day=old),
+        TODAY) == []
+
+
+# --- API routes -------------------------------------------------------------
+
+class FakeStore:
+    def __init__(self):
+        self.rows = [
+            {"id": 2, "kind": "rating", "severity": "warn", "isin": ISIN,
+             "title": "t2", "body": "", "created_at": "2026-01-15T08:00:00Z",
+             "read_at": None},
+            {"id": 1, "kind": "pay_upcoming", "severity": "info", "isin": ISIN,
+             "title": "t1", "body": "b", "created_at": "2026-01-14T08:00:00Z",
+             "read_at": "2026-01-14T09:00:00Z"},
+        ]
+
+    def get_notifications(self, user_id: int, limit: int = 50):
+        items = self.rows[:limit]
+        return {"items": items,
+                "unread": sum(1 for r in self.rows if r["read_at"] is None)}
+
+    def mark_notifications_read(self, user_id: int) -> int:
+        n = 0
+        for r in self.rows:
+            if r["read_at"] is None:
+                r["read_at"] = "2026-01-15T10:00:00Z"
+                n += 1
+        return n
+
+
+@pytest.fixture
+def client(monkeypatch):
+    store = FakeStore()
+    for fn in ("get_notifications", "mark_notifications_read"):
+        monkeypatch.setattr(db, fn, getattr(store, fn))
+    app.dependency_overrides[auth.require_user] = lambda: 1
+    yield TestClient(app)
+    app.dependency_overrides.clear()
+
+
+def test_feed_route(client):
+    r = client.get("/api/notifications")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["unread"] == 1
+    assert [i["id"] for i in data["items"]] == [2, 1]
+
+
+def test_mark_read_route(client):
+    assert client.post("/api/notifications/read").json() == {"ok": True}
+    assert client.get("/api/notifications").json()["unread"] == 0

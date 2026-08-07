@@ -295,6 +295,37 @@ def delete_lot(user_id: int, lot_id: int) -> None:
             raise WatchlistError(404, "Lot not found")
 
 
+# --- Notifications ----------------------------------------------------------
+
+def get_notifications(user_id: int, limit: int = 50) -> dict[str, Any]:
+    """Newest-first notification feed plus the unread count."""
+    with _conn() as conn:
+        items = conn.execute(
+            "SELECT id, kind, severity, isin, title, body, created_at, "
+            "read_at FROM user_notifications WHERE user_id = %s "
+            "ORDER BY created_at DESC, id DESC LIMIT %s",
+            (user_id, limit),
+        ).fetchall()
+        unread = conn.execute(
+            "SELECT count(*) AS n FROM user_notifications "
+            "WHERE user_id = %s AND read_at IS NULL",
+            (user_id,),
+        ).fetchone()
+    return {"items": [dict(r) for r in items],
+            "unread": unread["n"] if unread else 0}
+
+
+def mark_notifications_read(user_id: int) -> int:
+    """Mark every unread notification read; returns how many flipped."""
+    with _conn() as conn:
+        cur = conn.execute(
+            "UPDATE user_notifications SET read_at = now() "
+            "WHERE user_id = %s AND read_at IS NULL",
+            (user_id,),
+        )
+        return cur.rowcount
+
+
 # --- Bond universe (daily-tracked listed set) -----------------------------
 
 _UNIVERSE_COLS = [

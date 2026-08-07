@@ -778,6 +778,28 @@ export type PortfolioResponse = {
 };
 
 /**
+ * Notification
+ */
+export type Notification = {
+    id: number;
+    kind: string;
+    severity: string;
+    isin: string;
+    title: string;
+    body: string;
+    created_at: string;
+    read_at: string | null;
+};
+
+/**
+ * NotificationsResponse
+ */
+export type NotificationsResponse = {
+    items: Array<Notification>;
+    unread: number;
+};
+
+/**
  * Watchlist
  */
 export type Watchlist = {

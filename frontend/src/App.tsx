@@ -7,6 +7,7 @@ import BondDrawer, { type Tab } from "./components/BondDrawer";
 import ExploreTable, { type SortState } from "./components/ExploreTable";
 import FilterBar, { DEFAULT_FILTERS, type ListModes } from "./components/FilterBar";
 import Logo from "./components/Logo";
+import NotificationsBell from "./components/NotificationsBell";
 import { useAuth } from "./lib/auth";
 import { unionIsins, useWatchlists } from "./lib/lists";
 import Portfolio from "./pages/Portfolio";
@@ -112,6 +113,7 @@ export default function App() {
                 </button>
               )}
             </div>
+            <NotificationsBell onSelect={(isin) => setSelected({ isin })} />
             <UserMenu />
           </div>
         </header>

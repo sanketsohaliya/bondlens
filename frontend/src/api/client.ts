@@ -5,6 +5,7 @@ import type {
   Filters,
   ListsResponse,
   LotInput,
+  NotificationsResponse,
   OrderBook,
   PortfolioLot,
   PortfolioResponse,
@@ -70,6 +71,10 @@ export const api = {
     updateLot: (id: number, lot: LotInput) =>
       request<PortfolioLot>("PATCH", `/api/portfolio/lots/${id}`, lot),
     deleteLot: (id: number) => request<unknown>("DELETE", `/api/portfolio/lots/${id}`),
+  },
+  notifications: {
+    get: () => get<NotificationsResponse>("/api/notifications"),
+    markRead: () => request<{ ok: boolean }>("POST", "/api/notifications/read"),
   },
   watchlists: {
     create: (name: string) => request<Watchlist>("POST", "/api/watchlists", { name }),

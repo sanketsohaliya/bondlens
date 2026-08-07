@@ -22,3 +22,9 @@
 #    pushes to ntfy on problems, silent when healthy.
 45 8 * * * cd /app && python scripts/healthcheck.py
 45 19 * * 1-5 cd /app && python scripts/healthcheck.py
+
+# 7) Portfolio notifications — 07:30 daily (after the NSDL parse/analytics)
+#    and 19:30 Mon-Fri (after the EOD parse, for price-anomaly alerts).
+#    Idempotent via the (user_id, dedupe_key) unique constraint.
+30 7 * * * cd /app && python scripts/generate_notifications.py
+30 19 * * 1-5 cd /app && python scripts/generate_notifications.py

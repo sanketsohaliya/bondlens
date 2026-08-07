@@ -330,6 +330,23 @@ class PortfolioResponse(BaseModel):
     news: list[PortfolioNews]
 
 
+class Notification(BaseModel):
+    id: int
+    kind: str       # rating | pay_upcoming | pay_today | pay_confirmed
+                    # | pay_overdue | default | anomaly
+    severity: str   # info | warn | critical
+    isin: str
+    title: str
+    body: str
+    created_at: datetime
+    read_at: datetime | None
+
+
+class NotificationsResponse(BaseModel):
+    items: list[Notification]
+    unread: int
+
+
 class Ok(BaseModel):
     ok: bool
 
