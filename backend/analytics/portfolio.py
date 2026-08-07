@@ -110,7 +110,7 @@ def summarize(positions: list[dict[str, Any]]) -> dict[str, Any]:
 
 def receiving_units(lots: list[dict[str, Any]], flow: Flow) -> float:
     """Units across lots that receive ``flow`` — holder semantics: a lot
-    gets a flow when it was bought on/before the record date (or before
+    gets a flow when it was bought before the record date (or before
     the due date when no record date is published). Lots without a
     purchase date count as held all along."""
     return sum(lot["units"] for lot in lots

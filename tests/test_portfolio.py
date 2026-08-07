@@ -186,6 +186,17 @@ def test_monthly_cashflows_no_purchase_date_counts_as_held():
     assert m["month"] == "2026-02"
 
 
+def test_trade_on_record_date_misses_the_register():
+    # T+1 settlement: trading ON the record date settles a day late.
+    flows = {"A": [_flow(date(2026, 2, 1), 50.0, record=date(2026, 1, 10))]}
+    on_record = pf.monthly_cashflows(
+        {"A": _lots(1, date(2026, 1, 10))}, flows, TODAY)
+    assert on_record == []
+    day_before = pf.monthly_cashflows(
+        {"A": _lots(1, date(2026, 1, 9))}, flows, TODAY)
+    assert [m["month"] for m in day_before] == ["2026-02"]
+
+
 def test_next_payment_holder_semantics():
     flows = [_flow(date(2026, 2, 1), 50.0, record=date(2026, 1, 10)),
              _flow(date(2026, 8, 1), 50.0, record=date(2026, 7, 10))]

@@ -62,7 +62,7 @@ def payment_alerts(isin: str, label: str, lots: list[dict],
     confirmed (NSDL actual_payment_date) or issuer-filed delay.
 
     Holder semantics per lot: a flow only alerts (and its amount only
-    counts) for the units bought on/before its record date — matching
+    counts) for the units bought before its record date — matching
     the portfolio cashflow chart.
 
     A missing actual_payment_date is NOT treated as overdue: NSDL's
