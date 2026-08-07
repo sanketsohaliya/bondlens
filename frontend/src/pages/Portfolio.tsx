@@ -233,13 +233,22 @@ function PositionRow({
   return (
     <>
       <tr
-        onClick={onSelect}
+        onClick={onToggle}
+        aria-expanded={open}
         className="border-b border-zinc-800/60 hover:bg-zinc-900/60 cursor-pointer"
       >
         <td className={TD}>
-          <div className="font-medium text-zinc-200 max-w-56 truncate">
+          <button
+            type="button"
+            title="View bond details"
+            onClick={(e) => {
+              e.stopPropagation();
+              onSelect();
+            }}
+            className="block font-medium text-zinc-200 max-w-56 truncate text-left hover:text-emerald-400 hover:underline underline-offset-2"
+          >
             {p.issuer_name ?? p.isin}
-          </div>
+          </button>
           <div className="text-[10px] text-zinc-600">{p.isin}</div>
         </td>
         <td className={TD}>
@@ -284,26 +293,19 @@ function PositionRow({
             <span className="text-zinc-600">–</span>
           )}
         </td>
-        <td
-          className={`${TD} text-right`}
-          onClick={(e) => {
-            e.stopPropagation();
-            onToggle();
-          }}
-        >
-          <button
-            type="button"
-            className="text-zinc-500 hover:text-zinc-200 px-1"
-            title={open ? "Hide lots" : `${p.lots.length} lot${p.lots.length > 1 ? "s" : ""}`}
+        <td className={`${TD} text-right`}>
+          <span
+            className="text-zinc-400 whitespace-nowrap px-1"
+            title={open ? "Click row to hide lots" : "Click row to show lots"}
           >
-            {p.lots.length} {open ? "▴" : "▾"}
-          </button>
+            {p.lots.length} lot{p.lots.length > 1 ? "s" : ""} {open ? "▴" : "▾"}
+          </span>
         </td>
       </tr>
       {open && (
         <tr className="border-b border-zinc-800/60 bg-zinc-900/40">
           <td colSpan={11} className="px-3 py-2">
-            <LotsPanel p={p} />
+            <LotsPanel p={p} onViewBond={onSelect} />
           </td>
         </tr>
       )}

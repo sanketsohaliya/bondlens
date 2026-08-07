@@ -4,7 +4,13 @@ import type { LotInput, PortfolioLot, PortfolioPosition } from "../api/types";
 import { useLotMutations } from "../lib/portfolio";
 
 /** Expanded lots of one position: list + inline edit/delete + add. */
-export default function LotsPanel({ p }: { p: PortfolioPosition }) {
+export default function LotsPanel({
+  p,
+  onViewBond,
+}: {
+  p: PortfolioPosition;
+  onViewBond?: () => void;
+}) {
   const { add, update, remove } = useLotMutations();
   const [editingId, setEditingId] = useState<number | null>(null);
   const [adding, setAdding] = useState(false);
@@ -12,12 +18,22 @@ export default function LotsPanel({ p }: { p: PortfolioPosition }) {
 
   return (
     <div className="text-xs space-y-1">
-      <div className="grid grid-cols-[1fr_1fr_1fr_1fr_auto] gap-2 text-[10px] text-zinc-500 px-1">
+      <div className="grid grid-cols-[1fr_1fr_1fr_1fr_auto] gap-2 items-center text-[10px] text-zinc-500 px-1">
         <span>Units</span>
         <span>Price / unit</span>
         <span>Purchase date</span>
         <span>Platform</span>
-        <span />
+        {onViewBond ? (
+          <button
+            type="button"
+            onClick={onViewBond}
+            className="text-[11px] px-2 py-0.5 rounded-md border border-zinc-700 text-zinc-300 hover:border-zinc-500 hover:text-zinc-100 transition-colors"
+          >
+            View bond →
+          </button>
+        ) : (
+          <span />
+        )}
       </div>
       {p.lots.map((lot) =>
         editingId === lot.id ? (
