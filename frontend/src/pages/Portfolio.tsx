@@ -33,10 +33,20 @@ interface SliceFilter {
   isins: string[];
 }
 
+type PortfolioTab = "holdings" | "cashflow" | "breakdown" | "news";
+
+const PORTFOLIO_TABS: Array<[PortfolioTab, string]> = [
+  ["holdings", "Holdings"],
+  ["cashflow", "Cashflow to maturity"],
+  ["breakdown", "Investment breakdown"],
+  ["news", "Market news"],
+];
+
 export default function Portfolio({ onSelect }: { onSelect: (isin: string) => void }) {
   const { data, isLoading, error } = usePortfolio();
   const [filter, setFilter] = useState<SliceFilter | null>(null);
   const [nameQuery, setNameQuery] = useState("");
+  const [tab, setTab] = useState<PortfolioTab>("holdings");
 
   const bySlice = useMemo(() => {
     if (!data) return { issuer: [], rating: [], sector: [] };
@@ -82,6 +92,7 @@ export default function Portfolio({ onSelect }: { onSelect: (isin: string) => vo
     }
     const slice = bySlice[by].find((s) => s.label === label);
     setFilter(slice ? { by, label, isins: slice.isins } : null);
+    if (slice) setTab("holdings"); // show the freshly filtered table
   };
 
   return (
@@ -99,89 +110,102 @@ export default function Portfolio({ onSelect }: { onSelect: (isin: string) => vo
       </div>
 
       <section>
-        <SectionTitle
-          right={
-            <span className="flex items-center gap-2">
+        <div className="flex items-center gap-1 border-b border-zinc-800 mb-3">
+          {PORTFOLIO_TABS.map(([t, label]) => (
+            <button
+              type="button"
+              key={t}
+              onClick={() => setTab(t)}
+              className={
+                "text-xs px-3 py-1.5 rounded-t-md border-b-2 transition-colors -mb-px " +
+                (tab === t
+                  ? "border-emerald-500 text-emerald-400"
+                  : "border-transparent text-zinc-500 hover:text-zinc-300")
+              }
+            >
+              {label}
+            </button>
+          ))}
+          <span className="flex-1" />
+          {tab === "holdings" && (
+            <span className="flex items-center gap-2 pb-1.5">
               <input
                 value={nameQuery}
                 onChange={(e) => setNameQuery(e.target.value)}
                 placeholder="Filter by name / ISIN"
-                className="w-52 bg-transparent border border-zinc-700 rounded-md px-2 py-1 text-[11px] font-medium normal-case tracking-normal focus:outline-none focus:border-zinc-400 placeholder:text-zinc-600"
+                className="w-52 bg-transparent border border-zinc-700 rounded-md px-2 py-1 text-[11px] font-medium focus:outline-none focus:border-zinc-400 placeholder:text-zinc-600"
               />
               <AddLotSearch />
             </span>
-          }
-        >
-          Holdings
-        </SectionTitle>
-        {filter && (
-          <div className="mb-2">
-            <button
-              type="button"
-              onClick={() => setFilter(null)}
-              className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md border border-zinc-600 bg-zinc-800/60 text-xs text-zinc-200 hover:border-zinc-400"
-            >
-              {filter.by}: {filter.label}
-              <span className="text-zinc-500">×</span>
-            </button>
-          </div>
-        )}
-        <HoldingsTable positions={shown} onSelect={onSelect} />
-      </section>
-
-      {cashflows.length > 0 && (
-        <section>
-          <SectionTitle>Cashflow to maturity</SectionTitle>
-          <CashflowChart cashflows={cashflows} />
-          <CashflowGrid cashflows={cashflows} />
-        </section>
-      )}
-
-      <section>
-        <SectionTitle>Investment breakdown</SectionTitle>
-        <div className="grid md:grid-cols-3 gap-3">
-          <Donut
-            title="By issuer"
-            slices={bySlice.issuer}
-            selected={filter?.by === "issuer" ? filter.label : null}
-            onSlice={pickSlice("issuer")}
-          />
-          <Donut
-            title="By rating"
-            slices={bySlice.rating}
-            selected={filter?.by === "rating" ? filter.label : null}
-            onSlice={pickSlice("rating")}
-          />
-          <Donut
-            title="By sector"
-            slices={bySlice.sector}
-            selected={filter?.by === "sector" ? filter.label : null}
-            onSlice={pickSlice("sector")}
-          />
+          )}
         </div>
-        <p className="mt-1.5 text-[10px] text-zinc-600">
-          Weighted by current value. Click a slice to filter the holdings table.
-        </p>
+
+        {tab === "holdings" && (
+          <>
+            {filter && (
+              <div className="mb-2">
+                <button
+                  type="button"
+                  onClick={() => setFilter(null)}
+                  className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md border border-zinc-600 bg-zinc-800/60 text-xs text-zinc-200 hover:border-zinc-400"
+                >
+                  {filter.by}: {filter.label}
+                  <span className="text-zinc-500">×</span>
+                </button>
+              </div>
+            )}
+            <HoldingsTable positions={shown} onSelect={onSelect} />
+          </>
+        )}
+
+        {tab === "cashflow" &&
+          (cashflows.length > 0 ? (
+            <>
+              <CashflowChart cashflows={cashflows} />
+              <CashflowGrid cashflows={cashflows} />
+            </>
+          ) : (
+            <div className="py-12 text-center text-sm text-zinc-600">No future cashflows</div>
+          ))}
+
+        {tab === "breakdown" && (
+          <>
+            <div className="grid md:grid-cols-3 gap-3">
+              <Donut
+                title="By issuer"
+                slices={bySlice.issuer}
+                selected={filter?.by === "issuer" ? filter.label : null}
+                onSlice={pickSlice("issuer")}
+              />
+              <Donut
+                title="By rating"
+                slices={bySlice.rating}
+                selected={filter?.by === "rating" ? filter.label : null}
+                onSlice={pickSlice("rating")}
+              />
+              <Donut
+                title="By sector"
+                slices={bySlice.sector}
+                selected={filter?.by === "sector" ? filter.label : null}
+                onSlice={pickSlice("sector")}
+              />
+            </div>
+            <p className="mt-1.5 text-[10px] text-zinc-600">
+              Weighted by current value. Click a slice to filter the holdings table.
+            </p>
+          </>
+        )}
+
+        {tab === "news" &&
+          (news.length > 0 ? (
+            <NewsList news={news} onSelect={onSelect} />
+          ) : (
+            <div className="py-12 text-center text-sm text-zinc-600">
+              No rating actions on your issuers
+            </div>
+          ))}
       </section>
-
-      {news.length > 0 && (
-        <section>
-          <SectionTitle>Market news · rating actions on your issuers</SectionTitle>
-          <NewsList news={news} onSelect={onSelect} />
-        </section>
-      )}
     </div>
-  );
-}
-
-function SectionTitle({ children, right }: { children: React.ReactNode; right?: React.ReactNode }) {
-  return (
-    <h2 className="flex items-center gap-2 text-xs font-bold text-zinc-200 uppercase tracking-wider mb-2.5">
-      <span className="h-3.5 w-1 rounded-full bg-emerald-500/80" />
-      {children}
-      <span className="flex-1 border-t border-zinc-800" />
-      {right}
-    </h2>
   );
 }
 
