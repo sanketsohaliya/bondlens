@@ -165,8 +165,8 @@ export default function Portfolio({ onSelect }: { onSelect: (isin: string) => vo
             (cashflows.length > 0 ? (
               <>
                 <IncomeBanner income={income} hasUndatedLot={hasUndatedLot} />
-                <CashflowChart cashflows={cashflows} />
-                <CashflowGrid cashflows={cashflows} />
+                <CashflowChart cashflows={cashflows} onSelect={onSelect} />
+                <CashflowGrid cashflows={cashflows} onSelect={onSelect} />
               </>
             ) : (
               <div className="py-12 text-center text-sm text-zinc-600">No cashflows</div>
@@ -503,10 +503,22 @@ const CF_RANGES = [
   ["All", 0],
 ] as const;
 
-function CashflowChart({ cashflows }: { cashflows: PortfolioMonth[] }) {
+function CashflowChart({
+  cashflows,
+  onSelect,
+}: {
+  cashflows: PortfolioMonth[];
+  onSelect: (isin: string) => void;
+}) {
   const container = useRef<HTMLDivElement>(null);
   const tooltip = useRef<HTMLDivElement>(null);
   const [range, setRange] = useState<(typeof CF_RANGES)[number][0]>("5y");
+  // Click-to-pin: clicking a bar freezes that month's breakdown into an
+  // interactive popover (bond names open the drawer). Mirrored into a ref
+  // so the chart's crosshair handler (created once per [shown]) can see it.
+  const [pinned, setPinned] = useState<{ m: PortfolioMonth; rect: DOMRect } | null>(null);
+  const pinnedRef = useRef(false);
+  pinnedRef.current = pinned != null;
 
   const shown = useMemo(() => {
     const years = CF_RANGES.find(([r]) => r === range)![1];
@@ -518,6 +530,8 @@ function CashflowChart({ cashflows }: { cashflows: PortfolioMonth[] }) {
   }, [cashflows, range]);
 
   useEffect(() => {
+    // Redraw invalidates any pin anchored to the old bars' pixels.
+    setPinned(null);
     if (!container.current || shown.length === 0) return;
     const chart = createChart(container.current, {
       height: 220,
@@ -574,11 +588,26 @@ function CashflowChart({ cashflows }: { cashflows: PortfolioMonth[] }) {
     );
 
     const byTime = new Map(shown.map((c) => [ts(c.month) as number, c]));
+    chart.subscribeClick((param) => {
+      const cf = param.time != null ? byTime.get(param.time as number) : undefined;
+      const box = container.current?.getBoundingClientRect();
+      if (!cf || !param.point || !box) {
+        setPinned(null);
+        return;
+      }
+      // Zero-size anchor at the click point; MonthPopover's flip logic
+      // positions around it exactly like a grid cell rect.
+      setPinned({
+        m: cf,
+        rect: new DOMRect(box.left + param.point.x, box.top + param.point.y, 0, 0),
+      });
+      if (tooltip.current) tooltip.current.style.display = "none";
+    });
     chart.subscribeCrosshairMove((param) => {
       const el = tooltip.current;
       if (!el) return;
       const cf = param.time != null ? byTime.get(param.time as number) : undefined;
-      if (!cf || !param.point) {
+      if (!cf || !param.point || pinnedRef.current) {
         el.style.display = "none";
         return;
       }
@@ -664,65 +693,122 @@ function CashflowChart({ cashflows }: { cashflows: PortfolioMonth[] }) {
           style={{ display: "none" }}
         />
       </div>
+      {pinned && (
+        <MonthPopover
+          m={pinned.m}
+          year={Number(pinned.m.month.slice(0, 4))}
+          monthIdx={Number(pinned.m.month.slice(5, 7)) - 1}
+          rect={pinned.rect}
+          pinned
+          onSelectBond={(isin) => {
+            setPinned(null);
+            onSelect(isin);
+          }}
+          onClose={() => setPinned(null)}
+        />
+      )}
     </div>
   );
 }
 
 /** Hover detail for one grid cell: which bonds pay that month, split
  * interest/principal. Rendered position:fixed so the grid's overflow-x
- * scroll container cannot clip it (absolute popovers were cut off). */
+ * scroll container cannot clip it (absolute popovers were cut off).
+ *
+ * ``pinned`` (click-to-pin) makes it interactive: bond names become
+ * links into the drawer, a backdrop click or Esc dismisses. */
 type HoverCell = { m: PortfolioMonth; year: number; monthIdx: number; rect: DOMRect };
 
-function MonthPopover({ m, year, monthIdx, rect }: HoverCell) {
+function MonthPopover({
+  m,
+  year,
+  monthIdx,
+  rect,
+  pinned,
+  onSelectBond,
+  onClose,
+}: HoverCell & {
+  pinned?: boolean;
+  onSelectBond?: (isin: string) => void;
+  onClose?: () => void;
+}) {
+  useEffect(() => {
+    if (!pinned) return;
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose?.();
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [pinned, onClose]);
+
   const alignRight = rect.left > window.innerWidth / 2;
   const below = rect.top < 240;
   return (
-    <div
-      className="pointer-events-none fixed z-30 w-max rounded-md border border-zinc-700 bg-zinc-900/95 px-2.5 py-1.5 text-left text-[11px] leading-relaxed shadow-xl"
-      style={{
-        ...(alignRight ? { right: window.innerWidth - rect.right } : { left: rect.left }),
-        ...(below ? { top: rect.bottom + 2 } : { bottom: window.innerHeight - rect.top + 2 }),
-      }}
-    >
-      <div className="text-zinc-500 mb-1">
-        {MONTHS[monthIdx]} {year} · {fmt.inr(m.interest + m.principal)}
-        {isPastMonth(m.month) && <span className="text-zinc-600"> · received</span>}
-        {m.estimated && " (≈ est.)"}
-      </div>
-      <table className="tabular-nums">
-        <thead>
-          <tr className="text-zinc-600">
-            <td className="pr-3">Bond</td>
-            <td className="pr-3 text-right">Date</td>
-            <td className="pr-3 text-right">Interest</td>
-            <td className="text-right">Principal</td>
-          </tr>
-        </thead>
-        <tbody>
-          {m.bonds.map((b) => (
-            <tr key={b.isin}>
-              <td className="pr-3 text-zinc-300">
-                {b.estimated && <span className="text-zinc-500">≈</span>}
-                {b.label}
-              </td>
-              <td className="pr-3 text-right text-zinc-500">{dayMonth(b.dates ?? [])}</td>
-              <td className="pr-3 text-right text-sky-400">
-                {b.interest > 0 ? fmt.inr(b.interest) : "–"}
-              </td>
-              <td className="text-right text-emerald-400">
-                {b.principal > 0 ? fmt.inr(b.principal) : "–"}
-              </td>
+    <>
+      {pinned && <div className="fixed inset-0 z-20" onClick={onClose} aria-hidden="true" />}
+      <div
+        className={`${pinned ? "" : "pointer-events-none "}fixed z-30 w-max rounded-md border border-zinc-700 bg-zinc-900/95 px-2.5 py-1.5 text-left text-[11px] leading-relaxed shadow-xl`}
+        style={{
+          ...(alignRight ? { right: window.innerWidth - rect.right } : { left: rect.left }),
+          ...(below ? { top: rect.bottom + 2 } : { bottom: window.innerHeight - rect.top + 2 }),
+        }}
+      >
+        <div className="text-zinc-500 mb-1">
+          {MONTHS[monthIdx]} {year} · {fmt.inr(m.interest + m.principal)}
+          {isPastMonth(m.month) && <span className="text-zinc-600"> · received</span>}
+          {m.estimated && " (≈ est.)"}
+        </div>
+        <table className="tabular-nums">
+          <thead>
+            <tr className="text-zinc-600">
+              <td className="pr-3">Bond</td>
+              <td className="pr-3 text-right">Date</td>
+              <td className="pr-3 text-right">Interest</td>
+              <td className="text-right">Principal</td>
             </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+          </thead>
+          <tbody>
+            {m.bonds.map((b) => (
+              <tr key={b.isin}>
+                <td className="pr-3 text-zinc-300">
+                  {b.estimated && <span className="text-zinc-500">≈</span>}
+                  {pinned && onSelectBond ? (
+                    <button
+                      type="button"
+                      title="View bond details"
+                      onClick={() => onSelectBond(b.isin)}
+                      className="text-left hover:text-emerald-400 hover:underline underline-offset-2"
+                    >
+                      {b.label}
+                    </button>
+                  ) : (
+                    b.label
+                  )}
+                </td>
+                <td className="pr-3 text-right text-zinc-500">{dayMonth(b.dates ?? [])}</td>
+                <td className="pr-3 text-right text-sky-400">
+                  {b.interest > 0 ? fmt.inr(b.interest) : "–"}
+                </td>
+                <td className="text-right text-emerald-400">
+                  {b.principal > 0 ? fmt.inr(b.principal) : "–"}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </>
   );
 }
 
-function CashflowGrid({ cashflows }: { cashflows: PortfolioMonth[] }) {
+function CashflowGrid({
+  cashflows,
+  onSelect,
+}: {
+  cashflows: PortfolioMonth[];
+  onSelect: (isin: string) => void;
+}) {
   const rows = monthGrid(cashflows);
   const [hover, setHover] = useState<HoverCell | null>(null);
+  const [pinned, setPinned] = useState<HoverCell | null>(null);
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-xs">
@@ -744,7 +830,7 @@ function CashflowGrid({ cashflows }: { cashflows: PortfolioMonth[] }) {
               {r.months.map((m, i) => (
                 <td
                   key={MONTHS[i]}
-                  className={`${TD} text-right tabular-nums ${
+                  className={`${TD} text-right tabular-nums ${m ? "cursor-pointer " : ""}${
                     m && isPastMonth(m.month)
                       ? "text-zinc-600"
                       : m && m.principal > 0
@@ -763,6 +849,16 @@ function CashflowGrid({ cashflows }: { cashflows: PortfolioMonth[] }) {
                     })
                   }
                   onMouseLeave={() => setHover(null)}
+                  onClick={(e) => {
+                    if (!m) return;
+                    setHover(null);
+                    setPinned({
+                      m,
+                      year: r.year,
+                      monthIdx: i,
+                      rect: e.currentTarget.getBoundingClientRect(),
+                    });
+                  }}
                 >
                   {m ? (
                     <>
@@ -781,7 +877,18 @@ function CashflowGrid({ cashflows }: { cashflows: PortfolioMonth[] }) {
           ))}
         </tbody>
       </table>
-      {hover && <MonthPopover {...hover} />}
+      {hover && !pinned && <MonthPopover {...hover} />}
+      {pinned && (
+        <MonthPopover
+          {...pinned}
+          pinned
+          onSelectBond={(isin) => {
+            setPinned(null);
+            onSelect(isin);
+          }}
+          onClose={() => setPinned(null)}
+        />
+      )}
     </div>
   );
 }
