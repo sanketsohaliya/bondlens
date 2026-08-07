@@ -113,6 +113,10 @@ def _flow(due, amount, event="interest", record=None, estimated=False):
                          amount=amount, estimated=estimated)
 
 
+def _lots(units: float, purchase_date=None) -> list[dict[str, Any]]:
+    return [{"units": units, "purchase_date": purchase_date}]
+
+
 def test_monthly_cashflows_buckets_and_scales():
     flows = {
         "A": [_flow(date(2026, 3, 10), 40.0),
@@ -121,7 +125,7 @@ def test_monthly_cashflows_buckets_and_scales():
               _flow(date(2027, 3, 10), 1000.0, event="redemption")],
         "B": [_flow(date(2026, 3, 5), 25.0)],
     }
-    out = pf.monthly_cashflows({"A": 2, "B": 4}, flows, TODAY,
+    out = pf.monthly_cashflows({"A": _lots(2), "B": _lots(4)}, flows, TODAY,
                                {"A": "875AAA27"})
     assert [m["month"] for m in out] == ["2026-03", "2027-03"]
     m1, m2 = out
@@ -153,12 +157,49 @@ def test_monthly_cashflows_buckets_and_scales():
     assert m2["bonds"][0]["dates"] == ["2027-03-10"]
 
 
-def test_monthly_cashflows_record_date_excludes_sellers_coupon():
+def test_monthly_cashflows_holder_keeps_passed_record_date():
+    # Holder semantics: the Feb coupon's record date (Jan 10) passed,
+    # but a lot bought before it still receives the payment. Only lots
+    # bought after the record date miss it.
     flows = {"A": [_flow(date(2026, 2, 1), 50.0, record=date(2026, 1, 10)),
                    _flow(date(2026, 8, 1), 50.0, record=date(2026, 7, 10))]}
-    out = pf.monthly_cashflows({"A": 1}, flows, TODAY)
-    # Feb coupon's record date (Jan 10) already passed -> seller's money.
-    assert [m["month"] for m in out] == ["2026-08"]
+    held = pf.monthly_cashflows({"A": _lots(1, date(2025, 6, 1))}, flows, TODAY)
+    assert [m["month"] for m in held] == ["2026-02", "2026-08"]
+
+    bought_late = pf.monthly_cashflows(
+        {"A": _lots(1, date(2026, 1, 12))}, flows, TODAY)
+    assert [m["month"] for m in bought_late] == ["2026-08"]
+
+
+def test_monthly_cashflows_mixed_lots_scale_per_record_date():
+    # Two lots; only the earlier one receives the Feb coupon.
+    flows = {"A": [_flow(date(2026, 2, 1), 50.0, record=date(2026, 1, 10))]}
+    lots = [{"units": 2, "purchase_date": date(2025, 6, 1)},
+            {"units": 3, "purchase_date": date(2026, 1, 12)}]
+    [m] = pf.monthly_cashflows({"A": lots}, flows, TODAY)
+    assert m["interest"] == pytest.approx(100)  # 2 units, not 5
+
+
+def test_monthly_cashflows_no_purchase_date_counts_as_held():
+    flows = {"A": [_flow(date(2026, 2, 1), 50.0, record=date(2026, 1, 10))]}
+    [m] = pf.monthly_cashflows({"A": _lots(1)}, flows, TODAY)
+    assert m["month"] == "2026-02"
+
+
+def test_next_payment_holder_semantics():
+    flows = [_flow(date(2026, 2, 1), 50.0, record=date(2026, 1, 10)),
+             _flow(date(2026, 8, 1), 50.0, record=date(2026, 7, 10))]
+    # Held before the record date -> Feb coupon is next.
+    nxt = pf.next_payment(_lots(2, date(2025, 6, 1)), flows, TODAY)
+    assert nxt is not None
+    assert nxt["due_date"] == date(2026, 2, 1)
+    assert nxt["amount"] == pytest.approx(100)
+    # Bought after the Feb record date -> Aug coupon is next.
+    nxt = pf.next_payment(_lots(2, date(2026, 1, 12)), flows, TODAY)
+    assert nxt is not None
+    assert nxt["due_date"] == date(2026, 8, 1)
+    # No receivable flow at all.
+    assert pf.next_payment(_lots(2), [], TODAY) is None
 
 
 # --- API routes -------------------------------------------------------------

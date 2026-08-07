@@ -10,6 +10,7 @@ from datetime import date, timedelta
 from statistics import median
 
 from . import db, queries
+from .analytics import portfolio as pf
 from .analytics import ratings, schedule
 from .analytics.compute import STALE_AFTER_DAYS
 
@@ -54,11 +55,15 @@ def rating_alerts(isin: str, label: str, history: list[dict],
     }]
 
 
-def payment_alerts(isin: str, label: str, units: float,
+def payment_alerts(isin: str, label: str, lots: list[dict],
                    flows: list[schedule.Flow], raw_rows: list[dict],
                    today: date) -> list[dict]:
     """Payment lifecycle on a held bond: upcoming -> due today ->
     confirmed (NSDL actual_payment_date) or issuer-filed delay.
+
+    Holder semantics per lot: a flow only alerts (and its amount only
+    counts) for the units bought on/before its record date — matching
+    the portfolio cashflow chart.
 
     A missing actual_payment_date is NOT treated as overdue: NSDL's
     payment-execution reporting lags or is never filed for many
@@ -77,6 +82,9 @@ def payment_alerts(isin: str, label: str, units: float,
 
     alerts: list[dict] = []
     for f in flows:
+        units = pf.receiving_units(lots, f)
+        if not units:
+            continue
         amount = round(f.amount * units, 2) if f.amount else None
         ev = _event_name(f.event)
         amt_txt = f" {_inr(amount)}" if amount is not None else ""
@@ -241,15 +249,18 @@ def _default_rows(isins: list[str]) -> dict[str, dict[str, list[dict]]]:
     return out
 
 
-def _users_with_lots() -> dict[int, dict[str, float]]:
-    """{user_id: {isin: total units}} across all portfolios."""
+def _users_with_lots() -> dict[int, dict[str, list[dict]]]:
+    """{user_id: {isin: lots}} across all portfolios (units +
+    purchase_date, for per-lot record-date checks)."""
     with db._conn() as conn:
         rows = conn.execute(
-            "SELECT user_id, isin, sum(units) AS units "
-            "FROM user_portfolio_lots GROUP BY user_id, isin").fetchall()
-    out: dict[int, dict[str, float]] = {}
+            "SELECT user_id, isin, units, purchase_date "
+            "FROM user_portfolio_lots").fetchall()
+    out: dict[int, dict[str, list[dict]]] = {}
     for r in rows:
-        out.setdefault(r["user_id"], {})[r["isin"]] = float(r["units"])
+        out.setdefault(r["user_id"], {}).setdefault(r["isin"], []).append(
+            {"units": float(r["units"]),
+             "purchase_date": r["purchase_date"]})
     return out
 
 
@@ -281,7 +292,7 @@ def generate(today: date | None = None) -> int:
     Returns the number of newly inserted rows."""
     today = today or date.today()
     by_user = _users_with_lots()
-    all_isins = sorted({i for units in by_user.values() for i in units})
+    all_isins = sorted({i for lots in by_user.values() for i in lots})
 
     # Per-ISIN data is shared across users; fetch once.
     core: dict[str, dict] = {}
@@ -299,12 +310,12 @@ def generate(today: date | None = None) -> int:
     sessions = _price_sessions(all_isins, today)
 
     inserted = 0
-    for user_id, units_by_isin in by_user.items():
+    for user_id, lots_by_isin in by_user.items():
         alerts: list[dict] = []
-        for isin, units in units_by_isin.items():
+        for isin, isin_lots in lots_by_isin.items():
             label = _label(core[isin], isin)
             alerts += rating_alerts(isin, label, history[isin], today)
-            alerts += payment_alerts(isin, label, units, flows[isin],
+            alerts += payment_alerts(isin, label, isin_lots, flows[isin],
                                      raw_flows[isin], today)
             alerts += default_alerts(isin, label,
                                      extras[isin]["defaults"],

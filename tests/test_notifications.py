@@ -33,6 +33,10 @@ def raw(due: date, paid: date | None = None,
             "reason_delay_payment": reason}
 
 
+def lots(units: float = 1, purchase_date: date | None = None) -> list[dict]:
+    return [{"units": units, "purchase_date": purchase_date}]
+
+
 # --- rating_alerts ----------------------------------------------------------
 
 def hist(rating_date: date, rating="AA-", prev="AA") -> list[dict]:
@@ -76,32 +80,34 @@ def test_unchanged_trail_is_silent():
 def test_upcoming_window_edges():
     flows = [flow(TODAY + timedelta(days=1)), flow(TODAY + timedelta(days=7)),
              flow(TODAY + timedelta(days=8))]
-    alerts = nt.payment_alerts(ISIN, LABEL, 10, flows, [], TODAY)
+    alerts = nt.payment_alerts(ISIN, LABEL, lots(10), flows, [], TODAY)
     assert [a["kind"] for a in alerts] == ["pay_upcoming", "pay_upcoming"]
 
 
 def test_upcoming_amount_scales_by_units():
-    [a] = nt.payment_alerts(ISIN, LABEL, 10, [flow(TODAY + timedelta(days=2),
-                                                   amount=41.5)], [], TODAY)
+    [a] = nt.payment_alerts(ISIN, LABEL, lots(10),
+                            [flow(TODAY + timedelta(days=2), amount=41.5)],
+                            [], TODAY)
     assert "\u20b9415" in a["title"]
 
 
 def test_due_today():
-    [a] = nt.payment_alerts(ISIN, LABEL, 1, [flow(TODAY)], [], TODAY)
+    [a] = nt.payment_alerts(ISIN, LABEL, lots(), [flow(TODAY)], [], TODAY)
     assert a["kind"] == "pay_today"
     assert "Due today" in a["title"]
 
 
 def test_confirmed_on_time_is_info():
     d = TODAY - timedelta(days=10)
-    [a] = nt.payment_alerts(ISIN, LABEL, 1, [flow(d)], [raw(d, paid=d)], TODAY)
+    [a] = nt.payment_alerts(ISIN, LABEL, lots(), [flow(d)],
+                            [raw(d, paid=d)], TODAY)
     assert a["kind"] == "pay_confirmed"
     assert a["severity"] == "info"
 
 
 def test_confirmed_late_is_warn_with_days():
     d = TODAY - timedelta(days=10)
-    [a] = nt.payment_alerts(ISIN, LABEL, 1, [flow(d)],
+    [a] = nt.payment_alerts(ISIN, LABEL, lots(), [flow(d)],
                             [raw(d, paid=d + timedelta(days=4))], TODAY)
     assert a["kind"] == "pay_confirmed"
     assert a["severity"] == "warn"
@@ -112,12 +118,13 @@ def test_unconfirmed_past_payment_is_silent():
     # No actual_payment_date carries no signal: NSDL execution reporting
     # lags or is never filed for many issuers. Only issuer-filed delays warn.
     d = TODAY - timedelta(days=30)
-    assert nt.payment_alerts(ISIN, LABEL, 1, [flow(d)], [raw(d)], TODAY) == []
+    assert nt.payment_alerts(ISIN, LABEL, lots(), [flow(d)],
+                             [raw(d)], TODAY) == []
 
 
 def test_delay_reason_warns():
     d = TODAY - timedelta(days=1)
-    [a] = nt.payment_alerts(ISIN, LABEL, 1, [flow(d)],
+    [a] = nt.payment_alerts(ISIN, LABEL, lots(), [flow(d)],
                             [raw(d, reason="bank account mismatch")], TODAY)
     assert a["kind"] == "pay_overdue"
     assert "bank account mismatch" in a["body"]
@@ -126,14 +133,29 @@ def test_delay_reason_warns():
 def test_past_flow_without_raw_row_is_skipped():
     # Estimated schedules have no NSDL row to confirm against.
     d = TODAY - timedelta(days=30)
-    assert nt.payment_alerts(ISIN, LABEL, 1, [flow(d, estimated=True)],
+    assert nt.payment_alerts(ISIN, LABEL, lots(), [flow(d, estimated=True)],
                              [], TODAY) == []
 
 
 def test_confirmation_lookback_bounded():
     d = TODAY - timedelta(days=nt.CONFIRM_LOOKBACK_DAYS + 1)
-    assert nt.payment_alerts(ISIN, LABEL, 1, [flow(d)],
+    assert nt.payment_alerts(ISIN, LABEL, lots(), [flow(d)],
                              [raw(d, paid=d)], TODAY) == []
+
+
+def test_upcoming_with_passed_record_date_still_alerts():
+    # Holder semantics: the record date passing does not hide a coupon
+    # the holder is owed (this was the chart/notification mismatch).
+    f = flow(TODAY + timedelta(days=3), record_date=TODAY - timedelta(days=5))
+    [a] = nt.payment_alerts(ISIN, LABEL, lots(purchase_date=date(2025, 1, 1)),
+                            [f], [], TODAY)
+    assert a["kind"] == "pay_upcoming"
+
+
+def test_lot_bought_after_record_date_is_silent():
+    f = flow(TODAY + timedelta(days=3), record_date=TODAY - timedelta(days=5))
+    bought_late = lots(purchase_date=TODAY - timedelta(days=1))
+    assert nt.payment_alerts(ISIN, LABEL, bought_late, [f], [], TODAY) == []
 
 
 # --- default_alerts ---------------------------------------------------------

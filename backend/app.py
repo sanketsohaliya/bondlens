@@ -178,20 +178,14 @@ def portfolio(user_id: int = Depends(auth.require_user)):
 
     positions = pf.build_positions(lots, core_by_isin)
     for p in positions:
-        nxt = next((f for f in flows_by_isin[p["isin"]]
-                    if f.amount and f.receivable_by_buyer(today)), None)
-        p["next_payment"] = None if nxt is None else {
-            "event": nxt.event, "due_date": nxt.due_date,
-            "record_date": nxt.record_date,
-            "amount": round(nxt.amount * p["units"], 2) if nxt.amount else None,
-            "estimated": nxt.estimated, "future": True,
-        }
+        p["next_payment"] = pf.next_payment(p["lots"],
+                                            flows_by_isin[p["isin"]], today)
 
     return {
         "summary": pf.summarize(positions),
         "positions": positions,
         "cashflows": pf.monthly_cashflows(
-            {p["isin"]: p["units"] for p in positions}, flows_by_isin, today,
+            {p["isin"]: p["lots"] for p in positions}, flows_by_isin, today,
             {isin: _cashflow_label(core, isin)
              for isin, core in core_by_isin.items()}),
         "news": queries.ratings_for_isins(isins),

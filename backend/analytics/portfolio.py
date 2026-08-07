@@ -108,25 +108,58 @@ def summarize(positions: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
-def monthly_cashflows(units_by_isin: dict[str, float],
+def receiving_units(lots: list[dict[str, Any]], flow: Flow) -> float:
+    """Units across lots that receive ``flow`` — holder semantics: a lot
+    gets a flow when it was bought on/before the record date (or before
+    the due date when no record date is published). Lots without a
+    purchase date count as held all along."""
+    return sum(lot["units"] for lot in lots
+               if flow.receivable_by_holder(lot.get("purchase_date")))
+
+
+def next_payment(lots: list[dict[str, Any]], flows: list[Flow],
+                 today: date) -> dict[str, Any] | None:
+    """The next future flow at least one lot receives, scaled to the
+    receiving units. Holder semantics: a passed record date does not
+    hide a coupon the holder is still owed."""
+    for f in flows:
+        if not f.amount or f.due_date <= today:
+            continue
+        units = receiving_units(lots, f)
+        if units:
+            return {
+                "event": f.event, "due_date": f.due_date,
+                "record_date": f.record_date,
+                "amount": round(f.amount * units, 2),
+                "estimated": f.estimated, "future": True,
+            }
+    return None
+
+
+def monthly_cashflows(lots_by_isin: dict[str, list[dict[str, Any]]],
                       flows_by_isin: dict[str, list[Flow]],
                       today: date,
                       labels_by_isin: dict[str, str] | None = None,
                       ) -> list[dict[str, Any]]:
-    """Future receivable flows x units, bucketed per calendar month, with
+    """Future flows x receiving units, bucketed per calendar month, with
     a per-bond breakdown inside each bucket (largest payer first).
 
-    Record-date accurate: a flow whose record date has passed belongs to
-    the seller, so it is excluded even if the due date is ahead.
+    Holder semantics, record-date accurate per lot: a flow counts for
+    the units bought on/before its record date — a passed record date
+    does not hide money the holder is still owed, but lots bought after
+    it don't inflate the month either.
     """
     labels = labels_by_isin or {}
     buckets: dict[str, dict[str, Any]] = {}
     for isin, flows in flows_by_isin.items():
-        units = units_by_isin.get(isin, 0)
-        if not units:
+        lots = lots_by_isin.get(isin) or []
+        if not lots:
             continue
         for f in flows:
-            if not f.amount or not f.receivable_by_buyer(today):
+            if not f.amount or f.due_date <= today:
+                continue
+            units = receiving_units(lots, f)
+            if not units:
                 continue
             month = f.due_date.strftime("%Y-%m")
             b = buckets.setdefault(

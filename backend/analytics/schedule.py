@@ -50,6 +50,16 @@ class Flow:
             return False
         return True
 
+    def receivable_by_holder(self, purchase_date: date | None) -> bool:
+        """True if a lot bought on ``purchase_date`` receives this flow
+        (held on the record date, falling back to the due date). Lots
+        without a purchase date count as held all along."""
+        if purchase_date is None:
+            return True
+        if self.record_date is not None:
+            return purchase_date <= self.record_date
+        return purchase_date < self.due_date
+
 
 @dataclass(slots=True)
 class Schedule:
