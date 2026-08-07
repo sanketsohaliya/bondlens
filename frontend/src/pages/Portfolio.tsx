@@ -110,7 +110,7 @@ export default function Portfolio({ onSelect }: { onSelect: (isin: string) => vo
       </div>
 
       <section>
-        <div className="flex items-center gap-1 border-b border-zinc-800 mb-3">
+        <div className="flex items-center gap-1 border-b border-zinc-800">
           {PORTFOLIO_TABS.map(([t, label]) => (
             <button
               type="button"
@@ -129,6 +129,16 @@ export default function Portfolio({ onSelect }: { onSelect: (isin: string) => vo
           <span className="flex-1" />
           {tab === "holdings" && (
             <span className="flex items-center gap-2 pb-1.5">
+              {filter && (
+                <button
+                  type="button"
+                  onClick={() => setFilter(null)}
+                  className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md border border-zinc-600 bg-zinc-800/60 text-[11px] text-zinc-200 hover:border-zinc-400"
+                >
+                  {filter.by}: {filter.label}
+                  <span className="text-zinc-500">×</span>
+                </button>
+              )}
               <input
                 value={nameQuery}
                 onChange={(e) => setNameQuery(e.target.value)}
@@ -140,70 +150,58 @@ export default function Portfolio({ onSelect }: { onSelect: (isin: string) => vo
           )}
         </div>
 
-        {tab === "holdings" && (
-          <>
-            {filter && (
-              <div className="mb-2">
-                <button
-                  type="button"
-                  onClick={() => setFilter(null)}
-                  className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md border border-zinc-600 bg-zinc-800/60 text-xs text-zinc-200 hover:border-zinc-400"
-                >
-                  {filter.by}: {filter.label}
-                  <span className="text-zinc-500">×</span>
-                </button>
+        {/* Flush tab panel: the tab bar's border-b is the top edge, this shell
+            provides the sides and rounded bottom. */}
+        <div className="rounded-b-lg border border-t-0 border-zinc-800 overflow-hidden">
+          {tab === "holdings" && <HoldingsTable positions={shown} onSelect={onSelect} />}
+
+          {tab === "cashflow" &&
+            (cashflows.length > 0 ? (
+              <>
+                <CashflowChart cashflows={cashflows} />
+                <CashflowGrid cashflows={cashflows} />
+              </>
+            ) : (
+              <div className="py-12 text-center text-sm text-zinc-600">No future cashflows</div>
+            ))}
+
+          {tab === "breakdown" && (
+            <div className="p-3">
+              <div className="grid md:grid-cols-3 gap-3">
+                <Donut
+                  title="By issuer"
+                  slices={bySlice.issuer}
+                  selected={filter?.by === "issuer" ? filter.label : null}
+                  onSlice={pickSlice("issuer")}
+                />
+                <Donut
+                  title="By rating"
+                  slices={bySlice.rating}
+                  selected={filter?.by === "rating" ? filter.label : null}
+                  onSlice={pickSlice("rating")}
+                />
+                <Donut
+                  title="By sector"
+                  slices={bySlice.sector}
+                  selected={filter?.by === "sector" ? filter.label : null}
+                  onSlice={pickSlice("sector")}
+                />
               </div>
-            )}
-            <HoldingsTable positions={shown} onSelect={onSelect} />
-          </>
-        )}
-
-        {tab === "cashflow" &&
-          (cashflows.length > 0 ? (
-            <>
-              <CashflowChart cashflows={cashflows} />
-              <CashflowGrid cashflows={cashflows} />
-            </>
-          ) : (
-            <div className="py-12 text-center text-sm text-zinc-600">No future cashflows</div>
-          ))}
-
-        {tab === "breakdown" && (
-          <>
-            <div className="grid md:grid-cols-3 gap-3">
-              <Donut
-                title="By issuer"
-                slices={bySlice.issuer}
-                selected={filter?.by === "issuer" ? filter.label : null}
-                onSlice={pickSlice("issuer")}
-              />
-              <Donut
-                title="By rating"
-                slices={bySlice.rating}
-                selected={filter?.by === "rating" ? filter.label : null}
-                onSlice={pickSlice("rating")}
-              />
-              <Donut
-                title="By sector"
-                slices={bySlice.sector}
-                selected={filter?.by === "sector" ? filter.label : null}
-                onSlice={pickSlice("sector")}
-              />
+              <p className="mt-1.5 text-[10px] text-zinc-600">
+                Weighted by current value. Click a slice to filter the holdings table.
+              </p>
             </div>
-            <p className="mt-1.5 text-[10px] text-zinc-600">
-              Weighted by current value. Click a slice to filter the holdings table.
-            </p>
-          </>
-        )}
+          )}
 
-        {tab === "news" &&
-          (news.length > 0 ? (
-            <NewsList news={news} onSelect={onSelect} />
-          ) : (
-            <div className="py-12 text-center text-sm text-zinc-600">
-              No rating actions on your issuers
-            </div>
-          ))}
+          {tab === "news" &&
+            (news.length > 0 ? (
+              <NewsList news={news} onSelect={onSelect} />
+            ) : (
+              <div className="py-12 text-center text-sm text-zinc-600">
+                No rating actions on your issuers
+              </div>
+            ))}
+        </div>
       </section>
     </div>
   );
@@ -303,7 +301,7 @@ function HoldingsTable({
   }, [positions, sort]);
 
   return (
-    <div className="rounded-lg border border-zinc-800 overflow-x-auto">
+    <div className="overflow-x-auto">
       <table className="w-full text-xs">
         <thead>
           <tr className="text-left text-zinc-500 border-b border-zinc-800">
@@ -572,7 +570,7 @@ function CashflowChart({ cashflows }: { cashflows: PortfolioMonth[] }) {
   }, [shown]);
 
   return (
-    <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-3 mb-3">
+    <div className="border-b border-zinc-800 bg-zinc-900/30 p-3">
       <div className="flex items-center gap-3 mb-2">
         <div className="flex gap-1">
           {CF_RANGES.map(([r]) => (
@@ -664,7 +662,7 @@ function CashflowGrid({ cashflows }: { cashflows: PortfolioMonth[] }) {
   const rows = monthGrid(cashflows);
   const [hover, setHover] = useState<HoverCell | null>(null);
   return (
-    <div className="rounded-lg border border-zinc-800 overflow-x-auto">
+    <div className="overflow-x-auto">
       <table className="w-full text-xs">
         <thead>
           <tr className="text-left text-zinc-500 border-b border-zinc-800">
@@ -724,7 +722,7 @@ function CashflowGrid({ cashflows }: { cashflows: PortfolioMonth[] }) {
 
 function NewsList({ news, onSelect }: { news: PortfolioNews[]; onSelect: (isin: string) => void }) {
   return (
-    <div className="rounded-lg border border-zinc-800 divide-y divide-zinc-800/60">
+    <div className="divide-y divide-zinc-800/60">
       {news.map((n) => (
         <div
           key={`${n.isin}-${n.agency}-${n.rating_date}-${n.rating}`}
