@@ -146,8 +146,9 @@ def monthly_cashflows(lots_by_isin: dict[str, list[dict[str, Any]]],
                       labels_by_isin: dict[str, str] | None = None,
                       ) -> list[dict[str, Any]]:
     """Past AND future flows x receiving units, bucketed per calendar
-    month, with a per-bond breakdown inside each bucket (largest payer
-    first). ``interest``/``principal`` are month totals; the past
+    month, with a per-bond breakdown inside each bucket (earliest
+    payment first, larger amount breaking ties). ``interest``/``principal``
+    are month totals; the past
     portion is broken out in ``received_interest``/``received_principal``
     (split per flow, so a month straddling today is exact).
 
@@ -194,8 +195,10 @@ def monthly_cashflows(lots_by_isin: dict[str, list[dict[str, Any]]],
         b["principal"] = round(b["principal"], 2)
         b["received_interest"] = round(b["received_interest"], 2)
         b["received_principal"] = round(b["received_principal"], 2)
-        bonds = sorted(b.pop("_bonds").values(),
-                       key=lambda x: -(x["interest"] + x["principal"]))
+        bonds = sorted(
+            b.pop("_bonds").values(),
+            key=lambda x: (min(x["_dates"]),
+                           -(x["interest"] + x["principal"])))
         for bond in bonds:
             bond["interest"] = round(bond["interest"], 2)
             bond["principal"] = round(bond["principal"], 2)

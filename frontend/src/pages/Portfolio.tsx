@@ -749,7 +749,9 @@ function CashflowGrid({ cashflows }: { cashflows: PortfolioMonth[] }) {
                       ? "text-zinc-600"
                       : m && m.principal > 0
                         ? "text-emerald-400"
-                        : "text-zinc-400"
+                        : m
+                          ? "text-sky-400"
+                          : "text-zinc-400"
                   }`}
                   onMouseEnter={(e) =>
                     m &&

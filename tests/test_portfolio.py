@@ -135,8 +135,9 @@ def test_monthly_cashflows_buckets_and_scales():
     assert m2["principal"] == pytest.approx(2000)
     assert m2["estimated"] is False
 
-    # Per-bond breakdown: scaled by units, labelled, largest payer first,
-    # and summing exactly to the month's aggregates.
+    # Per-bond breakdown: scaled by units, labelled, earliest payment
+    # first, and summing exactly to the month's aggregates.
+    assert [b["isin"] for b in m1["bonds"]] == ["B", "A"]  # Mar 5 < Mar 10
     b1 = {b["isin"]: b for b in m1["bonds"]}
     assert b1["A"]["interest"] == pytest.approx(100)
     assert b1["A"]["label"] == "875AAA27" and b1["A"]["estimated"] is True
@@ -155,6 +156,17 @@ def test_monthly_cashflows_buckets_and_scales():
     assert b1["A"]["dates"] == ["2026-03-10", "2026-03-20"]
     assert b1["B"]["dates"] == ["2026-03-05"]
     assert m2["bonds"][0]["dates"] == ["2027-03-10"]
+
+
+def test_monthly_cashflows_bond_order_ties_break_by_amount():
+    # Same payment day: the larger payer lists first.
+    flows = {
+        "small": [_flow(date(2026, 3, 10), 10.0)],
+        "big": [_flow(date(2026, 3, 10), 90.0)],
+    }
+    [m] = pf.monthly_cashflows({"small": _lots(1), "big": _lots(1)},
+                               flows, TODAY)
+    assert [b["isin"] for b in m["bonds"]] == ["big", "small"]
 
 
 def test_monthly_cashflows_holder_keeps_passed_record_date():
