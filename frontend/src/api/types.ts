@@ -5,21 +5,11 @@ export type {
   BondDetail,
   BondsResponse,
   Cashflow,
+  DepthLevel,
+  DepthSide,
   Filters,
   IssuerBond,
   ListsResponse,
-  RatingEvent,
-  Status,
-  Trade,
-  TradesResponse,
-  User,
-} from "./generated";
-
-// Hand-added pending codegen (backend models exist; run `npm run codegen`
-// against a live API to fold these into ./generated).
-export type {
-  DepthLevel,
-  DepthSide,
   Notification,
   NotificationsResponse,
   OrderBook,
@@ -30,9 +20,14 @@ export type {
   PortfolioPosition,
   PortfolioResponse,
   PortfolioSummary,
+  RatingEvent,
+  Status,
+  Trade,
+  TradesResponse,
+  User,
   Watchlist,
   YtmAtPrice,
-} from "./generated/types.gen";
+} from "./generated";
 
 // Lot create/update request bodies (hand-maintained).
 export interface LotInput {

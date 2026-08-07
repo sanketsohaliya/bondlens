@@ -548,6 +548,50 @@ export type Cashflow = {
 };
 
 /**
+ * DepthLevel
+ */
+export type DepthLevel = {
+    /**
+     * Price
+     */
+    price: number | null;
+    /**
+     * Qty
+     */
+    qty: number | null;
+    /**
+     * Orders
+     */
+    orders?: number | null;
+};
+
+/**
+ * DepthSide
+ */
+export type DepthSide = {
+    /**
+     * Bids
+     */
+    bids: Array<DepthLevel>;
+    /**
+     * Asks
+     */
+    asks: Array<DepthLevel>;
+    /**
+     * Total Bid Qty
+     */
+    total_bid_qty: number | null;
+    /**
+     * Total Ask Qty
+     */
+    total_ask_qty: number | null;
+    /**
+     * As Of
+     */
+    as_of: string | null;
+};
+
+/**
  * Document
  */
 export type Document = {
@@ -650,174 +694,6 @@ export type IssuerBond = {
 };
 
 /**
- * ListToggle
- */
-export type ListToggle = {
-    /**
-     * List
-     */
-    list: 'watchlist' | 'holdings';
-    /**
-     * Isin
-     */
-    isin: string;
-    /**
-     * Present
-     */
-    present: boolean;
-};
-
-/**
- * PortfolioLot
- */
-export type PortfolioLot = {
-    id: number;
-    isin: string;
-    units: number;
-    price: number | null;
-    purchase_date: string | null;
-    platform: string | null;
-};
-
-/**
- * PortfolioPosition
- */
-export type PortfolioPosition = {
-    isin: string;
-    issuer_name: string | null;
-    credit_rating: string | null;
-    rating_rank: number | null;
-    rating_grade: string | null;
-    sector: string | null;
-    maturity_date: string | null;
-    years_to_maturity: number | null;
-    face_value: number | null;
-    ltp: number | null;
-    ytm: number | null;
-    units: number;
-    invested: number | null;
-    value: number | null;
-    gain: number | null;
-    gain_pct: number | null;
-    lots: Array<PortfolioLot>;
-    next_payment: Cashflow | null;
-};
-
-/**
- * PortfolioSummary
- */
-export type PortfolioSummary = {
-    invested: number;
-    value: number;
-    gain: number | null;
-    weighted_ytm: number | null;
-    weighted_years: number | null;
-    issuers: number;
-    bonds: number;
-};
-
-/**
- * PortfolioMonthBond
- */
-export type PortfolioMonthBond = {
-    isin: string;
-    /**
-     * Label
-     *
-     * Display symbol (nse/bse) or the ISIN itself
-     */
-    label: string;
-    /**
-     * Dates
-     *
-     * ISO due dates of this bond's flows in the month
-     */
-    dates: Array<string>;
-    interest: number;
-    principal: number;
-    estimated: boolean;
-};
-
-/**
- * PortfolioMonth
- */
-export type PortfolioMonth = {
-    month: string;
-    interest: number;
-    principal: number;
-    estimated: boolean;
-    /**
-     * Bonds
-     *
-     * Largest payer first
-     */
-    bonds: Array<PortfolioMonthBond>;
-};
-
-/**
- * PortfolioNews
- */
-export type PortfolioNews = {
-    isin: string;
-    issuer_name: string | null;
-    agency: string | null;
-    rating: string | null;
-    action: string | null;
-    rating_date: string | null;
-    press_release: string | null;
-};
-
-/**
- * PortfolioResponse
- */
-export type PortfolioResponse = {
-    summary: PortfolioSummary;
-    positions: Array<PortfolioPosition>;
-    cashflows: Array<PortfolioMonth>;
-    news: Array<PortfolioNews>;
-};
-
-/**
- * Notification
- */
-export type Notification = {
-    id: number;
-    kind: string;
-    severity: string;
-    isin: string;
-    title: string;
-    body: string;
-    created_at: string;
-    read_at: string | null;
-};
-
-/**
- * NotificationsResponse
- */
-export type NotificationsResponse = {
-    items: Array<Notification>;
-    unread: number;
-};
-
-/**
- * Watchlist
- */
-export type Watchlist = {
-    /**
-     * Id
-     */
-    id: number;
-    /**
-     * Name
-     */
-    name: string;
-    /**
-     * Isins
-     */
-    isins: Array<string>;
-};
-
-/**
  * ListsResponse
  */
 export type ListsResponse = {
@@ -832,6 +708,106 @@ export type ListsResponse = {
 };
 
 /**
+ * LotCreate
+ */
+export type LotCreate = {
+    /**
+     * Isin
+     */
+    isin: string;
+    /**
+     * Units
+     */
+    units: number;
+    /**
+     * Price
+     */
+    price?: number | null;
+    /**
+     * Purchase Date
+     */
+    purchase_date?: string | null;
+    /**
+     * Platform
+     */
+    platform?: string | null;
+};
+
+/**
+ * LotUpdate
+ */
+export type LotUpdate = {
+    /**
+     * Units
+     */
+    units: number;
+    /**
+     * Price
+     */
+    price?: number | null;
+    /**
+     * Purchase Date
+     */
+    purchase_date?: string | null;
+    /**
+     * Platform
+     */
+    platform?: string | null;
+};
+
+/**
+ * Notification
+ */
+export type Notification = {
+    /**
+     * Id
+     */
+    id: number;
+    /**
+     * Kind
+     */
+    kind: string;
+    /**
+     * Severity
+     */
+    severity: string;
+    /**
+     * Isin
+     */
+    isin: string;
+    /**
+     * Title
+     */
+    title: string;
+    /**
+     * Body
+     */
+    body: string;
+    /**
+     * Created At
+     */
+    created_at: string;
+    /**
+     * Read At
+     */
+    read_at: string | null;
+};
+
+/**
+ * NotificationsResponse
+ */
+export type NotificationsResponse = {
+    /**
+     * Items
+     */
+    items: Array<Notification>;
+    /**
+     * Unread
+     */
+    unread: number;
+};
+
+/**
  * Ok
  */
 export type Ok = {
@@ -839,6 +815,274 @@ export type Ok = {
      * Ok
      */
     ok: boolean;
+};
+
+/**
+ * OrderBook
+ */
+export type OrderBook = {
+    /**
+     * Isin
+     */
+    isin: string;
+    /**
+     * Fetched At
+     */
+    fetched_at: string;
+    nse: DepthSide | null;
+    bse: DepthSide | null;
+    /**
+     * Ytm At Ask
+     */
+    ytm_at_ask: Array<YtmAtPrice>;
+};
+
+/**
+ * PortfolioLot
+ */
+export type PortfolioLot = {
+    /**
+     * Id
+     */
+    id: number;
+    /**
+     * Isin
+     */
+    isin: string;
+    /**
+     * Units
+     */
+    units: number;
+    /**
+     * Price
+     */
+    price: number | null;
+    /**
+     * Purchase Date
+     */
+    purchase_date: string | null;
+    /**
+     * Platform
+     */
+    platform: string | null;
+};
+
+/**
+ * PortfolioMonth
+ */
+export type PortfolioMonth = {
+    /**
+     * Month
+     */
+    month: string;
+    /**
+     * Interest
+     */
+    interest: number;
+    /**
+     * Principal
+     */
+    principal: number;
+    /**
+     * Estimated
+     */
+    estimated: boolean;
+    /**
+     * Bonds
+     */
+    bonds: Array<PortfolioMonthBond>;
+};
+
+/**
+ * PortfolioMonthBond
+ */
+export type PortfolioMonthBond = {
+    /**
+     * Isin
+     */
+    isin: string;
+    /**
+     * Label
+     */
+    label: string;
+    /**
+     * Dates
+     */
+    dates?: Array<string>;
+    /**
+     * Interest
+     */
+    interest: number;
+    /**
+     * Principal
+     */
+    principal: number;
+    /**
+     * Estimated
+     */
+    estimated: boolean;
+};
+
+/**
+ * PortfolioNews
+ */
+export type PortfolioNews = {
+    /**
+     * Isin
+     */
+    isin: string;
+    /**
+     * Issuer Name
+     */
+    issuer_name: string | null;
+    /**
+     * Agency
+     */
+    agency: string | null;
+    /**
+     * Rating
+     */
+    rating: string | null;
+    /**
+     * Action
+     */
+    action: string | null;
+    /**
+     * Rating Date
+     */
+    rating_date: string | null;
+    /**
+     * Press Release
+     */
+    press_release: string | null;
+};
+
+/**
+ * PortfolioPosition
+ */
+export type PortfolioPosition = {
+    /**
+     * Isin
+     */
+    isin: string;
+    /**
+     * Issuer Name
+     */
+    issuer_name: string | null;
+    /**
+     * Credit Rating
+     */
+    credit_rating: string | null;
+    /**
+     * Rating Rank
+     */
+    rating_rank: number | null;
+    /**
+     * Rating Grade
+     */
+    rating_grade: string | null;
+    /**
+     * Sector
+     */
+    sector: string | null;
+    /**
+     * Maturity Date
+     */
+    maturity_date: string | null;
+    /**
+     * Years To Maturity
+     */
+    years_to_maturity: number | null;
+    /**
+     * Face Value
+     */
+    face_value: number | null;
+    /**
+     * Ltp
+     */
+    ltp: number | null;
+    /**
+     * Ytm
+     */
+    ytm: number | null;
+    /**
+     * Units
+     */
+    units: number;
+    /**
+     * Invested
+     */
+    invested: number | null;
+    /**
+     * Value
+     */
+    value: number | null;
+    /**
+     * Gain
+     */
+    gain: number | null;
+    /**
+     * Gain Pct
+     */
+    gain_pct: number | null;
+    /**
+     * Lots
+     */
+    lots: Array<PortfolioLot>;
+    next_payment: Cashflow | null;
+};
+
+/**
+ * PortfolioResponse
+ */
+export type PortfolioResponse = {
+    summary: PortfolioSummary;
+    /**
+     * Positions
+     */
+    positions: Array<PortfolioPosition>;
+    /**
+     * Cashflows
+     */
+    cashflows: Array<PortfolioMonth>;
+    /**
+     * News
+     */
+    news: Array<PortfolioNews>;
+};
+
+/**
+ * PortfolioSummary
+ */
+export type PortfolioSummary = {
+    /**
+     * Invested
+     */
+    invested: number;
+    /**
+     * Value
+     */
+    value: number;
+    /**
+     * Gain
+     */
+    gain: number | null;
+    /**
+     * Weighted Ytm
+     */
+    weighted_ytm: number | null;
+    /**
+     * Weighted Years
+     */
+    weighted_years: number | null;
+    /**
+     * Issuers
+     */
+    issuers: number;
+    /**
+     * Bonds
+     */
+    bonds: number;
 };
 
 /**
@@ -1067,6 +1311,66 @@ export type ValidationError = {
     };
 };
 
+/**
+ * Watchlist
+ */
+export type Watchlist = {
+    /**
+     * Id
+     */
+    id: number;
+    /**
+     * Name
+     */
+    name: string;
+    /**
+     * Isins
+     */
+    isins: Array<string>;
+};
+
+/**
+ * WatchlistName
+ */
+export type WatchlistName = {
+    /**
+     * Name
+     */
+    name: string;
+};
+
+/**
+ * WatchlistToggle
+ */
+export type WatchlistToggle = {
+    /**
+     * Watchlist Id
+     */
+    watchlist_id: number;
+    /**
+     * Isin
+     */
+    isin: string;
+    /**
+     * Present
+     */
+    present: boolean;
+};
+
+/**
+ * YtmAtPrice
+ */
+export type YtmAtPrice = {
+    /**
+     * Price
+     */
+    price: number;
+    /**
+     * Ytm
+     */
+    ytm: number | null;
+};
+
 export type AuthGoogleApiAuthGooglePostData = {
     body: BodyAuthGoogleApiAuthGooglePost;
     path?: never;
@@ -1174,73 +1478,323 @@ export type ListsApiListsGetResponses = {
 
 export type ListsApiListsGetResponse = ListsApiListsGetResponses[keyof ListsApiListsGetResponses];
 
-export type ListRemoveApiListsListNameIsinDeleteData = {
-    body?: never;
-    path: {
-        /**
-         * List Name
-         */
-        list_name: 'watchlist' | 'holdings';
-        /**
-         * Isin
-         */
-        isin: string;
-    };
+export type WatchlistCreateApiWatchlistsPostData = {
+    body: WatchlistName;
+    path?: never;
     query?: never;
-    url: '/api/lists/{list_name}/{isin}';
+    url: '/api/watchlists';
 };
 
-export type ListRemoveApiListsListNameIsinDeleteErrors = {
+export type WatchlistCreateApiWatchlistsPostErrors = {
     /**
      * Validation Error
      */
     422: HttpValidationError;
 };
 
-export type ListRemoveApiListsListNameIsinDeleteError = ListRemoveApiListsListNameIsinDeleteErrors[keyof ListRemoveApiListsListNameIsinDeleteErrors];
+export type WatchlistCreateApiWatchlistsPostError = WatchlistCreateApiWatchlistsPostErrors[keyof WatchlistCreateApiWatchlistsPostErrors];
 
-export type ListRemoveApiListsListNameIsinDeleteResponses = {
+export type WatchlistCreateApiWatchlistsPostResponses = {
     /**
      * Successful Response
      */
-    200: ListToggle;
+    200: Watchlist;
 };
 
-export type ListRemoveApiListsListNameIsinDeleteResponse = ListRemoveApiListsListNameIsinDeleteResponses[keyof ListRemoveApiListsListNameIsinDeleteResponses];
+export type WatchlistCreateApiWatchlistsPostResponse = WatchlistCreateApiWatchlistsPostResponses[keyof WatchlistCreateApiWatchlistsPostResponses];
 
-export type ListAddApiListsListNameIsinPutData = {
+export type WatchlistDeleteApiWatchlistsWatchlistIdDeleteData = {
     body?: never;
     path: {
         /**
-         * List Name
+         * Watchlist Id
          */
-        list_name: 'watchlist' | 'holdings';
-        /**
-         * Isin
-         */
-        isin: string;
+        watchlist_id: number;
     };
     query?: never;
-    url: '/api/lists/{list_name}/{isin}';
+    url: '/api/watchlists/{watchlist_id}';
 };
 
-export type ListAddApiListsListNameIsinPutErrors = {
+export type WatchlistDeleteApiWatchlistsWatchlistIdDeleteErrors = {
     /**
      * Validation Error
      */
     422: HttpValidationError;
 };
 
-export type ListAddApiListsListNameIsinPutError = ListAddApiListsListNameIsinPutErrors[keyof ListAddApiListsListNameIsinPutErrors];
+export type WatchlistDeleteApiWatchlistsWatchlistIdDeleteError = WatchlistDeleteApiWatchlistsWatchlistIdDeleteErrors[keyof WatchlistDeleteApiWatchlistsWatchlistIdDeleteErrors];
 
-export type ListAddApiListsListNameIsinPutResponses = {
+export type WatchlistDeleteApiWatchlistsWatchlistIdDeleteResponses = {
     /**
      * Successful Response
      */
-    200: ListToggle;
+    200: Ok;
 };
 
-export type ListAddApiListsListNameIsinPutResponse = ListAddApiListsListNameIsinPutResponses[keyof ListAddApiListsListNameIsinPutResponses];
+export type WatchlistDeleteApiWatchlistsWatchlistIdDeleteResponse = WatchlistDeleteApiWatchlistsWatchlistIdDeleteResponses[keyof WatchlistDeleteApiWatchlistsWatchlistIdDeleteResponses];
+
+export type WatchlistRenameApiWatchlistsWatchlistIdPatchData = {
+    body: WatchlistName;
+    path: {
+        /**
+         * Watchlist Id
+         */
+        watchlist_id: number;
+    };
+    query?: never;
+    url: '/api/watchlists/{watchlist_id}';
+};
+
+export type WatchlistRenameApiWatchlistsWatchlistIdPatchErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type WatchlistRenameApiWatchlistsWatchlistIdPatchError = WatchlistRenameApiWatchlistsWatchlistIdPatchErrors[keyof WatchlistRenameApiWatchlistsWatchlistIdPatchErrors];
+
+export type WatchlistRenameApiWatchlistsWatchlistIdPatchResponses = {
+    /**
+     * Successful Response
+     */
+    200: Ok;
+};
+
+export type WatchlistRenameApiWatchlistsWatchlistIdPatchResponse = WatchlistRenameApiWatchlistsWatchlistIdPatchResponses[keyof WatchlistRenameApiWatchlistsWatchlistIdPatchResponses];
+
+export type WatchlistRemoveIsinApiWatchlistsWatchlistIdIsinDeleteData = {
+    body?: never;
+    path: {
+        /**
+         * Watchlist Id
+         */
+        watchlist_id: number;
+        /**
+         * Isin
+         */
+        isin: string;
+    };
+    query?: never;
+    url: '/api/watchlists/{watchlist_id}/{isin}';
+};
+
+export type WatchlistRemoveIsinApiWatchlistsWatchlistIdIsinDeleteErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type WatchlistRemoveIsinApiWatchlistsWatchlistIdIsinDeleteError = WatchlistRemoveIsinApiWatchlistsWatchlistIdIsinDeleteErrors[keyof WatchlistRemoveIsinApiWatchlistsWatchlistIdIsinDeleteErrors];
+
+export type WatchlistRemoveIsinApiWatchlistsWatchlistIdIsinDeleteResponses = {
+    /**
+     * Successful Response
+     */
+    200: WatchlistToggle;
+};
+
+export type WatchlistRemoveIsinApiWatchlistsWatchlistIdIsinDeleteResponse = WatchlistRemoveIsinApiWatchlistsWatchlistIdIsinDeleteResponses[keyof WatchlistRemoveIsinApiWatchlistsWatchlistIdIsinDeleteResponses];
+
+export type WatchlistAddIsinApiWatchlistsWatchlistIdIsinPutData = {
+    body?: never;
+    path: {
+        /**
+         * Watchlist Id
+         */
+        watchlist_id: number;
+        /**
+         * Isin
+         */
+        isin: string;
+    };
+    query?: never;
+    url: '/api/watchlists/{watchlist_id}/{isin}';
+};
+
+export type WatchlistAddIsinApiWatchlistsWatchlistIdIsinPutErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type WatchlistAddIsinApiWatchlistsWatchlistIdIsinPutError = WatchlistAddIsinApiWatchlistsWatchlistIdIsinPutErrors[keyof WatchlistAddIsinApiWatchlistsWatchlistIdIsinPutErrors];
+
+export type WatchlistAddIsinApiWatchlistsWatchlistIdIsinPutResponses = {
+    /**
+     * Successful Response
+     */
+    200: WatchlistToggle;
+};
+
+export type WatchlistAddIsinApiWatchlistsWatchlistIdIsinPutResponse = WatchlistAddIsinApiWatchlistsWatchlistIdIsinPutResponses[keyof WatchlistAddIsinApiWatchlistsWatchlistIdIsinPutResponses];
+
+export type LotAddApiPortfolioLotsPostData = {
+    body: LotCreate;
+    path?: never;
+    query?: never;
+    url: '/api/portfolio/lots';
+};
+
+export type LotAddApiPortfolioLotsPostErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type LotAddApiPortfolioLotsPostError = LotAddApiPortfolioLotsPostErrors[keyof LotAddApiPortfolioLotsPostErrors];
+
+export type LotAddApiPortfolioLotsPostResponses = {
+    /**
+     * Successful Response
+     */
+    200: PortfolioLot;
+};
+
+export type LotAddApiPortfolioLotsPostResponse = LotAddApiPortfolioLotsPostResponses[keyof LotAddApiPortfolioLotsPostResponses];
+
+export type LotDeleteApiPortfolioLotsLotIdDeleteData = {
+    body?: never;
+    path: {
+        /**
+         * Lot Id
+         */
+        lot_id: number;
+    };
+    query?: never;
+    url: '/api/portfolio/lots/{lot_id}';
+};
+
+export type LotDeleteApiPortfolioLotsLotIdDeleteErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type LotDeleteApiPortfolioLotsLotIdDeleteError = LotDeleteApiPortfolioLotsLotIdDeleteErrors[keyof LotDeleteApiPortfolioLotsLotIdDeleteErrors];
+
+export type LotDeleteApiPortfolioLotsLotIdDeleteResponses = {
+    /**
+     * Successful Response
+     */
+    200: Ok;
+};
+
+export type LotDeleteApiPortfolioLotsLotIdDeleteResponse = LotDeleteApiPortfolioLotsLotIdDeleteResponses[keyof LotDeleteApiPortfolioLotsLotIdDeleteResponses];
+
+export type LotUpdateApiPortfolioLotsLotIdPatchData = {
+    body: LotUpdate;
+    path: {
+        /**
+         * Lot Id
+         */
+        lot_id: number;
+    };
+    query?: never;
+    url: '/api/portfolio/lots/{lot_id}';
+};
+
+export type LotUpdateApiPortfolioLotsLotIdPatchErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type LotUpdateApiPortfolioLotsLotIdPatchError = LotUpdateApiPortfolioLotsLotIdPatchErrors[keyof LotUpdateApiPortfolioLotsLotIdPatchErrors];
+
+export type LotUpdateApiPortfolioLotsLotIdPatchResponses = {
+    /**
+     * Successful Response
+     */
+    200: PortfolioLot;
+};
+
+export type LotUpdateApiPortfolioLotsLotIdPatchResponse = LotUpdateApiPortfolioLotsLotIdPatchResponses[keyof LotUpdateApiPortfolioLotsLotIdPatchResponses];
+
+export type PortfolioApiPortfolioGetData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/portfolio';
+};
+
+export type PortfolioApiPortfolioGetErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type PortfolioApiPortfolioGetError = PortfolioApiPortfolioGetErrors[keyof PortfolioApiPortfolioGetErrors];
+
+export type PortfolioApiPortfolioGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: PortfolioResponse;
+};
+
+export type PortfolioApiPortfolioGetResponse = PortfolioApiPortfolioGetResponses[keyof PortfolioApiPortfolioGetResponses];
+
+export type NotificationsApiNotificationsGetData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * Limit
+         */
+        limit?: number;
+    };
+    url: '/api/notifications';
+};
+
+export type NotificationsApiNotificationsGetErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type NotificationsApiNotificationsGetError = NotificationsApiNotificationsGetErrors[keyof NotificationsApiNotificationsGetErrors];
+
+export type NotificationsApiNotificationsGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: NotificationsResponse;
+};
+
+export type NotificationsApiNotificationsGetResponse = NotificationsApiNotificationsGetResponses[keyof NotificationsApiNotificationsGetResponses];
+
+export type NotificationsReadApiNotificationsReadPostData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/notifications/read';
+};
+
+export type NotificationsReadApiNotificationsReadPostErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type NotificationsReadApiNotificationsReadPostError = NotificationsReadApiNotificationsReadPostErrors[keyof NotificationsReadApiNotificationsReadPostErrors];
+
+export type NotificationsReadApiNotificationsReadPostResponses = {
+    /**
+     * Successful Response
+     */
+    200: Ok;
+};
+
+export type NotificationsReadApiNotificationsReadPostResponse = NotificationsReadApiNotificationsReadPostResponses[keyof NotificationsReadApiNotificationsReadPostResponses];
 
 export type BondsApiBondsGetData = {
     body?: never;
@@ -1292,6 +1846,12 @@ export type BondsApiBondsGetData = {
          * monthly|quarterly|semiannual|annual
          */
         frequency?: string | null;
+        /**
+         * Payout
+         *
+         * maturity = zero-coupon/cumulative, periodic = coupon stream
+         */
+        payout?: string | null;
         /**
          * Min Years
          */
@@ -1371,7 +1931,7 @@ export type BondsApiBondsGetData = {
         /**
          * Isins
          *
-         * Comma-separated ISIN list (e.g. browser-side watchlist/holdings); bypasses default-exclusion
+         * Comma-separated ISIN list (e.g. watchlist/portfolio contents)
          */
         isins?: string | null;
         /**
@@ -1389,7 +1949,7 @@ export type BondsApiBondsGetData = {
         /**
          * Dir
          */
-        dir?: 'asc' | 'desc';
+        dir?: string;
         /**
          * Limit
          */
@@ -1527,6 +2087,36 @@ export type BondTradesApiBondsIsinTradesGetResponses = {
 
 export type BondTradesApiBondsIsinTradesGetResponse = BondTradesApiBondsIsinTradesGetResponses[keyof BondTradesApiBondsIsinTradesGetResponses];
 
+export type BondDepthApiBondsIsinDepthGetData = {
+    body?: never;
+    path: {
+        /**
+         * Isin
+         */
+        isin: string;
+    };
+    query?: never;
+    url: '/api/bonds/{isin}/depth';
+};
+
+export type BondDepthApiBondsIsinDepthGetErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type BondDepthApiBondsIsinDepthGetError = BondDepthApiBondsIsinDepthGetErrors[keyof BondDepthApiBondsIsinDepthGetErrors];
+
+export type BondDepthApiBondsIsinDepthGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: OrderBook;
+};
+
+export type BondDepthApiBondsIsinDepthGetResponse = BondDepthApiBondsIsinDepthGetResponses[keyof BondDepthApiBondsIsinDepthGetResponses];
+
 export type StatusApiStatusGetData = {
     body?: never;
     path?: never;
@@ -1551,81 +2141,3 @@ export type StatusApiStatusGetResponses = {
 };
 
 export type StatusApiStatusGetResponse = StatusApiStatusGetResponses[keyof StatusApiStatusGetResponses];
-
-/**
- * DepthLevel
- */
-export type DepthLevel = {
-    /**
-     * Price
-     */
-    price: number | null;
-    /**
-     * Qty
-     */
-    qty: number | null;
-    /**
-     * Orders
-     */
-    orders?: number | null;
-};
-
-/**
- * DepthSide
- */
-export type DepthSide = {
-    /**
-     * Bids
-     */
-    bids: Array<DepthLevel>;
-    /**
-     * Asks
-     */
-    asks: Array<DepthLevel>;
-    /**
-     * Total Bid Qty
-     */
-    total_bid_qty: number | null;
-    /**
-     * Total Ask Qty
-     */
-    total_ask_qty: number | null;
-    /**
-     * As Of
-     */
-    as_of: string | null;
-};
-
-/**
- * YtmAtPrice
- */
-export type YtmAtPrice = {
-    /**
-     * Price
-     */
-    price: number;
-    /**
-     * Ytm
-     */
-    ytm: number | null;
-};
-
-/**
- * OrderBook
- */
-export type OrderBook = {
-    /**
-     * Isin
-     */
-    isin: string;
-    /**
-     * Fetched At
-     */
-    fetched_at: string;
-    nse: DepthSide | null;
-    bse: DepthSide | null;
-    /**
-     * Ytm At Ask
-     */
-    ytm_at_ask: Array<YtmAtPrice>;
-};
