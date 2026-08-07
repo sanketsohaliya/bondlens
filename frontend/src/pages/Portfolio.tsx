@@ -99,41 +99,6 @@ export default function Portfolio({ onSelect }: { onSelect: (isin: string) => vo
       </div>
 
       <section>
-        <SectionTitle>Investment breakdown</SectionTitle>
-        <div className="grid md:grid-cols-3 gap-3">
-          <Donut
-            title="By issuer"
-            slices={bySlice.issuer}
-            selected={filter?.by === "issuer" ? filter.label : null}
-            onSlice={pickSlice("issuer")}
-          />
-          <Donut
-            title="By rating"
-            slices={bySlice.rating}
-            selected={filter?.by === "rating" ? filter.label : null}
-            onSlice={pickSlice("rating")}
-          />
-          <Donut
-            title="By sector"
-            slices={bySlice.sector}
-            selected={filter?.by === "sector" ? filter.label : null}
-            onSlice={pickSlice("sector")}
-          />
-        </div>
-        <p className="mt-1.5 text-[10px] text-zinc-600">
-          Weighted by current value. Click a slice to filter the holdings table.
-        </p>
-      </section>
-
-      {cashflows.length > 0 && (
-        <section>
-          <SectionTitle>Cashflow to maturity</SectionTitle>
-          <CashflowChart cashflows={cashflows} />
-          <CashflowGrid cashflows={cashflows} />
-        </section>
-      )}
-
-      <section>
         <SectionTitle
           right={
             <span className="flex items-center gap-2">
@@ -162,6 +127,41 @@ export default function Portfolio({ onSelect }: { onSelect: (isin: string) => vo
           </div>
         )}
         <HoldingsTable positions={shown} onSelect={onSelect} />
+      </section>
+
+      {cashflows.length > 0 && (
+        <section>
+          <SectionTitle>Cashflow to maturity</SectionTitle>
+          <CashflowChart cashflows={cashflows} />
+          <CashflowGrid cashflows={cashflows} />
+        </section>
+      )}
+
+      <section>
+        <SectionTitle>Investment breakdown</SectionTitle>
+        <div className="grid md:grid-cols-3 gap-3">
+          <Donut
+            title="By issuer"
+            slices={bySlice.issuer}
+            selected={filter?.by === "issuer" ? filter.label : null}
+            onSlice={pickSlice("issuer")}
+          />
+          <Donut
+            title="By rating"
+            slices={bySlice.rating}
+            selected={filter?.by === "rating" ? filter.label : null}
+            onSlice={pickSlice("rating")}
+          />
+          <Donut
+            title="By sector"
+            slices={bySlice.sector}
+            selected={filter?.by === "sector" ? filter.label : null}
+            onSlice={pickSlice("sector")}
+          />
+        </div>
+        <p className="mt-1.5 text-[10px] text-zinc-600">
+          Weighted by current value. Click a slice to filter the holdings table.
+        </p>
       </section>
 
       {news.length > 0 && (
