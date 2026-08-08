@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { PortfolioMonth, PortfolioPosition } from "../api/types";
-import { afterTds, bondIncome, isPastMonth, monthGrid, weights } from "./portfolio";
+import { bondIncome, isPastMonth, monthGrid, weights } from "./portfolio";
 
 const cf = (month: string, interest: number, principal = 0): PortfolioMonth => ({
   month,
@@ -25,23 +25,6 @@ describe("monthGrid", () => {
 
   it("empty in, empty out", () => {
     expect(monthGrid([])).toEqual([]);
-  });
-});
-
-describe("afterTds", () => {
-  it("deducts 10% from interest only", () => {
-    expect(afterTds(1000, 0)).toBe(900);
-    expect(afterTds(164, 0)).toBe(147.6);
-  });
-
-  it("principal passes through untaxed", () => {
-    expect(afterTds(0, 5000)).toBe(5000);
-    expect(afterTds(1000, 5000)).toBe(5900);
-  });
-
-  it("rounds to paise", () => {
-    expect(afterTds(33.33, 0)).toBe(30);
-    expect(afterTds(0.01, 0)).toBe(0.01);
   });
 });
 

@@ -20,14 +20,7 @@ import LotsPanel from "../components/LotsPanel";
 import RatingBadge from "../components/RatingBadge";
 import StatBox from "../components/StatBox";
 import { fuzzyMatch } from "../lib/fuzzy";
-import {
-  afterTds,
-  isPastMonth,
-  monthGrid,
-  usePortfolio,
-  type WeightBy,
-  weights,
-} from "../lib/portfolio";
+import { isPastMonth, monthGrid, usePortfolio, type WeightBy, weights } from "../lib/portfolio";
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
@@ -625,32 +618,29 @@ function CashflowChart({
       const bondLines = (cf.bonds ?? [])
         .map(
           (b) =>
-            `<tr><td style="font-family:ui-monospace,monospace;color:#71717a;padding-right:10px">${b.isin}</td>` +
-            `<td style="color:#e4e4e7;padding-right:2px">${b.estimated ? "≈" : ""}${b.label}</td>` +
+            `<tr><td style="color:#e4e4e7;padding-right:10px">${b.estimated ? "≈" : ""}${b.label}</td>` +
+            `<td style="font-family:ui-monospace,monospace;color:#71717a;padding-right:2px">${b.isin}</td>` +
             `<td style="color:#71717a;${num}">${dayMonth(b.dates ?? [])}</td>` +
             `<td style="color:#38bdf8;${num}">${b.interest > 0 ? money(b.interest) : "–"}</td>` +
             `<td style="color:#10b981;${num}">${b.principal > 0 ? money(b.principal) : "–"}</td>` +
-            `<td style="color:#a1a1aa;${num}">${money(b.interest + b.principal)}</td>` +
-            `<td style="color:#e4e4e7;${num}">${money(afterTds(b.interest, b.principal))}</td></tr>`,
+            `<td style="color:#a1a1aa;${num}">${money(b.interest + b.principal)}</td></tr>`,
         )
         .join("");
       el.innerHTML =
         `<div style="color:#71717a;margin-bottom:2px">${d.toLocaleDateString("en-IN", { month: "short", year: "numeric" })}${isPastMonth(cf.month) ? " · received" : ""}${cf.estimated ? " (≈ est.)" : ""}</div>` +
         `<table><thead><tr style="color:#71717a">` +
-        `<td style="padding-right:10px">ISIN</td>` +
-        `<td style="padding-right:2px">Bond</td>` +
+        `<td style="padding-right:10px">Bond</td>` +
+        `<td style="padding-right:2px">ISIN</td>` +
         `<td style="${num}">Date</td>` +
         `<td style="color:#38bdf8;${num}">Interest</td>` +
         `<td style="color:#10b981;${num}">Principal</td>` +
         `<td style="${num}">Total</td>` +
-        `<td style="${num}" title="Interest minus 10% TDS; principal is not taxed at source">After TDS</td>` +
         `</tr></thead><tbody>${bondLines}` +
         `<tr style="border-top:1px solid #3f3f46;font-weight:500">` +
         `<td style="color:#71717a;padding-right:2px">Total</td><td></td><td></td>` +
         `<td style="color:#38bdf8;${num}">${cf.interest > 0 ? money(cf.interest) : "–"}</td>` +
         `<td style="color:#10b981;${num}">${cf.principal > 0 ? money(cf.principal) : "–"}</td>` +
         `<td style="color:#e4e4e7;${num}">${money(cf.interest + cf.principal)}</td>` +
-        `<td style="color:#e4e4e7;${num}">${money(afterTds(cf.interest, cf.principal))}</td>` +
         `</tr></tbody></table>`;
       el.style.display = "block";
       // Flip using the rendered width so long bond names never overflow.
@@ -772,28 +762,16 @@ function MonthPopover({
         <table className="tabular-nums">
           <thead>
             <tr className="text-zinc-600">
-              <td className="pr-2.5">ISIN</td>
               <td className="pr-3">Bond</td>
+              <td className="pr-2.5">ISIN</td>
               <td className="pr-3 text-right">Date</td>
               <td className="pr-3 text-right">Interest</td>
-              <td className="pr-3 text-right">Principal</td>
-              <td
-                className="text-right"
-                title="Interest minus 10% TDS; principal is not taxed at source"
-              >
-                After TDS
-              </td>
+              <td className="text-right">Principal</td>
             </tr>
           </thead>
           <tbody>
             {m.bonds.map((b) => (
               <tr key={b.isin}>
-                <td className="pr-2.5 font-mono text-zinc-500">
-                  <span className="inline-flex items-center gap-1">
-                    {b.isin}
-                    {pinned && <CopyBtn text={b.isin} label="ISIN" />}
-                  </span>
-                </td>
                 <td className="pr-3 text-zinc-300">
                   {b.estimated && <span className="text-zinc-500">≈</span>}
                   {pinned && onSelectBond ? (
@@ -809,30 +787,30 @@ function MonthPopover({
                     b.label
                   )}
                 </td>
+                <td className="pr-2.5 font-mono text-zinc-500">
+                  <span className="inline-flex items-center gap-1">
+                    {b.isin}
+                    {pinned && <CopyBtn text={b.isin} label="ISIN" />}
+                  </span>
+                </td>
                 <td className="pr-3 text-right text-zinc-500">{dayMonth(b.dates ?? [])}</td>
                 <td className="pr-3 text-right text-sky-400">
                   {b.interest > 0 ? fmt.inr(b.interest) : "–"}
                 </td>
-                <td className="pr-3 text-right text-emerald-400">
+                <td className="text-right text-emerald-400">
                   {b.principal > 0 ? fmt.inr(b.principal) : "–"}
-                </td>
-                <td className="text-right text-zinc-200">
-                  {fmt.inr(afterTds(b.interest, b.principal))}
                 </td>
               </tr>
             ))}
             <tr className="border-t border-zinc-800 font-medium">
-              <td className="pr-2.5 text-zinc-500">Total</td>
+              <td className="pr-3 text-zinc-500">Total</td>
               <td />
               <td />
               <td className="pr-3 text-right text-sky-400">
                 {m.interest > 0 ? fmt.inr(m.interest) : "–"}
               </td>
-              <td className="pr-3 text-right text-emerald-400">
+              <td className="text-right text-emerald-400">
                 {m.principal > 0 ? fmt.inr(m.principal) : "–"}
-              </td>
-              <td className="text-right text-zinc-200">
-                {fmt.inr(afterTds(m.interest, m.principal))}
               </td>
             </tr>
           </tbody>

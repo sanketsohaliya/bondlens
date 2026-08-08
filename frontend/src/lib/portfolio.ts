@@ -66,15 +66,6 @@ export function monthGrid(cashflows: PortfolioMonth[]): YearRow[] {
     .sort((a, b) => a.year - b.year);
 }
 
-export const TDS_RATE = 0.1; // 10% u/s 193 on listed bond interest
-
-/** What actually lands in the bank: interest net of TDS + principal
- * (principal repayments are not taxed at source). Flat 10% — the
- * ₹5,000/yr per-issuer exemption is deliberately not modelled. */
-export function afterTds(interest: number, principal: number): number {
-  return Math.round((interest * (1 - TDS_RATE) + principal) * 100) / 100;
-}
-
 /** Received vs projected income from ONE bond across the month buckets.
  * Month-level approximation: the API splits received/projected per month,
  * not per bond, so the current month (which may straddle today) counts
