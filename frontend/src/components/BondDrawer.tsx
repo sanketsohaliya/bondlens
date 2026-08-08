@@ -198,7 +198,7 @@ export default function BondDrawer({
                     key={t}
                     onClick={() => setTab(t)}
                     className={
-                      "text-xs px-3 py-1.5 rounded-t-md border-b-2 capitalize transition-colors " +
+                      "text-sm font-medium px-3.5 py-2 rounded-t-md border-b-2 capitalize transition-colors " +
                       (tab === t
                         ? "border-emerald-500 text-emerald-400"
                         : "border-transparent text-zinc-500 hover:text-zinc-300")

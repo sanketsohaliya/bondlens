@@ -19,6 +19,7 @@ import { BookmarkIcon } from "../components/ExploreTable";
 import LotsPanel from "../components/LotsPanel";
 import RatingBadge from "../components/RatingBadge";
 import StatBox from "../components/StatBox";
+import Tip from "../components/Tooltip";
 import { fuzzyMatch } from "../lib/fuzzy";
 import { isPastMonth, monthGrid, usePortfolio, type WeightBy, weights } from "../lib/portfolio";
 
@@ -124,7 +125,7 @@ export default function Portfolio({ onSelect }: { onSelect: (isin: string) => vo
               key={t}
               onClick={() => setTab(t)}
               className={
-                "text-xs px-3 py-1.5 rounded-t-md border-b-2 transition-colors -mb-px " +
+                "text-sm font-medium px-3.5 py-2 rounded-t-md border-b-2 transition-colors -mb-px " +
                 (tab === t
                   ? "border-emerald-500 text-emerald-400"
                   : "border-transparent text-zinc-500 hover:text-zinc-300")
@@ -471,13 +472,14 @@ function IncomeBanner({
   const projected = income.projected_interest + income.projected_principal;
   if (received <= 0 && !hasUndatedLot) return null;
   return (
-    <div className="flex flex-wrap items-center gap-x-6 gap-y-2 border-b border-zinc-800 bg-zinc-900/30 px-4 py-2.5">
+    <div className="flex flex-wrap items-center gap-x-6 gap-y-2 border-b border-zinc-800 bg-zinc-900/30 px-4 py-2">
       {received > 0 && (
         <>
           <IncomeItem
             label="Received so far"
             value={fmt.inr(received)}
             valueClass="text-zinc-100"
+            tip={`Interest ${fmt.inr(income.received_interest)} · Principal ${fmt.inr(income.received_principal)}`}
           />
           {/* The split only earns its place when both parts are non-zero;
               "principal ₹0" is noise. Colours match the chart legend. */}
@@ -496,7 +498,12 @@ function IncomeBanner({
             </>
           )}
           <span className="self-stretch w-px bg-zinc-800" />
-          <IncomeItem label="Projected" value={fmt.inr(projected)} valueClass="text-emerald-400" />
+          <IncomeItem
+            label="Projected"
+            value={fmt.inr(projected)}
+            valueClass="text-emerald-400"
+            tip={`Interest ${fmt.inr(income.projected_interest)} · Principal ${fmt.inr(income.projected_principal)}`}
+          />
         </>
       )}
       {hasUndatedLot && (
@@ -513,16 +520,29 @@ function IncomeItem({
   label,
   value,
   valueClass,
+  tip,
 }: {
   label: string;
   value: string;
   valueClass: string;
+  /** Hover card with the interest/principal split; renders an ⓘ hint. */
+  tip?: string;
 }) {
-  return (
+  const item = (
     <div>
-      <div className="text-[10px] uppercase tracking-wider text-zinc-500">{label}</div>
-      <div className={`text-sm font-semibold tabular-nums ${valueClass}`}>{value}</div>
+      <div className="text-[10px] uppercase tracking-wider text-zinc-500">
+        {label}
+        {tip && <span className="ml-1 text-zinc-600">ⓘ</span>}
+      </div>
+      <div className={`text-xs font-semibold tabular-nums ${valueClass}`}>{value}</div>
     </div>
+  );
+  return tip ? (
+    <Tip text={tip} className="contents">
+      {item}
+    </Tip>
+  ) : (
+    item
   );
 }
 
