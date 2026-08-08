@@ -194,7 +194,7 @@ function Row({
       </td>
       <td className="px-3 py-2.5 w-80 max-w-80">
         <div className="flex items-center gap-1.5">
-          <span className="font-medium text-zinc-200 hover:text-emerald-400 transition-colors">
+          <span className="font-medium text-zinc-200 hover:text-emerald-400 hover:underline underline-offset-2 transition-colors">
             {b.nse_symbol ?? b.bse_scrip_id ?? b.isin}
           </span>
           <span className="flex items-center gap-1.5 opacity-0 group-hover/row:opacity-100 transition-opacity">
