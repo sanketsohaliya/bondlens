@@ -65,6 +65,38 @@ def parse_session(token: str) -> int | None:
         return None
 
 
+KITE_STATE_MINUTES = 10
+
+
+def mint_kite_state(user_id: int) -> str:
+    """Short-lived token identifying the user through the Kite login
+    redirect. Needed because the app serves multiple domains but Kite
+    allows one redirect URL: a user starting the login on domain B
+    lands on domain A's callback, where their (host-scoped) session
+    cookie is absent."""
+    now = datetime.now(UTC)
+    return jwt.encode(
+        {"sub": str(user_id), "purpose": "kite_state",
+         "iat": now, "exp": now + timedelta(minutes=KITE_STATE_MINUTES)},
+        SESSION_SECRET,
+        algorithm="HS256",
+    )
+
+
+def parse_kite_state(token: str) -> int | None:
+    """User id from a kite state token, or None if invalid/expired/
+    not a state token (a session JWT must not pass as state)."""
+    if not token or not SESSION_SECRET:
+        return None
+    try:
+        claims = jwt.decode(token, SESSION_SECRET, algorithms=["HS256"])
+        if claims.get("purpose") != "kite_state":
+            return None
+        return int(claims["sub"])
+    except (jwt.InvalidTokenError, KeyError, ValueError):
+        return None
+
+
 def require_user(bl_session: str | None = Cookie(default=None)) -> int:
     """FastAPI dependency: the signed-in user's id, else 401."""
     user_id = parse_session(bl_session or "")

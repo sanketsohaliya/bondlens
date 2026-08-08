@@ -295,6 +295,34 @@ def delete_lot(user_id: int, lot_id: int) -> None:
             raise WatchlistError(404, "Lot not found")
 
 
+# --- Kite Connect sessions (per-user daily access tokens) -------------------
+
+def get_kite_token(user_id: int) -> str | None:
+    with _conn() as conn:
+        row = conn.execute(
+            "SELECT access_token FROM kite_sessions WHERE user_id = %s",
+            (user_id,),
+        ).fetchone()
+    return row["access_token"] if row else None
+
+
+def set_kite_token(user_id: int, access_token: str) -> None:
+    with _conn() as conn:
+        conn.execute(
+            "INSERT INTO kite_sessions (user_id, access_token) "
+            "VALUES (%s, %s) "
+            "ON CONFLICT (user_id) DO UPDATE SET "
+            "access_token = EXCLUDED.access_token, created_at = now()",
+            (user_id, access_token),
+        )
+
+
+def delete_kite_token(user_id: int) -> None:
+    with _conn() as conn:
+        conn.execute("DELETE FROM kite_sessions WHERE user_id = %s",
+                     (user_id,))
+
+
 # --- Notifications ----------------------------------------------------------
 
 def get_notifications(user_id: int, limit: int = 50) -> dict[str, Any]:

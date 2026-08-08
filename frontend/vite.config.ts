@@ -7,7 +7,9 @@ export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: {
     proxy: {
-      "/api": "http://localhost:8000",
+      // ws: true lets the Kite depth stream (WS /api/kite/depth/{isin})
+      // pass through the dev proxy too.
+      "/api": { target: "http://localhost:8000", ws: true },
     },
   },
 });

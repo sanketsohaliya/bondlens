@@ -3,6 +3,10 @@ import type {
   BondsResponse,
   ExploreParams,
   Filters,
+  KiteOrderId,
+  KiteOrderRequest,
+  KiteOrdersResponse,
+  KiteStatus,
   ListsResponse,
   LotInput,
   NotificationsResponse,
@@ -71,6 +75,15 @@ export const api = {
     updateLot: (id: number, lot: LotInput) =>
       request<PortfolioLot>("PATCH", `/api/portfolio/lots/${id}`, lot),
     deleteLot: (id: number) => request<unknown>("DELETE", `/api/portfolio/lots/${id}`),
+  },
+  kite: {
+    status: () => get<KiteStatus>("/api/kite/status"),
+    disconnect: () => request<{ ok: boolean }>("POST", "/api/kite/disconnect"),
+    placeOrder: (order: KiteOrderRequest) =>
+      request<KiteOrderId>("POST", "/api/kite/orders", order),
+    orders: () => get<KiteOrdersResponse>("/api/kite/orders"),
+    cancelOrder: (orderId: string) =>
+      request<{ ok: boolean }>("DELETE", `/api/kite/orders/${orderId}`),
   },
   notifications: {
     get: () => get<NotificationsResponse>("/api/notifications"),

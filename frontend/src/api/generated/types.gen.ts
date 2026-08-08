@@ -589,6 +589,10 @@ export type DepthSide = {
      * As Of
      */
     as_of: string | null;
+    /**
+     * Source
+     */
+    source?: 'kite' | 'exchange' | null;
 };
 
 /**
@@ -691,6 +695,122 @@ export type IssuerBond = {
      * Turnover
      */
     turnover: number | null;
+};
+
+/**
+ * KiteOrder
+ */
+export type KiteOrder = {
+    /**
+     * Order Id
+     */
+    order_id: string;
+    /**
+     * Tradingsymbol
+     */
+    tradingsymbol: string | null;
+    /**
+     * Exchange
+     */
+    exchange: string | null;
+    /**
+     * Transaction Type
+     */
+    transaction_type: string | null;
+    /**
+     * Quantity
+     */
+    quantity: number | null;
+    /**
+     * Filled Quantity
+     */
+    filled_quantity: number | null;
+    /**
+     * Price
+     */
+    price: number | null;
+    /**
+     * Average Price
+     */
+    average_price: number | null;
+    /**
+     * Status
+     */
+    status: string | null;
+    /**
+     * Status Message
+     */
+    status_message: string | null;
+    /**
+     * Order Timestamp
+     */
+    order_timestamp: string | null;
+};
+
+/**
+ * KiteOrderId
+ */
+export type KiteOrderId = {
+    /**
+     * Order Id
+     */
+    order_id: string;
+};
+
+/**
+ * KiteOrderRequest
+ */
+export type KiteOrderRequest = {
+    /**
+     * Isin
+     */
+    isin: string;
+    /**
+     * Exchange
+     */
+    exchange: 'NSE' | 'BSE';
+    /**
+     * Transaction Type
+     */
+    transaction_type: 'BUY' | 'SELL';
+    /**
+     * Quantity
+     */
+    quantity: number;
+    /**
+     * Price
+     */
+    price: number;
+};
+
+/**
+ * KiteOrdersResponse
+ */
+export type KiteOrdersResponse = {
+    /**
+     * Orders
+     */
+    orders: Array<KiteOrder>;
+};
+
+/**
+ * KiteStatus
+ *
+ * Kite Connect state for the current user.
+ */
+export type KiteStatus = {
+    /**
+     * Configured
+     */
+    configured: boolean;
+    /**
+     * Connected
+     */
+    connected: boolean;
+    /**
+     * Login Url
+     */
+    login_url: string | null;
 };
 
 /**
@@ -2149,6 +2269,168 @@ export type BondDepthApiBondsIsinDepthGetResponses = {
 };
 
 export type BondDepthApiBondsIsinDepthGetResponse = BondDepthApiBondsIsinDepthGetResponses[keyof BondDepthApiBondsIsinDepthGetResponses];
+
+export type KiteStatusApiKiteStatusGetData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/kite/status';
+};
+
+export type KiteStatusApiKiteStatusGetErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type KiteStatusApiKiteStatusGetError = KiteStatusApiKiteStatusGetErrors[keyof KiteStatusApiKiteStatusGetErrors];
+
+export type KiteStatusApiKiteStatusGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: KiteStatus;
+};
+
+export type KiteStatusApiKiteStatusGetResponse = KiteStatusApiKiteStatusGetResponses[keyof KiteStatusApiKiteStatusGetResponses];
+
+export type KiteCallbackApiKiteCallbackGetData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * Request Token
+         */
+        request_token?: string | null;
+        /**
+         * Status
+         */
+        status?: string | null;
+    };
+    url: '/api/kite/callback';
+};
+
+export type KiteCallbackApiKiteCallbackGetErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type KiteCallbackApiKiteCallbackGetError = KiteCallbackApiKiteCallbackGetErrors[keyof KiteCallbackApiKiteCallbackGetErrors];
+
+export type KiteCallbackApiKiteCallbackGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: unknown;
+};
+
+export type KiteDisconnectApiKiteDisconnectPostData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/kite/disconnect';
+};
+
+export type KiteDisconnectApiKiteDisconnectPostErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type KiteDisconnectApiKiteDisconnectPostError = KiteDisconnectApiKiteDisconnectPostErrors[keyof KiteDisconnectApiKiteDisconnectPostErrors];
+
+export type KiteDisconnectApiKiteDisconnectPostResponses = {
+    /**
+     * Successful Response
+     */
+    200: Ok;
+};
+
+export type KiteDisconnectApiKiteDisconnectPostResponse = KiteDisconnectApiKiteDisconnectPostResponses[keyof KiteDisconnectApiKiteDisconnectPostResponses];
+
+export type KiteOrdersApiKiteOrdersGetData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/kite/orders';
+};
+
+export type KiteOrdersApiKiteOrdersGetErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type KiteOrdersApiKiteOrdersGetError = KiteOrdersApiKiteOrdersGetErrors[keyof KiteOrdersApiKiteOrdersGetErrors];
+
+export type KiteOrdersApiKiteOrdersGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: KiteOrdersResponse;
+};
+
+export type KiteOrdersApiKiteOrdersGetResponse = KiteOrdersApiKiteOrdersGetResponses[keyof KiteOrdersApiKiteOrdersGetResponses];
+
+export type KitePlaceOrderApiKiteOrdersPostData = {
+    body: KiteOrderRequest;
+    path?: never;
+    query?: never;
+    url: '/api/kite/orders';
+};
+
+export type KitePlaceOrderApiKiteOrdersPostErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type KitePlaceOrderApiKiteOrdersPostError = KitePlaceOrderApiKiteOrdersPostErrors[keyof KitePlaceOrderApiKiteOrdersPostErrors];
+
+export type KitePlaceOrderApiKiteOrdersPostResponses = {
+    /**
+     * Successful Response
+     */
+    200: KiteOrderId;
+};
+
+export type KitePlaceOrderApiKiteOrdersPostResponse = KitePlaceOrderApiKiteOrdersPostResponses[keyof KitePlaceOrderApiKiteOrdersPostResponses];
+
+export type KiteCancelOrderApiKiteOrdersOrderIdDeleteData = {
+    body?: never;
+    path: {
+        /**
+         * Order Id
+         */
+        order_id: string;
+    };
+    query?: never;
+    url: '/api/kite/orders/{order_id}';
+};
+
+export type KiteCancelOrderApiKiteOrdersOrderIdDeleteErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type KiteCancelOrderApiKiteOrdersOrderIdDeleteError = KiteCancelOrderApiKiteOrdersOrderIdDeleteErrors[keyof KiteCancelOrderApiKiteOrdersOrderIdDeleteErrors];
+
+export type KiteCancelOrderApiKiteOrdersOrderIdDeleteResponses = {
+    /**
+     * Successful Response
+     */
+    200: Ok;
+};
+
+export type KiteCancelOrderApiKiteOrdersOrderIdDeleteResponse = KiteCancelOrderApiKiteOrdersOrderIdDeleteResponses[keyof KiteCancelOrderApiKiteOrdersOrderIdDeleteResponses];
 
 export type StatusApiStatusGetData = {
     body?: never;

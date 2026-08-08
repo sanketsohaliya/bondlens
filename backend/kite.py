@@ -46,23 +46,37 @@ def _chart_url(exchange: str, tradingsymbol: str, token: int) -> str:
     return f"https://kite.zerodha.com/markets/chart/web/tvc/{exchange}/{tradingsymbol}/{token}"
 
 
-def _nse_url(nse_symbol: str | None, nse_series: str | None) -> str | None:
+def resolve_nse(nse_symbol: str | None,
+                nse_series: str | None) -> tuple[str, int] | None:
+    """(tradingsymbol, instrument_token) for a bond's NSE listing, if
+    Kite knows it. NSE bond symbols are `{SYMBOL}-{SERIES}` on Kite."""
     if not nse_symbol:
         return None
     instruments = _instruments("NSE")
-    tradingsymbol = f"{nse_symbol}-{nse_series}" if nse_series else nse_symbol
-    token = instruments.get(tradingsymbol) or instruments.get(nse_symbol)
-    if token is None:
-        return None
-    return _chart_url("NSE", tradingsymbol if tradingsymbol in instruments
-                      else nse_symbol, token)
+    candidates = ([f"{nse_symbol}-{nse_series}"] if nse_series else []) + [nse_symbol]
+    for ts in candidates:
+        token = instruments.get(ts)
+        if token is not None:
+            return ts, token
+    return None
 
 
-def _bse_url(bse_scrip_id: str | None) -> str | None:
+def resolve_bse(bse_scrip_id: str | None) -> tuple[str, int] | None:
+    """(tradingsymbol, instrument_token) for a bond's BSE listing."""
     if not bse_scrip_id:
         return None
     token = _instruments("BSE").get(bse_scrip_id)
-    return _chart_url("BSE", bse_scrip_id, token) if token is not None else None
+    return (bse_scrip_id, token) if token is not None else None
+
+
+def _nse_url(nse_symbol: str | None, nse_series: str | None) -> str | None:
+    hit = resolve_nse(nse_symbol, nse_series)
+    return _chart_url("NSE", hit[0], hit[1]) if hit else None
+
+
+def _bse_url(bse_scrip_id: str | None) -> str | None:
+    hit = resolve_bse(bse_scrip_id)
+    return _chart_url("BSE", hit[0], hit[1]) if hit else None
 
 
 def kite_url(nse_symbol: str | None, nse_series: str | None,

@@ -7,7 +7,7 @@ TypeScript client is generated from (`npm run codegen` in frontend/).
 from datetime import date, datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 YtmMethod = Literal["exact", "estimated", "approx", "ytc"]
 
@@ -395,6 +395,7 @@ class DepthSide(BaseModel):
     total_bid_qty: float | None
     total_ask_qty: float | None
     as_of: str | None
+    source: Literal["kite", "exchange"] | None = None
 
 
 class YtmAtPrice(BaseModel):
@@ -408,6 +409,43 @@ class OrderBook(BaseModel):
     nse: DepthSide | None
     bse: DepthSide | None
     ytm_at_ask: list[YtmAtPrice]
+
+
+class KiteStatus(BaseModel):
+    """Kite Connect state for the current user."""
+    configured: bool
+    connected: bool
+    login_url: str | None
+
+
+class KiteOrderRequest(BaseModel):
+    isin: str
+    exchange: Literal["NSE", "BSE"]
+    transaction_type: Literal["BUY", "SELL"]
+    quantity: int = Field(gt=0)
+    price: float = Field(gt=0)
+
+
+class KiteOrderId(BaseModel):
+    order_id: str
+
+
+class KiteOrder(BaseModel):
+    order_id: str
+    tradingsymbol: str | None
+    exchange: str | None
+    transaction_type: str | None
+    quantity: int | None
+    filled_quantity: int | None
+    price: float | None
+    average_price: float | None
+    status: str | None
+    status_message: str | None
+    order_timestamp: str | None
+
+
+class KiteOrdersResponse(BaseModel):
+    orders: list[KiteOrder]
 
 
 class Health(BaseModel):

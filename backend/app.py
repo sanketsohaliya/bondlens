@@ -6,11 +6,27 @@ explorer analytics into bond_analytics (scripts/compute_analytics.py).
 The API is stateless: the explorer is a filtered SELECT; only the
 per-bond detail view computes yields live (it supports what-if pricing).
 """
-from datetime import date
+import asyncio
+import contextlib
+from datetime import UTC, date, datetime
 
-from fastapi import APIRouter, Body, Depends, FastAPI, HTTPException, Query, Response
+from fastapi import (
+    APIRouter,
+    Body,
+    Cookie,
+    Depends,
+    FastAPI,
+    HTTPException,
+    Query,
+    Request,
+    Response,
+    WebSocket,
+    WebSocketDisconnect,
+)
+from fastapi.concurrency import run_in_threadpool
+from fastapi.responses import RedirectResponse
 
-from . import auth, db, depth, kite, models, queries
+from . import auth, db, depth, kite, kite_connect, kite_ticker, models, queries
 from .analytics import portfolio as pf
 from .analytics import ratings, schedule, yields
 from .analytics.compute import STALE_AFTER_DAYS
@@ -421,33 +437,223 @@ def bond_trades(
 # Order book
 # --------------------------------------------------------------------------
 
+def _annotate_ytm(book: dict, isin: str) -> None:
+    """Fill book['ytm_at_ask'] with the YTM a buyer would lock at each
+    resting ask price (dirty)."""
+    if book["ytm_at_ask"]:
+        return
+    ask_prices = sorted({
+        lv["price"]
+        for side in (book.get("nse"), book.get("bse")) if side
+        for lv in side["asks"] if lv["price"]
+    })
+    if not ask_prices:
+        return
+    today = date.today()
+    sched = schedule.build(isin, queries.bond_cashflows(isin),
+                           queries.bond_terms(isin), today=today)
+    if sched.usable:
+        book["ytm_at_ask"] = [
+            {"price": p, "ytm": yields.exact_ytm(p, sched, today)}
+            for p in ask_prices
+        ]
+
+
 @router.get("/api/bonds/{isin}/depth", response_model=models.OrderBook)
-def bond_depth(isin: str):
-    """Live top-5 bid/ask depth from both exchanges, fetched on demand
-    (30s cache). Ask levels are annotated with the YTM a buyer would
-    lock at that dirty price."""
+def bond_depth(isin: str, user_id: int = Depends(auth.require_user)):
+    """Live top-5 bid/ask depth from both exchanges — via the user's
+    own Kite session when connected, exchange scrapers otherwise —
+    fetched on demand (30s cache). Ask levels are annotated with the
+    YTM a buyer would lock at that dirty price."""
     isin = isin.strip().upper()
     row = queries.bond_row(isin)
     if row is None:
         raise HTTPException(status_code=404, detail="Unknown ISIN")
     book = depth.order_book(isin, row.get("nse_symbol"), row.get("nse_series"),
-                            row.get("bse_scrip_code"))
-    if not book["ytm_at_ask"]:
-        ask_prices = sorted({
-            lv["price"]
-            for side in (book.get("nse"), book.get("bse")) if side
-            for lv in side["asks"] if lv["price"]
-        })
-        if ask_prices:
-            today = date.today()
-            sched = schedule.build(isin, queries.bond_cashflows(isin),
-                                   queries.bond_terms(isin), today=today)
-            if sched.usable:
-                book["ytm_at_ask"] = [
-                    {"price": p, "ytm": yields.exact_ytm(p, sched, today)}
-                    for p in ask_prices
-                ]
+                            row.get("bse_scrip_code"),
+                            bse_scrip_id=row.get("bse_scrip_id"),
+                            user_id=user_id)
+    _annotate_ytm(book, isin)
     return book
+
+
+# --------------------------------------------------------------------------
+# Kite Connect (per-user Zerodha sessions, live depth, orders)
+# --------------------------------------------------------------------------
+
+def _kite_call(fn, *args):
+    """Run a kite_connect helper, mapping KiteError to HTTP."""
+    try:
+        return fn(*args)
+    except kite_connect.KiteError as e:
+        raise HTTPException(status_code=e.status, detail=e.detail) from e
+
+
+@router.get("/api/kite/status", response_model=models.KiteStatus)
+def kite_status(request: Request, user_id: int = Depends(auth.require_user)):
+    """Kite Connect state for the signed-in user. The UI opens
+    login_url to (re)connect; tokens expire every morning.
+
+    login_url carries a short-lived state token + this request's origin
+    (via Kite's redirect_params): the app serves multiple domains but
+    Kite allows one redirect URL, so the callback needs both to
+    identify the user and send them back where they started."""
+    origin = None
+    if host := request.headers.get("host"):
+        proto = request.headers.get("x-forwarded-proto",
+                                    "https" if auth.COOKIE_SECURE else "http")
+        origin = f"{proto}://{host}"
+    return {
+        "configured": kite_connect.configured(),
+        "connected": kite_connect.token_for(user_id) is not None,
+        "login_url": kite_connect.login_url(
+            state=auth.mint_kite_state(user_id) if auth.SESSION_SECRET else None,
+            origin=origin,
+        ),
+    }
+
+
+# On `app`, not `router`: the redirect may land on a different domain
+# than the user's session cookie (one Kite redirect URL, two domains),
+# so auth comes from the state token when the cookie is absent.
+@app.get("/api/kite/callback")
+def kite_callback(request_token: str | None = Query(None),
+                  status: str | None = Query(None),
+                  state: str | None = Query(None),
+                  origin: str | None = Query(None),
+                  bl_session: str | None = Cookie(default=None)):
+    """Kite login redirect target (register {domain-A}/api/kite/callback
+    as the app's redirect URL). Stores the daily token for whichever
+    BondLens user started the login, then sends them back to the
+    (allowlisted) domain they came from."""
+    dest = kite_connect.safe_origin(origin)
+    user_id = (auth.parse_session(bl_session or "")
+               or auth.parse_kite_state(state or ""))
+    if user_id is not None and status != "error" and request_token:
+        try:
+            kite_connect.exchange_token(user_id, request_token)
+            return RedirectResponse(f"{dest}/?kite=connected")
+        except kite_connect.KiteError:
+            pass
+    return RedirectResponse(f"{dest}/?kite=error")
+
+
+@router.post("/api/kite/disconnect", response_model=models.Ok)
+def kite_disconnect(user_id: int = Depends(auth.require_user)):
+    kite_connect.clear_token(user_id)
+    return {"ok": True}
+
+
+def _order_symbol(isin: str, exchange: str) -> str:
+    """Kite tradingsymbol for a bond's listing on `exchange` (404/409
+    when the bond or its Kite listing is unknown)."""
+    row = queries.bond_row(isin)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Unknown ISIN")
+    hit = (kite.resolve_nse(row.get("nse_symbol"), row.get("nse_series"))
+           if exchange == "NSE" else kite.resolve_bse(row.get("bse_scrip_id")))
+    if hit is None:
+        raise HTTPException(status_code=409,
+                            detail=f"Bond not tradable on Kite ({exchange})")
+    return hit[0]
+
+
+@router.post("/api/kite/orders", response_model=models.KiteOrderId)
+def kite_place_order(body: models.KiteOrderRequest,
+                     user_id: int = Depends(auth.require_user)):
+    """Place a LIMIT/CNC/DAY order on the user's own Zerodha account.
+    Zerodha's RMS is the final gate; its rejection reasons pass through."""
+    tradingsymbol = _order_symbol(body.isin.strip().upper(), body.exchange)
+    order_id = _kite_call(kite_connect.place_order, user_id, body.exchange,
+                          tradingsymbol, body.transaction_type,
+                          body.quantity, body.price)
+    return {"order_id": order_id}
+
+
+@router.get("/api/kite/orders", response_model=models.KiteOrdersResponse)
+def kite_orders(user_id: int = Depends(auth.require_user)):
+    """Today's orders on the user's Zerodha account (Kite is the system
+    of record; nothing is stored app-side)."""
+    return {"orders": _kite_call(kite_connect.list_orders, user_id)}
+
+
+@router.delete("/api/kite/orders/{order_id}", response_model=models.Ok)
+def kite_cancel_order(order_id: str,
+                      user_id: int = Depends(auth.require_user)):
+    _kite_call(kite_connect.cancel_order, user_id, order_id)
+    return {"ok": True}
+
+
+@app.websocket("/api/kite/depth/{isin}")
+async def kite_depth_stream(ws: WebSocket, isin: str):
+    """Live depth for one bond, streamed from the user's own Kite
+    ticker connection. Closes 4401 without a valid session, 4404 when
+    Kite can't serve this bond (frontend then uses the REST path)."""
+    user_id = auth.parse_session(ws.cookies.get(auth.SESSION_COOKIE) or "")
+    if user_id is None:
+        await ws.close(code=4401)
+        return
+    isin = isin.strip().upper()
+    row = await run_in_threadpool(queries.bond_row, isin)
+    access_token = (await run_in_threadpool(kite_connect.token_for, user_id)
+                    if kite_connect.configured() else None)
+    if row is None or access_token is None:
+        await ws.close(code=4404)
+        return
+    nse_hit = await run_in_threadpool(
+        kite.resolve_nse, row.get("nse_symbol"), row.get("nse_series"))
+    bse_hit = await run_in_threadpool(kite.resolve_bse, row.get("bse_scrip_id"))
+    tokens = {hit[1]: name
+              for name, hit in (("nse", nse_hit), ("bse", bse_hit)) if hit}
+    if not tokens:
+        await ws.close(code=4404)
+        return
+
+    await ws.accept()
+    today = date.today()
+    sched = await run_in_threadpool(
+        lambda: schedule.build(isin, queries.bond_cashflows(isin),
+                               queries.bond_terms(isin), today=today))
+    ytm_memo: dict[float, float | None] = {}
+    sides: dict[str, dict | None] = {"nse": None, "bse": None}
+    conn, queue = await kite_ticker.manager.attach(user_id, access_token,
+                                                   set(tokens))
+    recv_task = asyncio.create_task(ws.receive())  # detect client close
+    try:
+        while True:
+            queue_task = asyncio.create_task(queue.get())
+            done, _ = await asyncio.wait(
+                {recv_task, queue_task}, return_when=asyncio.FIRST_COMPLETED)
+            if recv_task in done:  # client closed (or sent something)
+                queue_task.cancel()
+                break
+            tick = queue_task.result()
+            if tick is None:  # Kite connection died; frontend falls back
+                break
+            sides[tokens[tick["token"]]] = kite_ticker.tick_to_side(tick)
+            ask_prices = sorted({
+                lv["price"] for side in sides.values() if side
+                for lv in side["asks"] if lv["price"]
+            })
+            if sched.usable:
+                for p in ask_prices:
+                    if p not in ytm_memo:
+                        ytm_memo[p] = yields.exact_ytm(p, sched, today)
+            await ws.send_json({
+                "isin": isin,
+                "fetched_at": datetime.now(UTC).isoformat(),
+                "nse": sides["nse"],
+                "bse": sides["bse"],
+                "ytm_at_ask": [{"price": p, "ytm": ytm_memo.get(p)}
+                               for p in ask_prices],
+            })
+    except (WebSocketDisconnect, RuntimeError):
+        pass
+    finally:
+        recv_task.cancel()
+        await kite_ticker.manager.detach(user_id, conn, queue)
+        with contextlib.suppress(Exception):
+            await ws.close()
 
 
 # --------------------------------------------------------------------------

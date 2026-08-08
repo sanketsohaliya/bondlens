@@ -79,8 +79,9 @@ def test_order_book_cache(monkeypatch):
     assert b1["nse"] is None  # no NSE symbol -> not fetched
 
     # Expired cache refetches.
-    ts, book = depth._cache["INETEST00001"]
-    depth._cache["INETEST00001"] = (ts - depth.CACHE_TTL_SECONDS - 1, book)
+    key = "INETEST00001:pub"
+    ts, book = depth._cache[key]
+    depth._cache[key] = (ts - depth.CACHE_TTL_SECONDS - 1, book)
     depth.order_book("INETEST00001", None, None, "974380")
     assert calls["bse"] == 2
     depth._cache.clear()

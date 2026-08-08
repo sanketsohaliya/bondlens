@@ -1,19 +1,26 @@
-"""Live order-book depth proxied from the exchanges' quote APIs.
+"""Live order-book depth: Kite Connect when the user has connected
+their Zerodha account, exchange quote APIs otherwise.
 
-Neither exchange allows browser-side calls (CORS locked to their own
-origins; NSE additionally needs a cookie handshake), so the API fetches
-on demand — one call per drawer-tab open, absorbed by a short TTL cache.
+Kite's /quote endpoint returns both listings' 5-level depth (with order
+counts) in one authenticated call — the primary source for connected
+users, cached per (isin, user) so one user's feed is never served to
+another.
 
-BSE is the reliable source (plain JSON endpoint behind a Referer check).
-NSE actively resists non-browser/datacenter traffic, so its fetcher is
-best-effort: any failure degrades to None rather than erroring the
-endpoint.
+The exchange scrapers remain the fallback: neither exchange allows
+browser-side calls (CORS locked to their own origins; NSE additionally
+needs a cookie handshake), so the API fetches on demand — one call per
+drawer-tab open, absorbed by a short TTL cache. BSE is the reliable
+source (plain JSON endpoint behind a Referer check). NSE actively
+resists non-browser/datacenter traffic, so its fetcher is best-effort:
+any failure degrades to None rather than erroring the endpoint.
 """
 import time
 from datetime import UTC, datetime
 from typing import Any
 
 import requests
+
+from . import kite, kite_connect
 
 BSE_DEPTH_URL = "https://api.bseindia.com/BseIndiaAPI/api/MarketDepth/w"
 BSE_HEADERS = {
@@ -73,6 +80,7 @@ def parse_bse_depth(payload: dict) -> dict | None:
         "total_bid_qty": _num(payload.get("TotalBQty")),
         "total_ask_qty": _num(payload.get("TotalSQty")),
         "as_of": payload.get("dttm") or None,
+        "source": "exchange",
     }
 
 
@@ -94,6 +102,7 @@ def parse_nse_depth(payload: dict) -> dict | None:
         "total_ask_qty": _num(book.get("totalSellQuantity")
                               or trade_info.get("totalSellQuantity")),
         "as_of": None,
+        "source": "exchange",
     }
 
 
@@ -133,19 +142,64 @@ def fetch_nse_depth(symbol: str, series: str | None) -> dict | None:
         return None
 
 
+def fetch_kite_depth(user_id: int, nse_symbol: str | None,
+                     nse_series: str | None, bse_scrip_id: str | None,
+                     ) -> tuple[dict | None, dict | None]:
+    """(nse_side, bse_side) from one Kite /quote call under the user's
+    token; (None, None) when Kite can't serve (per-exchange fallback
+    handled by the caller)."""
+    nse_hit = kite.resolve_nse(nse_symbol, nse_series)
+    bse_hit = kite.resolve_bse(bse_scrip_id)
+    keys = {}
+    if nse_hit:
+        keys["nse"] = f"NSE:{nse_hit[0]}"
+    if bse_hit:
+        keys["bse"] = f"BSE:{bse_hit[0]}"
+    if not keys:
+        return None, None
+    quotes = kite_connect.fetch_quotes(user_id, list(keys.values()))
+
+    def side(name: str) -> dict | None:
+        quote = quotes.get(keys[name]) if name in keys else None
+        return kite_connect.parse_kite_depth(quote) if quote else None
+
+    return side("nse"), side("bse")
+
+
 def order_book(isin: str, nse_symbol: str | None, nse_series: str | None,
-               bse_scrip_code: str | int | None) -> dict:
-    """Depth for one bond across both exchanges, TTL-cached per ISIN."""
+               bse_scrip_code: str | int | None,
+               bse_scrip_id: str | None = None,
+               user_id: int | None = None) -> dict:
+    """Depth for one bond across both exchanges, TTL-cached.
+
+    Kite (the user's own token) is the primary source; each exchange
+    falls back to its scraper when Kite can't serve it. Kite-sourced
+    books are cached per (isin, user) so they never cross users;
+    scraper-only books share the public per-ISIN cache entry."""
     now = time.time()
-    hit = _cache.get(isin)
+    use_kite = (user_id is not None and kite_connect.configured()
+                and kite_connect.token_for(user_id) is not None)
+    cache_key = f"{isin}:{user_id}" if use_kite else f"{isin}:pub"
+    hit = _cache.get(cache_key)
     if hit and now - hit[0] < CACHE_TTL_SECONDS:
         return hit[1]
+
+    nse_side = bse_side = None
+    if use_kite:
+        assert user_id is not None
+        nse_side, bse_side = fetch_kite_depth(user_id, nse_symbol,
+                                              nse_series, bse_scrip_id)
+    if nse_side is None and nse_symbol:
+        nse_side = fetch_nse_depth(nse_symbol, nse_series)
+    if bse_side is None and bse_scrip_code:
+        bse_side = fetch_bse_depth(bse_scrip_code)
+
     book = {
         "isin": isin,
         "fetched_at": datetime.now(UTC).isoformat(),
-        "nse": fetch_nse_depth(nse_symbol, nse_series) if nse_symbol else None,
-        "bse": fetch_bse_depth(bse_scrip_code) if bse_scrip_code else None,
+        "nse": nse_side,
+        "bse": bse_side,
         "ytm_at_ask": [],
     }
-    _cache[isin] = (now, book)
+    _cache[cache_key] = (now, book)
     return book
