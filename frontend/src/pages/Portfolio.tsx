@@ -471,20 +471,32 @@ function IncomeBanner({
   const projected = income.projected_interest + income.projected_principal;
   if (received <= 0 && !hasUndatedLot) return null;
   return (
-    <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1 border-b border-zinc-800 bg-zinc-900/30 px-3 py-2 text-xs">
+    <div className="flex flex-wrap items-center gap-x-6 gap-y-2 border-b border-zinc-800 bg-zinc-900/30 px-4 py-2.5">
       {received > 0 && (
         <>
-          <span className="text-zinc-400">
-            Received so far <span className="font-semibold text-zinc-100">{fmt.inr(received)}</span>
-            <span className="text-zinc-500">
-              {" "}
-              (interest {fmt.inr(income.received_interest)} · principal{" "}
-              {fmt.inr(income.received_principal)})
-            </span>
-          </span>
-          <span className="text-zinc-400">
-            Projected <span className="font-semibold text-emerald-400">{fmt.inr(projected)}</span>
-          </span>
+          <IncomeItem
+            label="Received so far"
+            value={fmt.inr(received)}
+            valueClass="text-zinc-100"
+          />
+          {/* The split only earns its place when both parts are non-zero;
+              "principal ₹0" is noise. Colours match the chart legend. */}
+          {income.received_principal > 0 && (
+            <>
+              <IncomeItem
+                label="Interest"
+                value={fmt.inr(income.received_interest)}
+                valueClass="text-sky-400"
+              />
+              <IncomeItem
+                label="Principal"
+                value={fmt.inr(income.received_principal)}
+                valueClass="text-emerald-400"
+              />
+            </>
+          )}
+          <span className="self-stretch w-px bg-zinc-800" />
+          <IncomeItem label="Projected" value={fmt.inr(projected)} valueClass="text-emerald-400" />
         </>
       )}
       {hasUndatedLot && (
@@ -493,6 +505,23 @@ function IncomeBanner({
           them.
         </span>
       )}
+    </div>
+  );
+}
+
+function IncomeItem({
+  label,
+  value,
+  valueClass,
+}: {
+  label: string;
+  value: string;
+  valueClass: string;
+}) {
+  return (
+    <div>
+      <div className="text-[10px] uppercase tracking-wider text-zinc-500">{label}</div>
+      <div className={`text-sm font-semibold tabular-nums ${valueClass}`}>{value}</div>
     </div>
   );
 }
