@@ -124,18 +124,11 @@ def watchlist_remove_isin(watchlist_id: int, isin: str,
 # --------------------------------------------------------------------------
 
 def _cashflow_label(core: dict, isin: str) -> str:
-    """Human-readable bond label for cashflow breakdowns, e.g.
-    "9.5% Oxyzo Financial Services Mar'28". Falls back to the exchange
-    symbol, then the ISIN, when the issuer name is missing."""
-    name = core.get("issuer_name")
-    if not name:
-        return core.get("nse_symbol") or core.get("bse_scrip_id") or isin
-    parts = [name]
-    if core.get("coupon"):
-        parts.insert(0, f"{core['coupon']:g}%")
-    if core.get("maturity_date"):
-        parts.append(core["maturity_date"].strftime("%b'%y"))
-    return " ".join(parts)
+    """Issuer name for cashflow breakdowns (the ISIN column carries
+    uniqueness; two bonds of one issuer share a label by design).
+    Falls back to the exchange symbol, then the ISIN."""
+    return (core.get("issuer_name") or core.get("nse_symbol")
+            or core.get("bse_scrip_id") or isin)
 
 
 @router.post("/api/portfolio/lots", response_model=models.PortfolioLot)
