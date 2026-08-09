@@ -255,7 +255,8 @@ def bonds(
     below_par: bool = Query(False),
     fresh_only: bool = Query(False, description="Exclude stale retail prices"),
     traded_within: int | None = Query(
-        None, ge=1, description="Last retail trade at most N days ago"),
+        None, ge=1,
+        description="Last retail trade within the last N trading sessions"),
     exact_only: bool = Query(False, description="Only exact-schedule YTMs"),
     downgraded_only: bool = Query(False),
     isins: str | None = Query(

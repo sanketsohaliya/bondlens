@@ -1590,6 +1590,46 @@ export type AuthLogoutApiAuthLogoutPostResponses = {
 
 export type AuthLogoutApiAuthLogoutPostResponse = AuthLogoutApiAuthLogoutPostResponses[keyof AuthLogoutApiAuthLogoutPostResponses];
 
+export type KiteCallbackApiKiteCallbackGetData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * Request Token
+         */
+        request_token?: string | null;
+        /**
+         * Status
+         */
+        status?: string | null;
+        /**
+         * State
+         */
+        state?: string | null;
+        /**
+         * Origin
+         */
+        origin?: string | null;
+    };
+    url: '/api/kite/callback';
+};
+
+export type KiteCallbackApiKiteCallbackGetErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type KiteCallbackApiKiteCallbackGetError = KiteCallbackApiKiteCallbackGetErrors[keyof KiteCallbackApiKiteCallbackGetErrors];
+
+export type KiteCallbackApiKiteCallbackGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: unknown;
+};
+
 export type HealthGetData = {
     body?: never;
     path?: never;
@@ -2068,7 +2108,7 @@ export type BondsApiBondsGetData = {
         /**
          * Traded Within
          *
-         * Last retail trade at most N days ago
+         * Last retail trade within the last N trading sessions
          */
         traded_within?: number | null;
         /**
@@ -2294,38 +2334,6 @@ export type KiteStatusApiKiteStatusGetResponses = {
 };
 
 export type KiteStatusApiKiteStatusGetResponse = KiteStatusApiKiteStatusGetResponses[keyof KiteStatusApiKiteStatusGetResponses];
-
-export type KiteCallbackApiKiteCallbackGetData = {
-    body?: never;
-    path?: never;
-    query?: {
-        /**
-         * Request Token
-         */
-        request_token?: string | null;
-        /**
-         * Status
-         */
-        status?: string | null;
-    };
-    url: '/api/kite/callback';
-};
-
-export type KiteCallbackApiKiteCallbackGetErrors = {
-    /**
-     * Validation Error
-     */
-    422: HttpValidationError;
-};
-
-export type KiteCallbackApiKiteCallbackGetError = KiteCallbackApiKiteCallbackGetErrors[keyof KiteCallbackApiKiteCallbackGetErrors];
-
-export type KiteCallbackApiKiteCallbackGetResponses = {
-    /**
-     * Successful Response
-     */
-    200: unknown;
-};
 
 export type KiteDisconnectApiKiteDisconnectPostData = {
     body?: never;

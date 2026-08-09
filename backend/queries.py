@@ -270,8 +270,14 @@ def explorer(f: dict, stale_days: int) -> tuple[list[dict], int, float | None]:
         add("a.trade_date IS NOT NULL AND "
             "CURRENT_DATE - a.trade_date <= %(stale_days)s")
     if f.get("traded_within") is not None:
-        add("a.trade_date IS NOT NULL AND "
-            "CURRENT_DATE - a.trade_date <= %(traded_within)s",
+        # N counts trading sessions, not calendar days (weekends and
+        # holidays never empty the view): keep bonds whose last trade
+        # falls within the N most recent distinct trade dates.
+        add("a.trade_date IS NOT NULL AND a.trade_date >= ("
+            "SELECT min(d) FROM ("
+            "SELECT DISTINCT trade_date AS d FROM bond_analytics "
+            "WHERE trade_date IS NOT NULL "
+            "ORDER BY d DESC LIMIT %(traded_within)s) recent)",
             traded_within=f["traded_within"])
     if f.get("exact_only"):
         add("a.ytm_method = 'exact'")

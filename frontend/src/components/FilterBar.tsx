@@ -32,7 +32,8 @@ export function describeFilters(p: ExploreParams): string[] {
   if (p.retail_only) parts.push("trades retail");
   if (p.otc_only) parts.push("trades OTC");
   if (p.fresh_only) parts.push("fresh prices");
-  if (p.traded_within != null) parts.push(`traded ≤ ${p.traded_within}d ago`);
+  if (p.traded_within != null)
+    parts.push(`traded within ${p.traded_within} session${p.traded_within === 1 ? "" : "s"}`);
   if (p.unsecured_only) parts.push("unsecured only");
   if (p.exact_only) parts.push("exact YTM only");
   if (p.below_par) parts.push("below face value");
@@ -315,7 +316,7 @@ function FilterFields({
         {num("Retail trd ₹", "min_turnover")}
         {sel("Min rating", "min_rating", filters?.ratings ?? [])}
         {num("Min mat (y)", "min_years")}
-        {num("Last traded ≤ (d)", "traded_within")}
+        {num("Last traded ≤ (sess)", "traded_within")}
 
         {visible.map(([id, label]) => (
           <span key={id} className="flex items-end gap-1">

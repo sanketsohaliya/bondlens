@@ -20,7 +20,7 @@ describe("describeFilters", () => {
       "YTM ≥ 10%",
       "maturity ≥ 1y",
       "retail traded ≥ ₹51,000",
-      "traded ≤ 1d ago",
+      "traded within 1 session",
     ]);
   });
 
