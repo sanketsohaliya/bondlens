@@ -586,11 +586,26 @@ def kite_orders(user_id: int = Depends(auth.require_user)):
     return {"orders": orders}
 
 
+@router.put("/api/kite/orders/{order_id}", response_model=models.KiteOrderId)
+def kite_modify_order(order_id: str, body: models.KiteOrderModify,
+                      user_id: int = Depends(auth.require_user)):
+    """Change an open order's quantity/limit price (LIMIT/DAY stays)."""
+    new_id = _kite_call(kite_connect.modify_order, user_id, order_id,
+                        body.quantity, body.price)
+    return {"order_id": new_id}
+
+
 @router.delete("/api/kite/orders/{order_id}", response_model=models.Ok)
 def kite_cancel_order(order_id: str,
                       user_id: int = Depends(auth.require_user)):
     _kite_call(kite_connect.cancel_order, user_id, order_id)
     return {"ok": True}
+
+
+@router.get("/api/kite/margins", response_model=models.KiteMargins)
+def kite_margins(user_id: int = Depends(auth.require_user)):
+    """Equity-segment funds snapshot from the user's Zerodha account."""
+    return _kite_call(kite_connect.margins, user_id)
 
 
 @app.websocket("/api/kite/depth/{isin}")

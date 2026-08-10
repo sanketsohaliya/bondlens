@@ -698,6 +698,30 @@ export type IssuerBond = {
 };
 
 /**
+ * KiteMargins
+ *
+ * Equity-segment funds snapshot from Kite.
+ */
+export type KiteMargins = {
+    /**
+     * Net
+     */
+    net: number | null;
+    /**
+     * Available Cash
+     */
+    available_cash: number | null;
+    /**
+     * Available Margin
+     */
+    available_margin: number | null;
+    /**
+     * Margin Used
+     */
+    margin_used: number | null;
+};
+
+/**
  * KiteOrder
  */
 export type KiteOrder = {
@@ -763,6 +787,20 @@ export type KiteOrderId = {
      * Order Id
      */
     order_id: string;
+};
+
+/**
+ * KiteOrderModify
+ */
+export type KiteOrderModify = {
+    /**
+     * Quantity
+     */
+    quantity: number;
+    /**
+     * Price
+     */
+    price: number;
 };
 
 /**
@@ -2459,6 +2497,61 @@ export type KiteCancelOrderApiKiteOrdersOrderIdDeleteResponses = {
 };
 
 export type KiteCancelOrderApiKiteOrdersOrderIdDeleteResponse = KiteCancelOrderApiKiteOrdersOrderIdDeleteResponses[keyof KiteCancelOrderApiKiteOrdersOrderIdDeleteResponses];
+
+export type KiteModifyOrderApiKiteOrdersOrderIdPutData = {
+    body: KiteOrderModify;
+    path: {
+        /**
+         * Order Id
+         */
+        order_id: string;
+    };
+    query?: never;
+    url: '/api/kite/orders/{order_id}';
+};
+
+export type KiteModifyOrderApiKiteOrdersOrderIdPutErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type KiteModifyOrderApiKiteOrdersOrderIdPutError = KiteModifyOrderApiKiteOrdersOrderIdPutErrors[keyof KiteModifyOrderApiKiteOrdersOrderIdPutErrors];
+
+export type KiteModifyOrderApiKiteOrdersOrderIdPutResponses = {
+    /**
+     * Successful Response
+     */
+    200: KiteOrderId;
+};
+
+export type KiteModifyOrderApiKiteOrdersOrderIdPutResponse = KiteModifyOrderApiKiteOrdersOrderIdPutResponses[keyof KiteModifyOrderApiKiteOrdersOrderIdPutResponses];
+
+export type KiteMarginsApiKiteMarginsGetData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/kite/margins';
+};
+
+export type KiteMarginsApiKiteMarginsGetErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type KiteMarginsApiKiteMarginsGetError = KiteMarginsApiKiteMarginsGetErrors[keyof KiteMarginsApiKiteMarginsGetErrors];
+
+export type KiteMarginsApiKiteMarginsGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: KiteMargins;
+};
+
+export type KiteMarginsApiKiteMarginsGetResponse = KiteMarginsApiKiteMarginsGetResponses[keyof KiteMarginsApiKiteMarginsGetResponses];
 
 export type StatusApiStatusGetData = {
     body?: never;

@@ -429,6 +429,19 @@ class KiteOrderRequest(BaseModel):
     price: float = Field(gt=0)
 
 
+class KiteOrderModify(BaseModel):
+    quantity: int = Field(gt=0)
+    price: float = Field(gt=0)
+
+
+class KiteMargins(BaseModel):
+    """Equity-segment funds snapshot from Kite."""
+    net: float | None
+    available_cash: float | None
+    available_margin: float | None
+    margin_used: float | None
+
+
 class KiteOrderId(BaseModel):
     order_id: str
 

@@ -150,6 +150,68 @@ def test_place_order_rejection_surfaces_message(kite_env, monkeypatch):
     assert "Insufficient funds" in e.value.detail
 
 
+def test_modify_order_params(kite_env, monkeypatch):
+    kite_env[1] = "tok"
+    seen = {}
+
+    def fake_request(method, url, params, data, timeout, headers):
+        seen.update(method=method, url=url, data=data)
+        return FakeResp(200, {"status": "success",
+                              "data": {"order_id": "230814000123"}})
+
+    monkeypatch.setattr(kite_connect.requests, "request", fake_request)
+    order_id = kite_connect.modify_order(1, "230814000123", 12, 1005.0)
+    assert order_id == "230814000123"
+    assert seen["method"] == "PUT"
+    assert seen["url"].endswith("/orders/regular/230814000123")
+    assert seen["data"] == {"order_type": "LIMIT", "validity": "DAY",
+                            "quantity": "12", "price": "1005.00"}
+
+
+def test_margins_slimming(kite_env, monkeypatch):
+    kite_env[1] = "tok"
+    monkeypatch.setattr(
+        kite_connect.requests, "request",
+        lambda *a, **k: FakeResp(200, {"status": "success", "data": {
+            "enabled": True, "net": 52000.5,
+            "available": {"cash": 60000.0, "live_balance": 52000.5,
+                          "collateral": 0, "intraday_payin": 0},
+            "utilised": {"debits": 8000.0, "exposure": 0, "span": 0},
+        }}))
+    m = kite_connect.margins(1)
+    assert m == {"net": 52000.5, "available_cash": 60000.0,
+                 "available_margin": 52000.5, "margin_used": 8000.0}
+
+    # Missing sections degrade to Nones, not KeyErrors.
+    monkeypatch.setattr(
+        kite_connect.requests, "request",
+        lambda *a, **k: FakeResp(200, {"status": "success", "data": {}}))
+    assert kite_connect.margins(1) == {
+        "net": None, "available_cash": None,
+        "available_margin": None, "margin_used": None}
+
+
+def test_modify_endpoint_validation(kite_env, monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from backend.app import app
+    from backend.auth import require_user
+    kite_env[1] = "tok"
+    monkeypatch.setattr(kite_connect, "modify_order",
+                        lambda uid, oid, qty, price: oid)
+    app.dependency_overrides[require_user] = lambda: 1
+    try:
+        client = TestClient(app)
+        ok = client.put("/api/kite/orders/42",
+                        json={"quantity": 10, "price": 1001.5})
+        assert ok.status_code == 200 and ok.json() == {"order_id": "42"}
+        bad = client.put("/api/kite/orders/42",
+                         json={"quantity": 0, "price": 1001.5})
+        assert bad.status_code == 422
+    finally:
+        app.dependency_overrides.clear()
+
+
 def test_list_and_cancel_orders(kite_env, monkeypatch):
     kite_env[1] = "tok"
     calls = []

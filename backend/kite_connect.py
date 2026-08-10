@@ -215,6 +215,38 @@ def place_order(user_id: int, exchange: str, tradingsymbol: str,
     return str(order_id)
 
 
+def modify_order(user_id: int, order_id: str, quantity: int,
+                 price: float) -> str:
+    """Change an open order's quantity/limit price (side and product
+    can't change on a Kite modify; stays LIMIT/DAY)."""
+    data = _request(user_id, "PUT", f"/orders/regular/{order_id}", data={
+        "order_type": "LIMIT",
+        "validity": "DAY",
+        "quantity": str(quantity),
+        "price": f"{price:.2f}",
+    })
+    new_id = data.get("order_id") if isinstance(data, dict) else None
+    if not new_id:
+        raise KiteError(502, "Kite returned no order id")
+    return str(new_id)
+
+
+def margins(user_id: int) -> dict[str, Any]:
+    """Equity-segment funds snapshot (bonds trade in the equity
+    segment): the four numbers the UI shows."""
+    data = _request(user_id, "GET", "/user/margins/equity")
+    if not isinstance(data, dict):
+        data = {}
+    available = data.get("available") or {}
+    utilised = data.get("utilised") or {}
+    return {
+        "net": data.get("net"),
+        "available_cash": available.get("cash"),
+        "available_margin": available.get("live_balance"),
+        "margin_used": utilised.get("debits"),
+    }
+
+
 _ORDER_FIELDS = ("order_id", "tradingsymbol", "exchange", "transaction_type",
                  "quantity", "filled_quantity", "price", "average_price",
                  "status", "status_message", "order_timestamp")

@@ -1,10 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
 import { api, fmt } from "../api/client";
 import type { KiteOrder } from "../api/types";
+import OrderTicket from "../components/OrderTicket";
+import StatBox from "../components/StatBox";
 
 const TD = "px-3 py-2.5";
 const TH = "px-3 py-2 font-medium";
 
+/** Open (modifiable == cancellable for regular orders). */
 const CANCELLABLE = ["OPEN", "TRIGGER PENDING", "AMO REQ RECEIVED"];
 
 /** "2026-08-10 10:04:11" -> "10:04:11 am" (Kite timestamps are IST). */
@@ -19,15 +23,25 @@ function timeOf(ts: string | null): string {
  * Kite is the system of record — nothing is stored app-side. */
 export default function Orders({ onSelect }: { onSelect: (isin: string) => void }) {
   const qc = useQueryClient();
+  const [modifying, setModifying] = useState<KiteOrder | null>(null);
   const { data, isLoading, error } = useQuery({
     queryKey: ["kite-orders"],
     queryFn: api.kite.orders,
     refetchInterval: 15_000,
     refetchOnWindowFocus: false,
   });
+  const funds = useQuery({
+    queryKey: ["kite-margins"],
+    queryFn: api.kite.margins,
+    refetchInterval: 30_000,
+    refetchOnWindowFocus: false,
+  });
   const cancel = useMutation({
     mutationFn: (orderId: string) => api.kite.cancelOrder(orderId),
-    onSettled: () => qc.invalidateQueries({ queryKey: ["kite-orders"] }),
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: ["kite-orders"] });
+      qc.invalidateQueries({ queryKey: ["kite-margins"] });
+    },
   });
 
   if (isLoading) {
@@ -46,45 +60,88 @@ export default function Orders({ onSelect }: { onSelect: (isin: string) => void 
   );
 
   return (
-    <div className="rounded-lg border border-zinc-800 overflow-hidden">
-      <div className="overflow-x-auto">
-        <table className="w-full text-xs">
-          <thead>
-            <tr className="text-left text-zinc-500 border-b border-zinc-800">
-              <th className={TH}>Time</th>
-              <th className={TH}>Side</th>
-              <th className={TH}>Instrument</th>
-              <th className={TH}>Exch.</th>
-              <th className={`${TH} text-right`}>Qty (filled)</th>
-              <th className={`${TH} text-right`}>Price</th>
-              <th className={`${TH} text-right`}>Avg</th>
-              <th className={TH}>Status</th>
-              <th className={`${TH} text-right`} />
-            </tr>
-          </thead>
-          <tbody>
-            {orders.map((o) => (
-              <OrderRow
-                key={o.order_id}
-                o={o}
-                onSelect={onSelect}
-                onCancel={() => cancel.mutate(o.order_id)}
-                cancelling={cancel.isPending}
-              />
-            ))}
-            {orders.length === 0 && (
-              <tr>
-                <td colSpan={9} className="px-3 py-10 text-center text-zinc-600">
-                  No orders today.
-                </td>
+    <div className="space-y-4">
+      {/* Equity-segment funds on the Zerodha account — the pot the
+          resting buy orders draw on. */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <StatBox
+          label="Available cash"
+          value={fmt.inrFull(funds.data?.available_cash)}
+          tip="Cash balance in your Zerodha equity account"
+        />
+        <StatBox
+          label="Available margin"
+          value={fmt.inrFull(funds.data?.available_margin)}
+          accent
+          tip="Usable right now for new orders (live balance)"
+        />
+        <StatBox
+          label="Margin used today"
+          value={fmt.inrFull(funds.data?.margin_used)}
+          tip="Blocked by today's orders and positions (debits)"
+        />
+        <StatBox
+          label="Net"
+          value={fmt.inrFull(funds.data?.net)}
+          tip="Net funds as Zerodha reports them"
+        />
+      </div>
+
+      <div className="rounded-lg border border-zinc-800 overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="text-left text-zinc-500 border-b border-zinc-800">
+                <th className={TH}>Time</th>
+                <th className={TH}>Side</th>
+                <th className={TH}>Instrument</th>
+                <th className={TH}>Exch.</th>
+                <th className={`${TH} text-right`}>Qty (filled)</th>
+                <th className={`${TH} text-right`}>Price</th>
+                <th className={`${TH} text-right`}>Avg</th>
+                <th className={TH}>Status</th>
+                <th className={`${TH} text-right`} />
               </tr>
-            )}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {orders.map((o) => (
+                <OrderRow
+                  key={o.order_id}
+                  o={o}
+                  onSelect={onSelect}
+                  onModify={() => setModifying(o)}
+                  onCancel={() => cancel.mutate(o.order_id)}
+                  cancelling={cancel.isPending}
+                />
+              ))}
+              {orders.length === 0 && (
+                <tr>
+                  <td colSpan={9} className="px-3 py-10 text-center text-zinc-600">
+                    No orders today.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+        <div className="px-3 py-2 border-t border-zinc-800 text-[11px] text-zinc-600">
+          Today's orders on your Zerodha account, refreshed every 15s. Kite keeps the full history.
+        </div>
       </div>
-      <div className="px-3 py-2 border-t border-zinc-800 text-[11px] text-zinc-600">
-        Today's orders on your Zerodha account, refreshed every 15s. Kite keeps the full history.
-      </div>
+
+      {modifying && (
+        <OrderTicket
+          isin={modifying.isin ?? ""}
+          exchange={(modifying.exchange as "NSE" | "BSE") ?? "BSE"}
+          initialSide={(modifying.transaction_type as "BUY" | "SELL") ?? "BUY"}
+          initialQty={modifying.quantity}
+          initialPrice={modifying.price}
+          ytmAtAsk={[]}
+          modifyOrderId={modifying.order_id}
+          label={modifying.issuer_name ?? modifying.tradingsymbol ?? undefined}
+          onClose={() => setModifying(null)}
+        />
+      )}
     </div>
   );
 }
@@ -92,11 +149,13 @@ export default function Orders({ onSelect }: { onSelect: (isin: string) => void 
 function OrderRow({
   o,
   onSelect,
+  onModify,
   onCancel,
   cancelling,
 }: {
   o: KiteOrder;
   onSelect: (isin: string) => void;
+  onModify: () => void;
   onCancel: () => void;
   cancelling: boolean;
 }) {
@@ -138,16 +197,25 @@ function OrderRow({
       >
         {o.status}
       </td>
-      <td className={`${TD} text-right`}>
+      <td className={`${TD} text-right whitespace-nowrap`}>
         {o.status != null && CANCELLABLE.includes(o.status) && (
-          <button
-            type="button"
-            onClick={onCancel}
-            disabled={cancelling}
-            className="text-[11px] px-2 py-0.5 rounded border border-zinc-700 text-zinc-400 hover:border-red-500/50 hover:text-red-400 disabled:opacity-50"
-          >
-            Cancel
-          </button>
+          <>
+            <button
+              type="button"
+              onClick={onModify}
+              className="text-[11px] px-2 py-0.5 rounded border border-zinc-700 text-zinc-400 hover:border-emerald-500/50 hover:text-emerald-400"
+            >
+              Modify
+            </button>
+            <button
+              type="button"
+              onClick={onCancel}
+              disabled={cancelling}
+              className="ml-1.5 text-[11px] px-2 py-0.5 rounded border border-zinc-700 text-zinc-400 hover:border-red-500/50 hover:text-red-400 disabled:opacity-50"
+            >
+              Cancel
+            </button>
+          </>
         )}
       </td>
     </tr>

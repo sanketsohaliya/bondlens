@@ -16,6 +16,8 @@ interface TicketState {
   side: "BUY" | "SELL";
   price?: number | null;
   qty?: number | null;
+  /** Set when editing an existing open order instead of placing one. */
+  modifyOrderId?: string;
 }
 
 /** Live top-5 bid/ask depth per exchange. With the user's Kite account
@@ -151,7 +153,7 @@ export default function OrderBook({
         </div>
       )}
 
-      {connected && <OrdersStrip isin={isin} />}
+      {connected && <OrdersStrip isin={isin} onModify={setTicket} />}
 
       <p className="text-[11px] text-zinc-600">
         Exchange order books are anonymous — no broker/app identity is published. Ask rows show the
@@ -167,6 +169,7 @@ export default function OrderBook({
           initialPrice={ticket.price}
           initialQty={ticket.qty}
           ytmAtAsk={data.ytm_at_ask}
+          modifyOrderId={ticket.modifyOrderId}
           onClose={() => setTicket(null)}
         />
       )}
@@ -361,7 +364,7 @@ function Ladder({
 
 /** Today's Kite orders for THIS bond (order placement is per-user, on
  * their own Zerodha account; Kite is the system of record). */
-function OrdersStrip({ isin }: { isin: string }) {
+function OrdersStrip({ isin, onModify }: { isin: string; onModify: (t: TicketState) => void }) {
   const qc = useQueryClient();
   const { data } = useQuery({
     queryKey: ["kite-orders"],
@@ -371,7 +374,10 @@ function OrdersStrip({ isin }: { isin: string }) {
   });
   const cancel = useMutation({
     mutationFn: (orderId: string) => api.kite.cancelOrder(orderId),
-    onSettled: () => qc.invalidateQueries({ queryKey: ["kite-orders"] }),
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: ["kite-orders"] });
+      qc.invalidateQueries({ queryKey: ["kite-margins"] });
+    },
   });
 
   // The server resolves each order's tradingsymbol back to its ISIN.
@@ -413,16 +419,33 @@ function OrdersStrip({ isin }: { isin: string }) {
               </td>
               <td className="px-2 py-1.5 text-right text-zinc-300">{fmt.inrFull(o.price)}</td>
               <td className="px-2 py-1.5 text-zinc-400">{o.status}</td>
-              <td className="px-2 py-1.5 text-right">
+              <td className="px-2 py-1.5 text-right whitespace-nowrap">
                 {cancellable(o) && (
-                  <button
-                    type="button"
-                    onClick={() => cancel.mutate(o.order_id)}
-                    disabled={cancel.isPending}
-                    className="text-[11px] px-2 py-0.5 rounded border border-zinc-700 text-zinc-400 hover:border-red-500/50 hover:text-red-400 disabled:opacity-50"
-                  >
-                    Cancel
-                  </button>
+                  <>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        onModify({
+                          exchange: (o.exchange as "NSE" | "BSE") ?? "BSE",
+                          side: (o.transaction_type as "BUY" | "SELL") ?? "BUY",
+                          price: o.price,
+                          qty: o.quantity,
+                          modifyOrderId: o.order_id,
+                        })
+                      }
+                      className="text-[11px] px-2 py-0.5 rounded border border-zinc-700 text-zinc-400 hover:border-emerald-500/50 hover:text-emerald-400"
+                    >
+                      Modify
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => cancel.mutate(o.order_id)}
+                      disabled={cancel.isPending}
+                      className="ml-1.5 text-[11px] px-2 py-0.5 rounded border border-zinc-700 text-zinc-400 hover:border-red-500/50 hover:text-red-400 disabled:opacity-50"
+                    >
+                      Cancel
+                    </button>
+                  </>
                 )}
               </td>
             </tr>

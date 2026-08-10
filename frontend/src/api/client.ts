@@ -3,7 +3,9 @@ import type {
   BondsResponse,
   ExploreParams,
   Filters,
+  KiteMargins,
   KiteOrderId,
+  KiteOrderModify,
   KiteOrderRequest,
   KiteOrdersResponse,
   KiteStatus,
@@ -82,8 +84,11 @@ export const api = {
     placeOrder: (order: KiteOrderRequest) =>
       request<KiteOrderId>("POST", "/api/kite/orders", order),
     orders: () => get<KiteOrdersResponse>("/api/kite/orders"),
+    modifyOrder: (orderId: string, body: KiteOrderModify) =>
+      request<KiteOrderId>("PUT", `/api/kite/orders/${orderId}`, body),
     cancelOrder: (orderId: string) =>
       request<{ ok: boolean }>("DELETE", `/api/kite/orders/${orderId}`),
+    margins: () => get<KiteMargins>("/api/kite/margins"),
   },
   notifications: {
     get: () => get<NotificationsResponse>("/api/notifications"),
