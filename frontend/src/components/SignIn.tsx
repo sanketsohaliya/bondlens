@@ -69,7 +69,7 @@ export default function SignIn({ onSignedIn }: { onSignedIn: (user: User) => voi
   }, [onSignedIn]);
 
   return (
-    <div className="relative min-h-screen bg-zinc-950 flex flex-col overflow-hidden px-8 py-8">
+    <div className="relative min-h-screen bg-zinc-950 flex flex-col overflow-hidden px-8 py-5 [@media(min-height:850px)]:py-8">
       {/* ambient glows + a faint dot grid vignetted around the hero */}
       <div className="pointer-events-none absolute -top-32 left-1/3 h-[560px] w-[900px] rounded-full bg-emerald-500/[0.06] blur-3xl" />
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_bottom,rgba(24,24,27,0.6),transparent_60%)]" />
@@ -104,7 +104,7 @@ export default function SignIn({ onSignedIn }: { onSignedIn: (user: User) => voi
         <LoginShowcase />
       </div>
 
-      <div className="relative mt-auto pt-8">
+      <div className="relative mt-auto pt-5 [@media(min-height:850px)]:pt-8">
         <Disclaimer />
       </div>
     </div>

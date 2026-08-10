@@ -85,7 +85,7 @@ export default function LoginShowcase() {
   return (
     <div className="select-none h-full flex flex-col justify-center" aria-hidden="true">
       {/* The hero's own header: tagline + proof pills, centered. */}
-      <h2 className="text-center text-3xl xl:text-4xl font-extrabold tracking-tight text-zinc-100">
+      <h2 className="text-center text-3xl xl:text-4xl [@media(max-height:820px)]:text-2xl font-extrabold tracking-tight text-zinc-100">
         Every listed corporate bond.{" "}
         <span className="bg-gradient-to-r from-emerald-300 to-emerald-500 bg-clip-text text-transparent">
           One lens.
@@ -106,7 +106,7 @@ export default function LoginShowcase() {
       {/* Collage: tilted main panel + floating cards with symmetric overlaps.
           The panel eases toward the cursor; cards counter-shift for depth. */}
       <div
-        className="relative mt-9 h-[24rem] xl:h-[26rem] w-full max-w-5xl mx-auto"
+        className="relative mt-6 [@media(min-height:850px)]:mt-9 h-[clamp(17rem,44vh,26rem)] w-full max-w-5xl mx-auto"
         onPointerMove={onPointerMove}
         onPointerLeave={onPointerLeave}
       >
@@ -201,7 +201,9 @@ function ExplorerTable({ tick }: { tick: number }) {
             <div
               key={sym}
               style={rise(i)}
-              className="grid grid-cols-[1.7fr_.7fr_1fr_.7fr_.9fr] gap-2 items-center py-1.5 border-b border-zinc-900"
+              className={`grid grid-cols-[1.7fr_.7fr_1fr_.7fr_.9fr] gap-2 items-center py-1.5 border-b border-zinc-900${
+                i >= 6 ? " [@media(max-height:820px)]:hidden" : ""
+              }`}
             >
               <span>
                 <span className="font-medium text-zinc-200">{sym}</span>
