@@ -92,3 +92,26 @@ select option {
     background-color: rgb(16 185 129 / 0.12);
   }
 }
+@keyframes float-y {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-8px);
+  }
+}
+@keyframes toast-cycle {
+  0%,
+  12%,
+  88%,
+  100% {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  20%,
+  80% {
+    opacity: 1;
+    transform: none;
+  }
+}

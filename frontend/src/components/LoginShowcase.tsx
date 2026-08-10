@@ -1,204 +1,264 @@
 import { useEffect, useState } from "react";
 
-/* Animated product showcase for the sign-in page: three scenes (explorer,
-   portfolio, order book) rotating with a crossfade. Everything below is
-   FICTIONAL demo data — invented issuers, symbols and numbers — rendered
-   in code so it stays crisp, weightless and on-theme. */
+/* Marketing hero for the sign-in page: a perspective-tilted explorer
+   panel with floating order-book / income / rating cards overlapping
+   its corners, ticking continuously like a live terminal. Everything
+   is FICTIONAL demo data — invented issuers, symbols and numbers —
+   rendered in code so it stays crisp, weightless and on-theme. */
 
-const SCENE_MS = 4500;
+const TICK_MS = 2000;
 
-const CAPTIONS = [
-  "2,000+ listed NCDs with live YTM, ratings and liquidity",
-  "Your holdings, income mapped to maturity",
-  "Live order-book depth, straight from your broker",
+const CHIPS = ["2,000+ listed NCDs", "Live YTM & ratings", "Broker-connected orders"];
+
+// -- Explorer rows: [symbol, issuer, ytm, base price, rating, maturity, seed]
+const ROWS = [
+  ["9NBFC27", "NBFC FINANCE LTD", "11.84", 101250, "AA-", "Jun 2027", 1],
+  ["11HFC29", "HOMEFIRST HOUSING", "12.40", 98730, "A+", "Mar 2029", 2],
+  ["10MFI28", "GRAMEEN MICROFIN", "13.15", 99910, "A", "Sep 2028", 3],
+  ["9IFRA31", "INFRA INVIT TRUST", "10.62", 104080, "AAA", "Dec 2031", 4],
+  ["12GOLD26", "AURUM GOLD LOANS", "12.95", 100340, "A-", "Nov 2026", 5],
+  ["10SFB28", "SARVODAYA SFB", "11.20", 99450, "AA-", "Feb 2028", 6],
+  ["9PWR30", "JYOTI POWERGRID", "10.95", 102670, "AA+", "Aug 2030", 7],
+  ["13MFL27", "MAITRI FINLEASE", "13.60", 97880, "BBB+", "Jan 2027", 8],
+] as const;
+
+const BIDS: [number, number][] = [
+  [99750, 51],
+  [99400, 120],
+  [99100, 30],
+];
+const ASKS: [number, number][] = [
+  [100150, 40],
+  [100400, 90],
+  [100900, 25],
 ];
 
-// -- Scene 1: explorer rows (fictional) --------------------------------------
-const EXPLORER_ROWS = [
-  ["9NBFC27", "NBFC FINANCE LTD", "11.84", "₹1,01,250", "up", "AA-", "Jun 2027"],
-  ["11HFC29", "HOMEFIRST HOUSING", "12.40", "₹98,730", "up", "A+", "Mar 2029"],
-  ["10MFI28", "GRAMEEN MICROFIN", "13.15", "₹99,910", "down", "A", "Sep 2028"],
-  ["9IFRA31", "INFRA INVIT TRUST", "10.62", "₹1,04,080", "up", "AAA", "Dec 2031"],
-  ["12GOLD26", "AURUM GOLD LOANS", "12.95", "₹1,00,340", "up", "A-", "Nov 2026"],
-  ["10SFB28", "SARVODAYA SFB", "11.20", "₹99,450", "down", "AA-", "Feb 2028"],
-] as const;
+const INCOME_BARS = [0.35, 0.35, 0.38, 0.6, 0.35, 0.38, 0.35, 1.0];
 
-// -- Scene 2: portfolio (fictional) -------------------------------------------
-const STATS = [
-  ["Invested", "₹4.2 L", false],
-  ["Current value", "₹4.4 L (+4.7%)", true],
-  ["Avg YTM", "12.4%", true],
-] as const;
-// Monthly income bars: relative heights 0..1; one redemption spike.
-const BARS = [0.3, 0.3, 0.32, 0.3, 0.55, 0.3, 0.32, 0.3, 0.3, 1.0, 0.18, 0.2];
-const REDEMPTION_BAR = 9;
+/** Deterministic wave in [-1, 1] — stable per (tick, seed), no Math.random
+ * in render so React re-renders stay pure. */
+const wave = (tick: number, seed: number) => Math.sin(tick * 3.7 + seed * 13.1);
 
-// -- Scene 3: order book (fictional) ------------------------------------------
-const BIDS = [
-  ["₹99,750", 51],
-  ["₹99,400", 120],
-  ["₹99,100", 30],
-  ["₹98,800", 75],
-  ["₹98,500", 12],
-] as const;
-const ASKS = [
-  ["₹1,00,150", 40],
-  ["₹1,00,400", 90],
-  ["₹1,00,900", 25],
-  ["₹1,01,200", 60],
-  ["₹1,01,500", 18],
-] as const;
+const inr = (v: number) => `₹${v.toLocaleString("en-IN")}`;
 
 const rise = (i: number): React.CSSProperties => ({
-  animation: `rise-in .5s ease-out both`,
-  animationDelay: `${i * 90}ms`,
+  animation: "rise-in .5s ease-out both",
+  animationDelay: `${i * 70}ms`,
 });
 
 export default function LoginShowcase() {
-  const [scene, setScene] = useState(0);
+  const [tick, setTick] = useState(0);
   const [reduced] = useState(
     () => window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false,
   );
 
   useEffect(() => {
     if (reduced) return;
-    const t = setInterval(() => setScene((s) => (s + 1) % 3), SCENE_MS);
+    const t = setInterval(() => {
+      if (!document.hidden) setTick((n) => n + 1);
+    }, TICK_MS);
     return () => clearInterval(t);
   }, [reduced]);
 
   return (
     <div className="select-none">
-      <h2 className="text-4xl font-extrabold tracking-tight leading-tight text-zinc-100">
-        Every listed corporate bond.
+      <h2 className="text-5xl xl:text-6xl font-extrabold tracking-tight leading-[1.08] text-zinc-100">
+        Every listed
         <br />
-        <span className="text-emerald-400">One lens.</span>
+        corporate bond.
+        <br />
+        <span className="bg-gradient-to-r from-emerald-300 to-emerald-500 bg-clip-text text-transparent">
+          One lens.
+        </span>
       </h2>
-      <p className="mt-3 h-6 text-sm text-zinc-400 transition-opacity duration-500" key={scene}>
-        {CAPTIONS[scene]}
-      </p>
 
-      <div className="mt-6 rounded-2xl border border-zinc-800/80 bg-zinc-900/40 backdrop-blur-sm shadow-[0_0_80px_-20px_rgba(16,185,129,0.25)] overflow-hidden">
-        {/* fake window chrome */}
-        <div className="flex items-center gap-1.5 px-4 py-2.5 border-b border-zinc-800/80 bg-zinc-900/60">
-          <span className="h-2.5 w-2.5 rounded-full bg-zinc-700" />
-          <span className="h-2.5 w-2.5 rounded-full bg-zinc-700" />
-          <span className="h-2.5 w-2.5 rounded-full bg-zinc-700" />
-          <span className="ml-3 text-[11px] text-zinc-500 font-medium">
-            Bond<span className="text-emerald-500">Lens</span>
-            <span className="ml-2 text-zinc-600">— demo data</span>
+      <div className="mt-6 flex flex-wrap gap-2">
+        {CHIPS.map((c) => (
+          <span
+            key={c}
+            className="inline-flex items-center gap-1.5 rounded-full border border-zinc-800 bg-zinc-900/60 px-3 py-1 text-xs text-zinc-300"
+          >
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+            {c}
           </span>
-        </div>
-
-        <div className="relative h-80">
-          {[<ExplorerScene key="e" />, <PortfolioScene key="p" />, <DepthScene key="d" />].map(
-            (el, i) => (
-              <div
-                key={CAPTIONS[i]}
-                className={`absolute inset-0 p-5 transition-all duration-700 ${
-                  scene === i ? "opacity-100 translate-y-0" : "opacity-0 translate-y-2"
-                }`}
-              >
-                {/* remount the active scene so entrance animations replay */}
-                {scene === i || reduced ? el : null}
-              </div>
-            ),
-          )}
-        </div>
+        ))}
       </div>
 
-      <div className="mt-4 flex items-center gap-2">
-        {CAPTIONS.map((c, i) => (
-          <button
-            key={c}
-            type="button"
-            aria-label={`Show scene ${i + 1}`}
-            onClick={() => setScene(i)}
-            className={`h-1.5 rounded-full transition-all duration-300 ${
-              scene === i ? "w-6 bg-emerald-500" : "w-1.5 bg-zinc-700 hover:bg-zinc-500"
-            }`}
-          />
-        ))}
+      {/* Collage: tilted main panel + floating cards with symmetric overlaps. */}
+      <div className="relative mt-10 h-[26rem]">
+        <div
+          className="absolute inset-x-6 inset-y-0 rounded-2xl border border-zinc-800 bg-zinc-900/70 backdrop-blur-sm ring-1 ring-emerald-500/10 shadow-[0_20px_80px_-20px_rgba(16,185,129,0.35)] overflow-hidden"
+          style={{ transform: "perspective(1400px) rotateY(-5deg) rotateX(2deg)" }}
+        >
+          <div className="flex items-center gap-1.5 px-4 py-2.5 border-b border-zinc-800/80 bg-zinc-900/80">
+            <span className="h-2.5 w-2.5 rounded-full bg-zinc-700" />
+            <span className="h-2.5 w-2.5 rounded-full bg-zinc-700" />
+            <span className="h-2.5 w-2.5 rounded-full bg-zinc-700" />
+            <span className="ml-3 text-[11px] text-zinc-500 font-medium">
+              Bond<span className="text-emerald-500">Lens</span>
+              <span className="ml-2 text-zinc-600">— demo data</span>
+            </span>
+          </div>
+          <ExplorerTable tick={tick} />
+        </div>
+
+        <DepthCard tick={tick} className="absolute -right-2 -top-6 w-64 rotate-2" delay="0s" />
+        <IncomeCard className="absolute -left-2 -bottom-6 w-56 -rotate-2" delay="1.3s" />
+        <div
+          className="absolute left-10 -top-4 rounded-lg border border-emerald-500/30 bg-zinc-900/90 px-3 py-1.5 text-xs shadow-xl"
+          style={reduced ? undefined : { animation: "float-y 7s ease-in-out .6s infinite" }}
+        >
+          <span className="font-semibold text-zinc-100">AA-</span>
+          <span className="ml-1.5 text-emerald-400">▲ Upgraded</span>
+        </div>
+
+        {!reduced && (
+          <div
+            className="absolute left-1/2 -translate-x-1/2 -bottom-3 rounded-lg border border-zinc-700 bg-zinc-900/95 px-4 py-2 text-xs text-zinc-200 shadow-2xl whitespace-nowrap"
+            style={{ animation: "toast-cycle 8s ease-in-out 2s infinite" }}
+          >
+            <span className="text-emerald-400">✓</span> Order placed — 51 units @ ₹99,750
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
-function ExplorerScene() {
+function ExplorerTable({ tick }: { tick: number }) {
   return (
-    <div className="text-xs">
-      <div className="grid grid-cols-[1.6fr_.7fr_1fr_.7fr_.8fr] gap-2 text-[10px] uppercase tracking-wide text-zinc-600 pb-2 border-b border-zinc-800">
+    <div className="px-4 text-xs">
+      <div className="grid grid-cols-[1.7fr_.7fr_1fr_.7fr_.9fr] gap-2 text-[10px] uppercase tracking-wide text-zinc-600 py-2 border-b border-zinc-800">
         <span>Symbol</span>
         <span className="text-right">YTM %</span>
         <span className="text-right">LTP</span>
         <span>Rating</span>
         <span className="text-right">Maturity</span>
       </div>
-      {EXPLORER_ROWS.map(([sym, issuer, ytm, ltp, dir, rating, mat], i) => (
-        <div
-          key={sym}
-          style={rise(i)}
-          className="grid grid-cols-[1.6fr_.7fr_1fr_.7fr_.8fr] gap-2 items-center py-2 border-b border-zinc-900"
-        >
-          <span>
-            <span className="font-medium text-zinc-200">{sym}</span>
-            <span className="block text-[9px] text-zinc-600 truncate">{issuer}</span>
-          </span>
-          <span className="text-right font-semibold text-emerald-400">{ytm}%</span>
-          <span className="text-right text-zinc-300">
-            {ltp}
-            <span className={dir === "up" ? "text-emerald-500" : "text-red-400"}>
-              {dir === "up" ? " ▲" : " ▼"}
+      {ROWS.map(([sym, issuer, ytm, base, rating, mat, seed], i) => {
+        // A few rows tick each cycle: price nudges, arrow follows the move.
+        const w = wave(tick, seed);
+        const moves = Math.abs(w) > 0.45;
+        const delta = moves ? Math.round(w * 8) * 10 : 0;
+        const price = base + delta;
+        const up = delta >= 0;
+        // One row's YTM drifts a couple of bps for life-likeness.
+        const shownYtm = sym === "11HFC29" ? (Number(ytm) + wave(tick, 99) * 0.02).toFixed(2) : ytm;
+        return (
+          <div
+            key={sym}
+            style={rise(i)}
+            className="grid grid-cols-[1.7fr_.7fr_1fr_.7fr_.9fr] gap-2 items-center py-[7px] border-b border-zinc-900"
+          >
+            <span>
+              <span className="font-medium text-zinc-200">{sym}</span>
+              <span className="block text-[9px] text-zinc-600 truncate">{issuer}</span>
             </span>
-          </span>
-          <span className="text-zinc-300">
-            {rating}
-            {sym === "10MFI28" && (
-              <span className="ml-1.5 text-[8px] px-1 py-0.5 rounded bg-red-500/15 text-red-400 border border-red-500/30">
-                DOWNGRADED
-              </span>
-            )}
-          </span>
-          <span className="text-right text-zinc-400">{mat}</span>
-        </div>
-      ))}
+            <span className="text-right font-semibold text-emerald-400">{shownYtm}%</span>
+            <span
+              key={price} /* remount on change so the flash replays */
+              className="text-right text-zinc-300 rounded"
+              style={moves ? { animation: "tick-flash 1.2s ease-out" } : undefined}
+            >
+              {inr(price)}
+              <span className={up ? "text-emerald-500" : "text-red-400"}>{up ? " ▲" : " ▼"}</span>
+            </span>
+            <span className="text-zinc-300">
+              {rating}
+              {sym === "10MFI28" && (
+                <span className="ml-1.5 text-[8px] px-1 py-0.5 rounded bg-red-500/15 text-red-400 border border-red-500/30">
+                  DOWNGRADED
+                </span>
+              )}
+            </span>
+            <span className="text-right text-zinc-400">{mat}</span>
+          </div>
+        );
+      })}
     </div>
   );
 }
 
-function PortfolioScene() {
+function DepthCard({ tick, className, delay }: { tick: number; className: string; delay: string }) {
+  const maxQty = 140;
+  const walk = (base: number, seed: number) =>
+    Math.max(8, Math.round(base + wave(tick, seed) * base * 0.35));
   return (
-    <div>
-      <div className="grid grid-cols-3 gap-3">
-        {STATS.map(([label, value, accent], i) => (
-          <div
-            key={label}
-            style={rise(i)}
-            className="rounded-lg border border-zinc-800 bg-zinc-900/50 px-3 py-2"
-          >
-            <div className="text-[10px] text-zinc-500">{label}</div>
-            <div
-              className={`text-base font-semibold ${accent ? "text-emerald-400" : "text-zinc-100"}`}
-            >
-              {value}
+    <div
+      className={`${className} rounded-xl border border-zinc-700/80 bg-zinc-900/95 p-3 shadow-2xl`}
+      style={{ animation: `float-y 6s ease-in-out ${delay} infinite` }}
+    >
+      <div className="flex items-center justify-between pb-2">
+        <span className="text-[11px] font-medium text-zinc-300">
+          9NBFC27 <span className="text-zinc-600">· depth</span>
+        </span>
+        <span className="inline-flex items-center gap-1 text-[9px] text-emerald-400 font-medium">
+          <span className="relative flex h-1.5 w-1.5">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-60" />
+            <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500" />
+          </span>
+          LIVE
+        </span>
+      </div>
+      <div className="space-y-1">
+        {BIDS.map(([price, qty], i) => {
+          const q = walk(qty, i + 21);
+          return (
+            <div key={price} className="relative h-5">
+              <div
+                className="absolute inset-y-0.5 left-0 rounded-sm bg-emerald-500/15 transition-all duration-700"
+                style={{ width: `${(q / maxQty) * 100}%` }}
+              />
+              <div className="relative flex justify-between text-[10px] leading-5">
+                <span className="text-emerald-400 font-medium">{inr(price)}</span>
+                <span className="text-zinc-400">{q}</span>
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
+        <div className="border-t border-zinc-800 my-1" />
+        {ASKS.map(([price, qty], i) => {
+          const q = walk(qty, i + 51);
+          return (
+            <div key={price} className="relative h-5">
+              <div
+                className="absolute inset-y-0.5 left-0 rounded-sm bg-red-500/15 transition-all duration-700"
+                style={{ width: `${(q / maxQty) * 100}%` }}
+              />
+              <div className="relative flex justify-between text-[10px] leading-5">
+                <span className="text-red-400 font-medium">{inr(price)}</span>
+                <span className="text-zinc-400">{q}</span>
+              </div>
+            </div>
+          );
+        })}
       </div>
-      <div className="mt-4 text-[10px] uppercase tracking-wide text-zinc-600">
-        Income to maturity
+    </div>
+  );
+}
+
+function IncomeCard({ className, delay }: { className: string; delay: string }) {
+  return (
+    <div
+      className={`${className} rounded-xl border border-zinc-700/80 bg-zinc-900/95 p-3 shadow-2xl`}
+      style={{ animation: `float-y 6.8s ease-in-out ${delay} infinite` }}
+    >
+      <div className="flex items-baseline justify-between pb-2">
+        <span className="text-[11px] font-medium text-zinc-300">Income to maturity</span>
+        <span className="text-[11px] font-semibold text-emerald-400">₹3.2 L</span>
       </div>
-      <div className="mt-2 flex items-end gap-2 h-40">
-        {BARS.map((h, i) => (
+      <div className="flex items-end gap-1 h-16">
+        {INCOME_BARS.map((h, i) => (
           <div key={`${i}-${h}`} className="flex-1 flex flex-col justify-end h-full">
             <div
               style={{
                 height: `${h * 100}%`,
                 animation: "grow-bar .6s ease-out both",
-                animationDelay: `${200 + i * 70}ms`,
+                animationDelay: `${300 + i * 80}ms`,
                 transformOrigin: "bottom",
               }}
               className={
-                i === REDEMPTION_BAR
+                h === 1
                   ? "rounded-sm bg-zinc-500/70"
                   : "rounded-sm bg-gradient-to-t from-emerald-600/80 to-emerald-400/80"
               }
@@ -206,78 +266,9 @@ function PortfolioScene() {
           </div>
         ))}
       </div>
-      <div className="mt-1.5 flex justify-between text-[9px] text-zinc-600">
-        <span>Sep 26</span>
-        <span className="text-zinc-500">↑ principal back</span>
-        <span>Aug 27</span>
-      </div>
-    </div>
-  );
-}
-
-function DepthScene() {
-  const maxQty = 120;
-  return (
-    <div className="text-xs">
-      <div className="flex items-center justify-between pb-2">
-        <span className="text-zinc-300 font-medium">
-          9NBFC27 <span className="text-zinc-600">· BSE</span>
-        </span>
-        <span className="inline-flex items-center gap-1.5 text-[10px] text-emerald-400 font-medium">
-          <span className="relative flex h-2 w-2">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-60" />
-            <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
-          </span>
-          LIVE
-        </span>
-      </div>
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <div className="text-[10px] uppercase tracking-wide text-zinc-600 pb-1.5">Buyers</div>
-          {BIDS.map(([price, qty], i) => (
-            <div key={price} style={rise(i)} className="relative py-1.5 border-b border-zinc-900">
-              <div
-                className="absolute inset-y-1 right-0 rounded-sm bg-emerald-500/10"
-                style={{ width: `${(qty / maxQty) * 100}%` }}
-              />
-              <div className="relative flex justify-between">
-                <span className="font-medium text-emerald-400">{price}</span>
-                <span className="text-zinc-400">{qty}</span>
-              </div>
-            </div>
-          ))}
-        </div>
-        <div>
-          <div className="text-[10px] uppercase tracking-wide text-zinc-600 pb-1.5">Sellers</div>
-          {ASKS.map(([price, qty], i) => (
-            <div
-              key={price}
-              style={{
-                ...rise(i),
-                ...(i === 0 ? { animation: "tick-flash 2.4s ease-in-out 1s infinite" } : {}),
-              }}
-              className="relative py-1.5 border-b border-zinc-900"
-            >
-              <div
-                className="absolute inset-y-1 left-0 rounded-sm bg-red-500/10"
-                style={{ width: `${(qty / maxQty) * 100}%` }}
-              />
-              <div className="relative flex justify-between">
-                <span className="font-medium text-red-400">{price}</span>
-                <span className="text-zinc-400">{qty}</span>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-      <div className="mt-3 flex justify-between text-[10px] text-zinc-500">
-        <span>
-          YTM at best ask: <span className="text-zinc-200 font-medium">11.9%</span>
-        </span>
-        <span>
-          One click: <span className="text-emerald-400">Buy</span> ·{" "}
-          <span className="text-red-400">Sell</span>
-        </span>
+      <div className="mt-1 flex justify-between text-[9px] text-zinc-600">
+        <span>monthly interest</span>
+        <span>↑ principal</span>
       </div>
     </div>
   );

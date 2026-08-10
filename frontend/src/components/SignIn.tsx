@@ -68,14 +68,15 @@ export default function SignIn({ onSignedIn }: { onSignedIn: (user: User) => voi
   }, [onSignedIn]);
 
   return (
-    <div className="relative min-h-screen bg-zinc-950 flex items-center justify-center overflow-hidden">
-      {/* ambient glow */}
-      <div className="pointer-events-none absolute -top-40 left-1/2 -translate-x-1/2 h-[480px] w-[720px] rounded-full bg-emerald-500/[0.07] blur-3xl" />
+    <div className="relative min-h-screen bg-zinc-950 flex items-center justify-center overflow-hidden px-6 py-16">
+      {/* ambient glows, centered on the composition */}
+      <div className="pointer-events-none absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-[70%] h-[520px] w-[820px] rounded-full bg-emerald-500/[0.07] blur-3xl" />
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_bottom,rgba(24,24,27,0.6),transparent_60%)]" />
 
       {/* Split screen on desktop: animated product showcase left, sign-in
-          right. Mobile keeps the original centered card only. */}
-      <div className="relative mx-4 w-full max-w-6xl lg:grid lg:grid-cols-[1.3fr_1fr] lg:items-center lg:gap-16">
+          right, both centered on a shared horizontal axis. Mobile keeps
+          the original centered card only. */}
+      <div className="relative w-full max-w-6xl lg:grid lg:grid-cols-[1.35fr_1fr] lg:items-center lg:gap-20">
         <div className="hidden lg:block">
           <LoginShowcase />
         </div>
