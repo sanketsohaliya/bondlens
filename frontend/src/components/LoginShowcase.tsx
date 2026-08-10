@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import Logo from "./Logo";
 
 /* Marketing hero for the sign-in page: a perspective-tilted explorer
    panel with floating order-book / income / rating cards overlapping
@@ -62,17 +63,22 @@ export default function LoginShowcase() {
 
   return (
     <div className="select-none">
-      <h2 className="text-5xl xl:text-6xl font-extrabold tracking-tight leading-[1.08] text-zinc-100">
-        Every listed
-        <br />
-        corporate bond.
-        <br />
+      {/* Brand first — the product name outranks the tagline. */}
+      <div className="flex items-center gap-3.5">
+        <Logo size={56} className="rounded-xl ring-1 ring-zinc-800" />
+        <span className="text-5xl xl:text-6xl font-extrabold tracking-tight text-zinc-100">
+          Bond<span className="text-emerald-400">Lens</span>
+        </span>
+      </div>
+
+      <h2 className="mt-5 text-2xl xl:text-3xl font-bold tracking-tight leading-snug text-zinc-200">
+        Every listed corporate bond.{" "}
         <span className="bg-gradient-to-r from-emerald-300 to-emerald-500 bg-clip-text text-transparent">
           One lens.
         </span>
       </h2>
 
-      <div className="mt-6 flex flex-wrap gap-2">
+      <div className="mt-5 flex flex-wrap gap-2">
         {CHIPS.map((c) => (
           <span
             key={c}
@@ -85,7 +91,7 @@ export default function LoginShowcase() {
       </div>
 
       {/* Collage: tilted main panel + floating cards with symmetric overlaps. */}
-      <div className="relative mt-10 h-[26rem]">
+      <div className="relative mt-8 h-[24rem]">
         <div
           className="absolute inset-x-6 inset-y-0 rounded-2xl border border-zinc-800 bg-zinc-900/70 backdrop-blur-sm ring-1 ring-emerald-500/10 shadow-[0_20px_80px_-20px_rgba(16,185,129,0.35)] overflow-hidden"
           style={{ transform: "perspective(1400px) rotateY(-5deg) rotateX(2deg)" }}

@@ -76,12 +76,14 @@ export default function SignIn({ onSignedIn }: { onSignedIn: (user: User) => voi
       {/* Split screen on desktop: animated product showcase left, sign-in
           right, both centered on a shared horizontal axis. Mobile keeps
           the original centered card only. */}
-      <div className="relative w-full max-w-6xl lg:grid lg:grid-cols-[1.35fr_1fr] lg:items-center lg:gap-20">
+      {/* items-start: the card's top edge lines up with the brand row
+          so both columns start on one line. */}
+      <div className="relative w-full max-w-6xl lg:grid lg:grid-cols-[1.35fr_1fr] lg:items-start lg:gap-20">
         <div className="hidden lg:block">
           <LoginShowcase />
         </div>
 
-        <div className="mx-auto w-full max-w-sm">
+        <div className="mx-auto w-full max-w-sm lg:mt-1">
           <div className="rounded-2xl border border-zinc-800/80 bg-zinc-900/60 backdrop-blur-sm shadow-[0_0_60px_-15px_rgba(16,185,129,0.15)] p-8 text-center">
             <div className="flex items-center justify-center gap-2.5">
               <Logo size={34} className="rounded-lg ring-1 ring-zinc-800" />
