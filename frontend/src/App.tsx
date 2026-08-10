@@ -120,7 +120,7 @@ export default function App() {
 
         <main className="space-y-6">
           {page === "portfolio" ? (
-            <Portfolio onSelect={(isin) => setSelected({ isin })} />
+            <Portfolio onSelect={(isin, tab) => setSelected({ isin, tab })} />
           ) : (
             <>
               <FilterBar

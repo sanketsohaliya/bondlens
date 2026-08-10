@@ -1134,6 +1134,18 @@ export type PortfolioPosition = {
      */
     rating_grade: string | null;
     /**
+     * Rating Change
+     */
+    rating_change: 'up' | 'down' | null;
+    /**
+     * Rating Prev
+     */
+    rating_prev: string | null;
+    /**
+     * Rating Changed At
+     */
+    rating_changed_at: string | null;
+    /**
      * Sector
      */
     sector: string | null;

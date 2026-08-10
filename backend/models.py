@@ -271,6 +271,9 @@ class PortfolioPosition(BaseModel):
     credit_rating: str | None
     rating_rank: int | None
     rating_grade: str | None
+    rating_change: Literal["up", "down"] | None
+    rating_prev: str | None
+    rating_changed_at: date | None
     sector: str | None
     maturity_date: date | None
     years_to_maturity: float | None

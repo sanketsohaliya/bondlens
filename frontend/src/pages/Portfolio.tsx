@@ -13,6 +13,7 @@ import type {
   PortfolioPosition,
 } from "../api/types";
 import AddLotSearch from "../components/AddLotSearch";
+import type { Tab as DrawerTab } from "../components/BondDrawer";
 import CopyBtn from "../components/CopyBtn";
 import Donut from "../components/Donut";
 import { BookmarkIcon } from "../components/ExploreTable";
@@ -49,7 +50,11 @@ const PORTFOLIO_TABS: Array<[PortfolioTab, string]> = [
   ["news", "Market news"],
 ];
 
-export default function Portfolio({ onSelect }: { onSelect: (isin: string) => void }) {
+export default function Portfolio({
+  onSelect,
+}: {
+  onSelect: (isin: string, tab?: DrawerTab) => void;
+}) {
   const { data, isLoading, error } = usePortfolio();
   const [filter, setFilter] = useState<SliceFilter | null>(null);
   const [nameQuery, setNameQuery] = useState("");
@@ -288,7 +293,7 @@ function HoldingsTable({
   onSelect,
 }: {
   positions: PortfolioPosition[];
-  onSelect: (isin: string) => void;
+  onSelect: (isin: string, tab?: DrawerTab) => void;
 }) {
   const [openIsin, setOpenIsin] = useState<string | null>(null);
   const [sort, setSort] = useState<{ key: HoldingsSortKey; dir: 1 | -1 }>({
@@ -343,7 +348,7 @@ function HoldingsTable({
               p={p}
               open={openIsin === p.isin}
               onToggle={() => setOpenIsin(openIsin === p.isin ? null : p.isin)}
-              onSelect={() => onSelect(p.isin)}
+              onSelect={(tab?: DrawerTab) => onSelect(p.isin, tab)}
             />
           ))}
           {sorted.length === 0 && (
@@ -368,7 +373,7 @@ function PositionRow({
   p: PortfolioPosition;
   open: boolean;
   onToggle: () => void;
-  onSelect: () => void;
+  onSelect: (tab?: DrawerTab) => void;
 }) {
   return (
     <>
@@ -402,10 +407,28 @@ function PositionRow({
           </button>
           <div className="text-[10px] text-zinc-600">{p.isin}</div>
         </td>
-        <td className={TD}>
-          <span title={p.credit_rating ?? undefined}>
-            <RatingBadge rating={p.rating_grade} showAgency={false} />
-          </span>
+        {/* Same treatment as the explorer's rating cell: full rating with
+            agency sub-line and the recent up/downgrade arrow; clicking
+            jumps to the drawer's rating timeline. */}
+        <td
+          className={`${TD} cursor-pointer`}
+          title="View rating history"
+          onClick={(e) => {
+            e.stopPropagation();
+            onSelect("ratings");
+          }}
+        >
+          <RatingBadge
+            rating={p.credit_rating}
+            tone={p.rating_change === "down" ? "down" : p.rating_change === "up" ? "up" : undefined}
+            toneTitle={
+              p.rating_change === "down"
+                ? `Downgraded${p.rating_changed_at ? ` on ${fmt.date(p.rating_changed_at)}` : ""} — was ${p.rating_prev}`
+                : p.rating_change === "up"
+                  ? `Upgraded${p.rating_changed_at ? ` on ${fmt.date(p.rating_changed_at)}` : ""} — was ${p.rating_prev}`
+                  : undefined
+            }
+          />
         </td>
         <td className={`${TD} text-right tabular-nums`}>{fmt.num(p.units, 2)}</td>
         <td className={`${TD} text-right tabular-nums`}>{fmt.inr(p.invested)}</td>
