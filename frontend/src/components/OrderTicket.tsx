@@ -122,7 +122,7 @@ export default function OrderTicket({
                     : "border-red-500 text-red-400 bg-red-500/10"
                 }`}
               >
-                {side} (side can't change on modify)
+                {side}
               </div>
             ) : (
               <div className="flex gap-1">
