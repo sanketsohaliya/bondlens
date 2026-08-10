@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "../api/client";
 import type { User } from "../api/types";
+import Disclaimer from "./Disclaimer";
 import LoginShowcase from "./LoginShowcase";
 import Logo from "./Logo";
 
@@ -69,9 +70,10 @@ export default function SignIn({ onSignedIn }: { onSignedIn: (user: User) => voi
 
   return (
     <div className="relative min-h-screen bg-zinc-950 flex flex-col overflow-hidden px-8 py-8">
-      {/* ambient glows */}
+      {/* ambient glows + a faint dot grid vignetted around the hero */}
       <div className="pointer-events-none absolute -top-32 left-1/3 h-[560px] w-[900px] rounded-full bg-emerald-500/[0.06] blur-3xl" />
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_bottom,rgba(24,24,27,0.6),transparent_60%)]" />
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(rgb(63_63_70_/_0.3)_1px,transparent_1px)] [background-size:26px_26px] [mask-image:radial-gradient(ellipse_65%_60%_at_50%_48%,black,transparent)]" />
 
       {/* Slim navbar: quiet brand top-left, sign-in card top-right.
           The tagline/pills are the hero's own header (LoginShowcase). */}
@@ -102,11 +104,9 @@ export default function SignIn({ onSignedIn }: { onSignedIn: (user: User) => voi
         <LoginShowcase />
       </div>
 
-      <p className="relative mt-auto pt-8 max-w-4xl mx-auto text-center text-xs leading-relaxed text-zinc-500">
-        Not investment advice. Prices, yields and ratings are derived from exchange/depository data
-        that may be delayed, incomplete or inaccurate; verify independently before acting. Bonds
-        carry credit and liquidity risk, including loss of principal.
-      </p>
+      <div className="relative mt-auto pt-8">
+        <Disclaimer />
+      </div>
     </div>
   );
 }

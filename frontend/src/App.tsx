@@ -4,6 +4,7 @@ import { api } from "./api/client";
 import type { ExploreParams } from "./api/types";
 import { GOTO_PORTFOLIO_EVENT } from "./components/AddLotPopover";
 import BondDrawer, { type Tab } from "./components/BondDrawer";
+import Disclaimer from "./components/Disclaimer";
 import ExploreTable, { type SortState } from "./components/ExploreTable";
 import FilterBar, { DEFAULT_FILTERS, type ListModes } from "./components/FilterBar";
 import Logo from "./components/Logo";
@@ -177,10 +178,8 @@ export default function App() {
           )}
         </main>
 
-        <footer className="mt-10 pt-4 border-t border-zinc-800 text-xs leading-relaxed text-zinc-500">
-          Not investment advice. Prices, yields and ratings are derived from exchange/depository
-          data that may be delayed, incomplete or inaccurate; verify independently before acting.
-          Bonds carry credit and liquidity risk, including loss of principal.
+        <footer className="mt-10 pt-4 border-t border-zinc-800">
+          <Disclaimer />
         </footer>
       </div>
 

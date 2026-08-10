@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 /* Marketing hero for the sign-in page: a perspective-tilted explorer
    panel with floating order-book / income / rating cards overlapping
@@ -60,8 +60,30 @@ export default function LoginShowcase() {
     return () => clearInterval(t);
   }, [reduced]);
 
+  // Cursor parallax: the panel leans up to ±3° toward the pointer
+  // (rAF-throttled, mouse only); cards counter-shift a few px for depth.
+  const [tilt, setTilt] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const rafPending = useRef(false);
+  const lastEvent = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (reduced || e.pointerType !== "mouse") return;
+    const box = e.currentTarget.getBoundingClientRect();
+    lastEvent.current = {
+      x: ((e.clientX - box.left) / box.width) * 2 - 1,
+      y: ((e.clientY - box.top) / box.height) * 2 - 1,
+    };
+    if (!rafPending.current) {
+      rafPending.current = true;
+      requestAnimationFrame(() => {
+        rafPending.current = false;
+        setTilt(lastEvent.current);
+      });
+    }
+  };
+  const onPointerLeave = () => setTilt({ x: 0, y: 0 });
+
   return (
-    <div className="select-none h-full flex flex-col justify-center">
+    <div className="select-none h-full flex flex-col justify-center" aria-hidden="true">
       {/* The hero's own header: tagline + proof pills, centered. */}
       <h2 className="text-center text-3xl xl:text-4xl font-extrabold tracking-tight text-zinc-100">
         Every listed corporate bond.{" "}
@@ -81,11 +103,18 @@ export default function LoginShowcase() {
         ))}
       </div>
 
-      {/* Collage: tilted main panel + floating cards with symmetric overlaps. */}
-      <div className="relative mt-9 h-[24rem] xl:h-[26rem] w-full max-w-5xl mx-auto">
+      {/* Collage: tilted main panel + floating cards with symmetric overlaps.
+          The panel eases toward the cursor; cards counter-shift for depth. */}
+      <div
+        className="relative mt-9 h-[24rem] xl:h-[26rem] w-full max-w-5xl mx-auto"
+        onPointerMove={onPointerMove}
+        onPointerLeave={onPointerLeave}
+      >
         <div
-          className="absolute inset-x-10 inset-y-2 rounded-2xl border border-zinc-800 bg-zinc-900/70 backdrop-blur-sm ring-1 ring-emerald-500/10 shadow-[0_20px_80px_-20px_rgba(16,185,129,0.35)] overflow-hidden"
-          style={{ transform: "perspective(1600px) rotateY(-4deg) rotateX(2deg)" }}
+          className="absolute inset-x-10 inset-y-2 rounded-2xl border border-zinc-800 bg-zinc-900/70 backdrop-blur-sm ring-1 ring-emerald-500/10 shadow-[0_20px_80px_-20px_rgba(16,185,129,0.35)] overflow-hidden transition-transform duration-300 ease-out"
+          style={{
+            transform: `perspective(1600px) rotateY(${-4 + tilt.x * 3}deg) rotateX(${2 - tilt.y * 3}deg)`,
+          }}
         >
           <div className="flex items-center gap-1.5 px-4 py-2.5 border-b border-zinc-800/80 bg-zinc-900/80">
             <span className="h-2.5 w-2.5 rounded-full bg-zinc-700" />
@@ -95,14 +124,23 @@ export default function LoginShowcase() {
               Bond<span className="text-emerald-500">Lens</span>
               <span className="ml-2 text-zinc-600">— demo data</span>
             </span>
+            <span className="ml-auto text-[10px] text-zinc-600">
+              NSE · BSE — <SessionClock reduced={reduced} />
+            </span>
           </div>
           <div className="h-[calc(100%-41px)]">
             <ExplorerTable tick={tick} />
           </div>
         </div>
 
-        <DepthCard tick={tick} className="absolute -right-4 top-2 w-72 rotate-2" delay="0s" />
-        <IncomeCard className="absolute -left-4 bottom-4 w-64 -rotate-2" delay="1.3s" />
+        {/* Floating cards counter-shift slightly against the tilt. */}
+        <div
+          className="absolute inset-0 pointer-events-none transition-transform duration-300 ease-out"
+          style={{ transform: `translate(${tilt.x * -6}px, ${tilt.y * -6}px)` }}
+        >
+          <DepthCard tick={tick} className="absolute -right-4 top-2 w-72 rotate-2" delay="0s" />
+          <IncomeCard className="absolute -left-4 bottom-4 w-64 -rotate-2" delay="1.3s" />
+        </div>
         <div
           className="absolute left-14 -top-3 rounded-lg border border-emerald-500/30 bg-zinc-900/90 px-3 py-1.5 text-xs shadow-xl"
           style={reduced ? undefined : { animation: "float-y 7s ease-in-out .6s infinite" }}
@@ -122,6 +160,18 @@ export default function LoginShowcase() {
       </div>
     </div>
   );
+}
+
+/** Decorative live clock in the fake window chrome ("this is live"). */
+function SessionClock({ reduced }: { reduced: boolean }) {
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    if (reduced) return;
+    const t = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(t);
+  }, [reduced]);
+  if (reduced) return <span>live session</span>;
+  return <span>{now.toLocaleTimeString("en-IN", { hour12: false })} IST</span>;
 }
 
 function ExplorerTable({ tick }: { tick: number }) {
