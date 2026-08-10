@@ -10,9 +10,10 @@ import Logo from "./components/Logo";
 import NotificationsBell from "./components/NotificationsBell";
 import { useAuth } from "./lib/auth";
 import { unionIsins, useWatchlists } from "./lib/lists";
+import Orders from "./pages/Orders";
 import Portfolio from "./pages/Portfolio";
 
-type Page = "explore" | "portfolio";
+type Page = "explore" | "portfolio" | "orders";
 
 export default function App() {
   const [page, setPage] = useState<Page>("explore");
@@ -31,6 +32,32 @@ export default function App() {
     window.addEventListener(GOTO_PORTFOLIO_EVENT, go);
     return () => window.removeEventListener(GOTO_PORTFOLIO_EVENT, go);
   }, []);
+
+  // Orders tab exists only while Kite is connected and there are orders
+  // today. No background polling: placing an order through the ticket
+  // invalidates ["kite-orders"], so the tab pops in event-driven; the
+  // Orders page itself polls while open.
+  const { data: kite } = useQuery({
+    queryKey: ["kite-status"],
+    queryFn: api.kite.status,
+    staleTime: 120_000,
+    refetchOnWindowFocus: false,
+  });
+  const kiteConnected = kite?.connected ?? false;
+  const kiteOrders = useQuery({
+    queryKey: ["kite-orders"],
+    queryFn: api.kite.orders,
+    enabled: kiteConnected,
+    staleTime: 30_000,
+    refetchOnWindowFocus: false,
+  });
+  // Keep the tab while the user is standing on it, so cancelling the
+  // last order doesn't yank the page away mid-interaction.
+  const showOrdersTab =
+    (kiteConnected && (kiteOrders.data?.orders.length ?? 0) > 0) || page === "orders";
+  useEffect(() => {
+    if (page === "orders" && !kiteConnected) setPage("explore");
+  }, [page, kiteConnected]);
 
   // A search means "find me this bond" — the explore filters would only
   // hide what the user is explicitly looking for, so q bypasses them.
@@ -76,6 +103,7 @@ export default function App() {
               [
                 ["explore", "Explore"],
                 ["portfolio", "Portfolio"],
+                ...(showOrdersTab ? ([["orders", "Orders"]] as const) : []),
               ] as const
             ).map(([id, label]) => (
               <button
@@ -119,7 +147,9 @@ export default function App() {
         </header>
 
         <main className="space-y-6">
-          {page === "portfolio" ? (
+          {page === "orders" ? (
+            <Orders onSelect={(isin) => setSelected({ isin })} />
+          ) : page === "portfolio" ? (
             <Portfolio onSelect={(isin, tab) => setSelected({ isin, tab })} />
           ) : (
             <>

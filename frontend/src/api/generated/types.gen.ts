@@ -706,6 +706,14 @@ export type KiteOrder = {
      */
     order_id: string;
     /**
+     * Isin
+     */
+    isin?: string | null;
+    /**
+     * Issuer Name
+     */
+    issuer_name?: string | null;
+    /**
      * Tradingsymbol
      */
     tradingsymbol: string | null;

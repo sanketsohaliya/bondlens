@@ -343,6 +343,29 @@ def explorer_filters() -> dict:
             "frequencies": [r["frequency"] for r in freqs]}
 
 
+def symbol_bond_map() -> dict[tuple[str, str], dict]:
+    """(exchange, Kite tradingsymbol) -> {isin, issuer_name} for every
+    listed bond, using Kite's symbol conventions (NSE bonds trade as
+    ``{SYMBOL}-{SERIES}``, BSE as the scrip id). Used to resolve the
+    user's Kite orders back to bonds."""
+    with db._conn() as conn:
+        rows = conn.execute(
+            "SELECT isin, issuer_name, nse_symbol, nse_series, bse_scrip_id "
+            "FROM bond_analytics "
+            "WHERE nse_symbol IS NOT NULL OR bse_scrip_id IS NOT NULL"
+        ).fetchall()
+    out: dict[tuple[str, str], dict] = {}
+    for r in rows:
+        bond = {"isin": r["isin"], "issuer_name": r["issuer_name"]}
+        if r["nse_symbol"]:
+            if r["nse_series"]:
+                out[("NSE", f"{r['nse_symbol']}-{r['nse_series']}")] = bond
+            out.setdefault(("NSE", r["nse_symbol"]), bond)
+        if r["bse_scrip_id"]:
+            out[("BSE", r["bse_scrip_id"])] = bond
+    return out
+
+
 # --- Detail view ------------------------------------------------------------
 
 def bond_row(isin: str) -> dict | None:

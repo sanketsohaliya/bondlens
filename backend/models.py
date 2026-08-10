@@ -435,6 +435,8 @@ class KiteOrderId(BaseModel):
 
 class KiteOrder(BaseModel):
     order_id: str
+    isin: str | None = None  # resolved from the tradingsymbol; None = not a bond
+    issuer_name: str | None = None
     tradingsymbol: str | None
     exchange: str | None
     transaction_type: str | None

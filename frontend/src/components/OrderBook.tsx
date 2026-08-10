@@ -26,12 +26,10 @@ export default function OrderBook({
   isin,
   nseSymbol,
   nseSeries,
-  bseScripId,
 }: {
   isin: string;
   nseSymbol?: string | null;
   nseSeries?: string | null;
-  bseScripId?: string | null;
 }) {
   const { data: kite } = useQuery({
     queryKey: ["kite-status"],
@@ -153,14 +151,7 @@ export default function OrderBook({
         </div>
       )}
 
-      {connected && (
-        <OrdersStrip
-          isin={isin}
-          nseSymbol={nseSymbol}
-          nseSeries={nseSeries}
-          bseScripId={bseScripId}
-        />
-      )}
+      {connected && <OrdersStrip isin={isin} />}
 
       <p className="text-[11px] text-zinc-600">
         Exchange order books are anonymous — no broker/app identity is published. Ask rows show the
@@ -370,17 +361,7 @@ function Ladder({
 
 /** Today's Kite orders for THIS bond (order placement is per-user, on
  * their own Zerodha account; Kite is the system of record). */
-function OrdersStrip({
-  isin,
-  nseSymbol,
-  nseSeries,
-  bseScripId,
-}: {
-  isin: string;
-  nseSymbol?: string | null;
-  nseSeries?: string | null;
-  bseScripId?: string | null;
-}) {
+function OrdersStrip({ isin }: { isin: string }) {
   const qc = useQueryClient();
   const { data } = useQuery({
     queryKey: ["kite-orders"],
@@ -393,14 +374,8 @@ function OrdersStrip({
     onSettled: () => qc.invalidateQueries({ queryKey: ["kite-orders"] }),
   });
 
-  const symbols = new Set(
-    [nseSymbol && nseSeries ? `${nseSymbol}-${nseSeries}` : null, nseSymbol, bseScripId, isin]
-      .filter(Boolean)
-      .map((s) => String(s).toUpperCase()),
-  );
-  const mine = (data?.orders ?? []).filter(
-    (o) => o.tradingsymbol && symbols.has(o.tradingsymbol.toUpperCase()),
-  );
+  // The server resolves each order's tradingsymbol back to its ISIN.
+  const mine = (data?.orders ?? []).filter((o) => o.isin === isin);
   if (mine.length === 0) return null;
 
   const cancellable = (o: KiteOrder) =>

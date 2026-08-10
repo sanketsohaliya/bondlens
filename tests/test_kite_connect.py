@@ -97,7 +97,7 @@ def test_403_clears_only_that_users_token(kite_env, monkeypatch):
                                        "message": "Token expired"}))
     with pytest.raises(kite_connect.KiteError) as e:
         kite_connect.list_orders(1)
-    assert e.value.status == 401
+    assert e.value.status == 409  # not 401: mustn't look like app-session death
     assert kite_connect.token_for(1) is None
     assert kite_connect.token_for(2) == "tok-b"
 
@@ -315,6 +315,38 @@ def test_callback_authenticates_via_state_and_redirects_to_origin(
         "request_token": "req", "status": "success", "state": "junk"})
     assert r.headers["location"] == "/?kite=error"
     assert not kite_env
+
+
+def test_orders_endpoint_resolves_bonds(kite_env, monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from backend import queries
+    from backend.app import app
+    from backend.auth import require_user
+    kite_env[1] = "tok"
+    monkeypatch.setattr(kite_connect, "list_orders", lambda uid: [
+        {"order_id": "1", "tradingsymbol": "96IIFL28-N5", "exchange": "NSE",
+         "transaction_type": "BUY", "quantity": 10, "filled_quantity": 0,
+         "price": 1010.0, "average_price": None, "status": "OPEN",
+         "status_message": None, "order_timestamp": "2026-08-10 10:00:00"},
+        {"order_id": "2", "tradingsymbol": "INFY", "exchange": "NSE",
+         "transaction_type": "SELL", "quantity": 1, "filled_quantity": 1,
+         "price": 1500.0, "average_price": 1500.0, "status": "COMPLETE",
+         "status_message": None, "order_timestamp": "2026-08-10 10:01:00"},
+    ])
+    monkeypatch.setattr(queries, "symbol_bond_map", lambda: {
+        ("NSE", "96IIFL28-N5"): {"isin": "INE000TEST01",
+                                 "issuer_name": "IIFL FINANCE"},
+    })
+    app.dependency_overrides[require_user] = lambda: 1
+    try:
+        orders = TestClient(app).get("/api/kite/orders").json()["orders"]
+    finally:
+        app.dependency_overrides.clear()
+    bond, stock = orders
+    assert bond["isin"] == "INE000TEST01"
+    assert bond["issuer_name"] == "IIFL FINANCE"
+    assert stock["isin"] is None and stock["issuer_name"] is None
 
 
 def test_depth_ws_rejects_missing_session():

@@ -221,7 +221,6 @@ export default function BondDrawer({
                   isin={bond.isin}
                   nseSymbol={bond.nse_symbol}
                   nseSeries={bond.nse_series}
-                  bseScripId={bond.bse_scrip_id}
                 />
               )}
               {tab === "ratings" && <RatingTimeline timeline={bond.rating_timeline} />}

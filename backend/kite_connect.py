@@ -122,7 +122,10 @@ def _payload(resp: requests.Response) -> dict[str, Any] | list[Any]:
         data = body.get("data")
         return data if data is not None else {}
     message = body.get("message") or f"Kite error (HTTP {resp.status_code})"
-    raise KiteError(401 if resp.status_code == 403 else 400, message)
+    # 409 (not 401) for Kite-session problems: the frontend treats any
+    # non-/api/auth 401 as a dead BondLens session and flips to the
+    # sign-in screen — a mid-day Kite token expiry must not look like that.
+    raise KiteError(409 if resp.status_code == 403 else 400, message)
 
 
 def _request(user_id: int, method: str, path: str,
@@ -132,7 +135,7 @@ def _request(user_id: int, method: str, path: str,
     (TokenException — daily expiry / revoked) clears the stored token."""
     token = token_for(user_id)
     if token is None:
-        raise KiteError(401, "Kite is not connected")
+        raise KiteError(409, "Kite is not connected")
     resp = requests.request(
         method, API_ROOT + path, params=params, data=data, timeout=10,
         headers={"X-Kite-Version": "3",

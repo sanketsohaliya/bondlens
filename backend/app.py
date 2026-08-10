@@ -574,8 +574,16 @@ def kite_place_order(body: models.KiteOrderRequest,
 @router.get("/api/kite/orders", response_model=models.KiteOrdersResponse)
 def kite_orders(user_id: int = Depends(auth.require_user)):
     """Today's orders on the user's Zerodha account (Kite is the system
-    of record; nothing is stored app-side)."""
-    return {"orders": _kite_call(kite_connect.list_orders, user_id)}
+    of record; nothing is stored app-side). Bond orders are resolved
+    back to their ISIN/issuer; other instruments pass through plain."""
+    orders = _kite_call(kite_connect.list_orders, user_id)
+    bonds = queries.symbol_bond_map()
+    for o in orders:
+        hit = bonds.get(((o.get("exchange") or "").upper(),
+                         o.get("tradingsymbol") or ""))
+        o["isin"] = hit["isin"] if hit else None
+        o["issuer_name"] = hit["issuer_name"] if hit else None
+    return {"orders": orders}
 
 
 @router.delete("/api/kite/orders/{order_id}", response_model=models.Ok)
