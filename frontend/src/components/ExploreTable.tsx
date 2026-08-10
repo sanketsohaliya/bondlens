@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { fmt } from "../api/client";
 import type { Bond } from "../api/types";
 import { nextListName, useHeldIsins, useWatchlists } from "../lib/lists";
+import { useColumnWidths } from "../lib/useColumnWidths";
 import AddLotPopover from "./AddLotPopover";
 import CopyBtn from "./CopyBtn";
 import RatingBadge from "./RatingBadge";
@@ -21,14 +22,13 @@ const yearsMonths = (years: number) => {
 
 type SortKey = keyof Pick<
   Bond,
-  "ytm" | "ltp" | "turnover" | "years_to_maturity" | "rating_rank" | "days_since_traded"
+  "ytm" | "turnover" | "years_to_maturity" | "rating_rank" | "days_since_traded"
 >;
 
 const COLS: { key: SortKey | null; label: string; right?: boolean }[] = [
   { key: null, label: "" },
   { key: null, label: "Symbol" },
-  { key: "ytm", label: "YTM %" },
-  { key: "ltp", label: "LTP" },
+  { key: "ytm", label: "YTM @ LTP" },
   { key: "turnover", label: "Retail turnover" },
   { key: "rating_rank", label: "Rating" },
   { key: "years_to_maturity", label: "Maturity", right: true },
@@ -60,45 +60,9 @@ export default function ExploreTable({
       onSortChange?.(next);
       return next;
     });
-  const tableRef = useRef<HTMLTableElement>(null);
-  const [widths, setWidths] = useState<number[] | null>(() => {
-    try {
-      const current = localStorage.getItem(COLUMN_WIDTHS_KEY);
-      const legacy = current === null ? localStorage.getItem(LEGACY_COLUMN_WIDTHS_KEY) : null;
-      const saved = JSON.parse(current ?? legacy ?? "null");
-      if (legacy !== null) {
-        localStorage.setItem(COLUMN_WIDTHS_KEY, legacy);
-        localStorage.removeItem(LEGACY_COLUMN_WIDTHS_KEY);
-      }
-      return Array.isArray(saved) && saved.length === COLS.length ? saved : null;
-    } catch {
-      return null;
-    }
+  const { widths, tableRef, startResize } = useColumnWidths(COLUMN_WIDTHS_KEY, COLS.length, {
+    legacyKey: LEGACY_COLUMN_WIDTHS_KEY,
   });
-
-  const startResize = (i: number, e: React.PointerEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    const table = tableRef.current;
-    if (!table) return;
-    const ths = Array.from(table.querySelectorAll("thead th"));
-    const base = widths ?? ths.map((t) => t.getBoundingClientRect().width);
-    const startX = e.clientX;
-    const startW = base[i];
-    let next = base;
-    const move = (ev: PointerEvent) => {
-      next = [...base];
-      next[i] = Math.max(48, startW + ev.clientX - startX);
-      setWidths(next);
-    };
-    const up = () => {
-      window.removeEventListener("pointermove", move);
-      window.removeEventListener("pointerup", up);
-      localStorage.setItem(COLUMN_WIDTHS_KEY, JSON.stringify(next));
-    };
-    window.addEventListener("pointermove", move);
-    window.addEventListener("pointerup", up);
-  };
 
   const sorted = useMemo(() => {
     const rows = [...bonds];
@@ -212,85 +176,83 @@ function Row({
         </div>
         <div className="text-[11px] text-zinc-500 truncate max-w-76">{b.issuer_name ?? b.isin}</div>
       </td>
+      {/* Merged column: YTM (at the last traded price) on top, the LTP
+          it was computed from as the sub-line. */}
       <td className="px-3 py-2.5 whitespace-nowrap">
-        <span
-          className={
-            b.ytm_reliable === false
-              ? "text-zinc-600 font-medium"
-              : b.ytm != null
-                ? "text-zinc-200 font-medium"
-                : "text-zinc-500"
-          }
-          title={
-            b.ytm_reliable === false
-              ? b.coupon_basis?.startsWith("Variable")
-                ? "Floating / market-linked coupon — YTM assumes the current rate holds; indicative only"
-                : "Likely an annualization artifact (near maturity or out of band) — treat with caution"
-              : b.ytm_method === "exact"
-                ? "From the actual payment schedule"
-                : b.ytm_method
-                  ? "Estimated"
-                  : undefined
-          }
-        >
-          {fmt.pct(b.ytm)}
-        </span>
-        {b.ytm_method === "ytc" && (
-          <span
-            className="ml-1 text-[10px] text-zinc-500"
-            title="Yield to earliest call (perpetual)"
-          >
-            YTC
-          </span>
-        )}
-        {b.coupon_basis?.startsWith("Variable") && (
-          <span className="ml-1 text-[10px] text-zinc-500" title="Floating / market-linked coupon">
-            FLT
-          </span>
-        )}
-      </td>
-      <td
-        className={`group/ltp px-3 py-2.5 whitespace-nowrap ${
-          b.stale && (b.days_since_traded ?? 0) > 90 ? "text-amber-500/80" : "text-zinc-200"
-        } font-medium`}
-        onClick={(e) => {
-          e.stopPropagation();
-          onSelect(b.isin, "chart");
-        }}
-        title={
-          [
-            b.stale && b.days_since_traded != null
-              ? `No trades seen for ${b.days_since_traded} days — this price and its YTM may be outdated`
-              : null,
-            b.face_value != null && b.ltp != null && b.ltp < b.face_value
-              ? "Below face value"
-              : null,
-          ]
-            .filter(Boolean)
-            .join("\n") || undefined
-        }
-      >
         <div>
-          <span className="group-hover/ltp:underline decoration-zinc-600 underline-offset-2">
-            {fmt.inrFull(b.ltp)}
+          <span
+            className={
+              b.ytm_reliable === false
+                ? "text-zinc-600 font-medium"
+                : b.ytm != null
+                  ? "text-zinc-200 font-medium"
+                  : "text-zinc-500"
+            }
+            title={
+              b.ytm_reliable === false
+                ? b.coupon_basis?.startsWith("Variable")
+                  ? "Floating / market-linked coupon — YTM assumes the current rate holds; indicative only"
+                  : "Likely an annualization artifact (near maturity or out of band) — treat with caution"
+                : b.ytm_method === "exact"
+                  ? "From the actual payment schedule"
+                  : b.ytm_method
+                    ? "Estimated"
+                    : undefined
+            }
+          >
+            {fmt.pct(b.ytm)}
           </span>
-          {!b.stale && b.ltp != null && b.prev_ltp != null && b.ltp !== b.prev_ltp && (
+          {b.ytm_method === "ytc" && (
             <span
-              className={`ml-1 text-[10px] ${
-                b.ltp > b.prev_ltp ? "text-emerald-500/80" : "text-red-400/70"
-              }`}
-              title={`LTP on previous trading day: ${fmt.inrFull(b.prev_ltp)}`}
+              className="ml-1 text-[10px] text-zinc-500"
+              title="Yield to earliest call (perpetual)"
             >
-              {b.ltp > b.prev_ltp ? "▲" : "▼"}
+              YTC
             </span>
           )}
-          {b.stale && b.ltp != null && (
-            <span className="ml-1 text-[10px] text-zinc-600 align-middle">⚠</span>
+          {b.coupon_basis?.startsWith("Variable") && (
+            <span
+              className="ml-1 text-[10px] text-zinc-500"
+              title="Floating / market-linked coupon"
+            >
+              FLT
+            </span>
           )}
         </div>
-        {b.face_value != null && (
-          <div className="text-[11px] text-zinc-500 font-normal">
-            FV {fmt.inrFull(b.face_value)}
+        {b.ltp != null && (
+          <div
+            className={`group/ltp text-[11px] font-normal ${
+              b.stale && (b.days_since_traded ?? 0) > 90 ? "text-amber-500/80" : "text-zinc-500"
+            }`}
+            onClick={(e) => {
+              e.stopPropagation();
+              onSelect(b.isin, "chart");
+            }}
+            title={
+              [
+                b.stale && b.days_since_traded != null
+                  ? `No trades seen for ${b.days_since_traded} days — this price and its YTM may be outdated`
+                  : null,
+                b.face_value != null && b.ltp < b.face_value ? "Below face value" : null,
+              ]
+                .filter(Boolean)
+                .join("\n") || undefined
+            }
+          >
+            <span className="group-hover/ltp:underline decoration-zinc-600 underline-offset-2 cursor-pointer">
+              {fmt.inrFull(b.ltp)}
+            </span>
+            {!b.stale && b.prev_ltp != null && b.ltp !== b.prev_ltp && (
+              <span
+                className={`ml-1 text-[10px] ${
+                  b.ltp > b.prev_ltp ? "text-emerald-500/80" : "text-red-400/70"
+                }`}
+                title={`LTP on previous trading day: ${fmt.inrFull(b.prev_ltp)}`}
+              >
+                {b.ltp > b.prev_ltp ? "▲" : "▼"}
+              </span>
+            )}
+            {b.stale && <span className="ml-1 text-[10px] text-zinc-600 align-middle">⚠</span>}
           </div>
         )}
       </td>
@@ -343,9 +305,13 @@ function Row({
       <td className="px-3 py-2.5 whitespace-nowrap text-right">
         {b.maturity_date != null ? (
           <>
-            <div className="text-zinc-200 font-medium">{monthYear(b.maturity_date)}</div>
+            <div className="text-zinc-200 font-medium">
+              {b.years_to_maturity != null
+                ? yearsMonths(b.years_to_maturity)
+                : monthYear(b.maturity_date)}
+            </div>
             {b.years_to_maturity != null && (
-              <div className="text-[11px] text-zinc-500">{yearsMonths(b.years_to_maturity)}</div>
+              <div className="text-[11px] text-zinc-500">{monthYear(b.maturity_date)}</div>
             )}
           </>
         ) : b.perpetual ? (

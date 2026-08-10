@@ -23,6 +23,7 @@ import StatBox from "../components/StatBox";
 import Tip from "../components/Tooltip";
 import { fuzzyMatch } from "../lib/fuzzy";
 import { isPastMonth, monthGrid, usePortfolio, type WeightBy, weights } from "../lib/portfolio";
+import { useColumnWidths } from "../lib/useColumnWidths";
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
@@ -300,6 +301,10 @@ function HoldingsTable({
     key: "value",
     dir: -1, // matches the backend's default biggest-position-first order
   });
+  const { widths, tableRef, startResize } = useColumnWidths(
+    "holdings-col-widths",
+    HOLDINGS_COLS.length,
+  );
 
   const sorted = useMemo(() => {
     const get = HOLDINGS_ACCESSORS[sort.key];
@@ -316,13 +321,20 @@ function HoldingsTable({
 
   return (
     <div className="overflow-x-auto">
-      <table className="w-full text-xs">
+      <table ref={tableRef} className={`w-full text-xs ${widths ? "table-fixed" : ""}`}>
+        {widths && (
+          <colgroup>
+            {widths.map((w, i) => (
+              <col key={i} style={{ width: w }} />
+            ))}
+          </colgroup>
+        )}
         <thead>
           <tr className="text-left text-zinc-500 border-b border-zinc-800">
             {HOLDINGS_COLS.map((c, i) => (
               <th
                 key={c.label || i}
-                className={`${TH} ${c.right ? "text-right" : ""} ${
+                className={`relative ${TH} ${c.right ? "text-right" : ""} ${
                   c.key ? "cursor-pointer select-none hover:text-zinc-300" : ""
                 }`}
                 onClick={() =>
@@ -336,6 +348,14 @@ function HoldingsTable({
                 <span className={c.key === sort.key ? "text-zinc-200" : undefined}>{c.label}</span>
                 {c.key === sort.key && (
                   <span className="ml-1 text-emerald-500/80">{sort.dir === -1 ? "▼" : "▲"}</span>
+                )}
+                {i > 0 && (
+                  <span
+                    className="absolute right-0 top-1/2 -translate-y-1/2 h-4 w-1.5 cursor-col-resize border-r-2 border-zinc-800 hover:border-emerald-500"
+                    onPointerDown={(e) => startResize(i, e)}
+                    onClick={(e) => e.stopPropagation()}
+                    title="Drag to resize"
+                  />
                 )}
               </th>
             ))}
@@ -451,18 +471,26 @@ function PositionRow({
         </td>
         <td className={`${TD} text-right tabular-nums`}>{fmt.pct(p.ytm)}</td>
         <td className={TD}>
-          {monthYear(p.maturity_date)}
-          {p.years_to_maturity != null && (
-            <span className="text-zinc-600"> · {fmt.yearsMonths(p.years_to_maturity)}</span>
+          {p.years_to_maturity != null ? (
+            <>
+              <div className="text-zinc-200 font-medium">
+                {fmt.yearsMonths(p.years_to_maturity)}
+              </div>
+              <div className="text-[10px] text-zinc-500">{monthYear(p.maturity_date)}</div>
+            </>
+          ) : (
+            monthYear(p.maturity_date)
           )}
         </td>
         <td className={TD}>
           {p.next_payment ? (
-            <span title={p.next_payment.estimated ? "Estimated amount" : undefined}>
-              {p.next_payment.estimated && "≈"}
-              {fmt.inr(p.next_payment.amount)}
-              <span className="text-zinc-600"> · {monthYear(p.next_payment.due_date)}</span>
-            </span>
+            <div title={p.next_payment.estimated ? "Estimated amount" : undefined}>
+              <div className="text-zinc-200 font-medium">
+                {p.next_payment.estimated && "≈"}
+                {fmt.inr(p.next_payment.amount)}
+              </div>
+              <div className="text-[10px] text-zinc-500">{monthYear(p.next_payment.due_date)}</div>
+            </div>
           ) : (
             <span className="text-zinc-600">–</span>
           )}
