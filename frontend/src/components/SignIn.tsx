@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "../api/client";
 import type { User } from "../api/types";
+import LoginShowcase from "./LoginShowcase";
 import Logo from "./Logo";
 
 const CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined;
@@ -72,32 +73,40 @@ export default function SignIn({ onSignedIn }: { onSignedIn: (user: User) => voi
       <div className="pointer-events-none absolute -top-40 left-1/2 -translate-x-1/2 h-[480px] w-[720px] rounded-full bg-emerald-500/[0.07] blur-3xl" />
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_bottom,rgba(24,24,27,0.6),transparent_60%)]" />
 
-      <div className="relative mx-4 w-full max-w-sm">
-        <div className="rounded-2xl border border-zinc-800/80 bg-zinc-900/60 backdrop-blur-sm shadow-[0_0_60px_-15px_rgba(16,185,129,0.15)] p-8 text-center">
-          <div className="flex items-center justify-center gap-2.5">
-            <Logo size={34} className="rounded-lg ring-1 ring-zinc-800" />
-            <h1 className="text-[26px] font-bold tracking-tight text-zinc-100">
-              Bond<span className="text-emerald-400">Lens</span>
-            </h1>
-          </div>
-          <p className="mt-2 text-sm text-zinc-400">Indian corporate bond explorer</p>
-          <p className="mt-1 text-xs text-zinc-600">Sign in to continue</p>
-
-          {/* [color-scheme:light] stops the browser painting an opaque white
-              canvas behind the GIS iframe on our color-scheme:dark page. */}
-          <div ref={buttonRef} className="mt-8 flex justify-center [color-scheme:light]" />
-          {error && (
-            <p className="mt-4 text-xs text-red-400 border border-red-500/30 bg-red-500/10 rounded-md px-3 py-2">
-              {error}
-            </p>
-          )}
+      {/* Split screen on desktop: animated product showcase left, sign-in
+          right. Mobile keeps the original centered card only. */}
+      <div className="relative mx-4 w-full max-w-6xl lg:grid lg:grid-cols-[1.3fr_1fr] lg:items-center lg:gap-16">
+        <div className="hidden lg:block">
+          <LoginShowcase />
         </div>
 
-        <p className="mt-6 px-2 text-center text-xs leading-relaxed text-zinc-500">
-          Not investment advice. Prices, yields and ratings are derived from exchange/depository
-          data that may be delayed, incomplete or inaccurate; verify independently before acting.
-          Bonds carry credit and liquidity risk, including loss of principal.
-        </p>
+        <div className="mx-auto w-full max-w-sm">
+          <div className="rounded-2xl border border-zinc-800/80 bg-zinc-900/60 backdrop-blur-sm shadow-[0_0_60px_-15px_rgba(16,185,129,0.15)] p-8 text-center">
+            <div className="flex items-center justify-center gap-2.5">
+              <Logo size={34} className="rounded-lg ring-1 ring-zinc-800" />
+              <h1 className="text-[26px] font-bold tracking-tight text-zinc-100">
+                Bond<span className="text-emerald-400">Lens</span>
+              </h1>
+            </div>
+            <p className="mt-2 text-sm text-zinc-400">Indian corporate bond explorer</p>
+            <p className="mt-1 text-xs text-zinc-600">Sign in to continue</p>
+
+            {/* [color-scheme:light] stops the browser painting an opaque white
+                canvas behind the GIS iframe on our color-scheme:dark page. */}
+            <div ref={buttonRef} className="mt-8 flex justify-center [color-scheme:light]" />
+            {error && (
+              <p className="mt-4 text-xs text-red-400 border border-red-500/30 bg-red-500/10 rounded-md px-3 py-2">
+                {error}
+              </p>
+            )}
+          </div>
+
+          <p className="mt-6 px-2 text-center text-xs leading-relaxed text-zinc-500">
+            Not investment advice. Prices, yields and ratings are derived from exchange/depository
+            data that may be delayed, incomplete or inaccurate; verify independently before acting.
+            Bonds carry credit and liquidity risk, including loss of principal.
+          </p>
+        </div>
       </div>
     </div>
   );
