@@ -144,6 +144,9 @@ class BondDetail(BaseModel):
     trade_date: date | None
     exchange: str | None
     days_since_traded: int | None
+    volume: float | None
+    turnover: float | None
+    num_trades: int | None
     otc_price_pct: float | None
     otc_yield: float | None
     otc_trade_date: date | None

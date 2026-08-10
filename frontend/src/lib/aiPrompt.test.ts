@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { BondDetail, Cashflow, RatingEvent } from "../api/types";
+import type { BondDetail, Cashflow, OrderBook, RatingEvent } from "../api/types";
 import { buildBondPrompt } from "./aiPrompt";
 
 /* Minimal-but-valid BondDetail; tests override what they exercise. */
@@ -117,9 +117,69 @@ describe("buildBondPrompt", () => {
     expect(p).toContain("OTC institutional benchmark: 99.49% of face @ 14.11%");
     expect(p).toContain("Secured: yes | Tax-free: no");
     expect(p).toContain("ACUITE BB+ (Stable) Affirmed 12 Mar 2026");
-    expect(p).toContain("₹10,000 on 19 Dec 2028");
+    expect(p).toContain("19 Dec 2028  redemption  ₹10,000");
     expect(p).toContain("Total future receipts: ₹12,560/unit");
     expect(p).toContain("=== END DATA ===");
+  });
+
+  it("anchors the data with today's date", () => {
+    const p = buildBondPrompt(mk(), { today: new Date("2026-08-10") });
+    expect(p).toContain("Today: 10 Aug 2026");
+  });
+
+  it("carries the verification and framing instructions", () => {
+    const p = buildBondPrompt(mk());
+    expect(p).toContain("VERIFY");
+    expect(p).toContain("independently recompute the YTM");
+    expect(p).toContain("0.10 percentage points");
+    expect(p).toContain("G-sec");
+    expect(p).toContain("taxed at slab");
+    expect(p).toContain("do not invent numbers");
+  });
+
+  it("flags floating-rate coupons prominently", () => {
+    const p = buildBondPrompt(
+      mk({ terms: { coupon_type: "Floating", coupon_basis: "MIBOR + 250bps" } }),
+    );
+    expect(p).toContain("FLOATING RATE");
+    expect(p).toContain("MIBOR + 250bps");
+    expect(buildBondPrompt(mk())).not.toContain("FLOATING RATE");
+  });
+
+  it("shows the day-count convention and put option from terms", () => {
+    const p = buildBondPrompt(
+      mk({ terms: { day_count_convention: "Actual/Actual", put_indicator: "Yes" } }),
+    );
+    expect(p).toContain("Day-count convention: Actual/Actual");
+    expect(p).toContain("Put option: yes");
+  });
+
+  it("includes the liquidity line only when trade stats exist", () => {
+    const p = buildBondPrompt(mk({ turnover: 4400000, num_trades: 21, volume: 44 } as never));
+    expect(p).toContain("Liquidity (last traded day): turnover ₹44.00 L · 21 trades · 44 units");
+    expect(buildBondPrompt(mk())).not.toContain("Liquidity (last traded day)");
+  });
+
+  it("renders the order-book snapshot when depth is provided", () => {
+    const depth = {
+      isin: "INE000TEST01",
+      fetched_at: "",
+      nse: null,
+      bse: {
+        bids: [{ price: 9750, qty: 51, orders: 2 }],
+        asks: [{ price: 9987, qty: 200, orders: 1 }],
+        total_bid_qty: 177,
+        total_ask_qty: 250,
+        as_of: null,
+        source: "kite",
+      },
+      ytm_at_ask: [{ price: 9987, ytm: 13.9 }],
+    } as OrderBook;
+    const p = buildBondPrompt(mk(), { depth });
+    expect(p).toContain("Order book now (BSE): best bid ₹9,750 × 51, best ask ₹9,987 × 200");
+    expect(p).toContain("(total bid 177 / ask 250)");
+    expect(p).toContain("YTM at best ask 13.90%");
+    expect(buildBondPrompt(mk(), { depth: null })).not.toContain("Order book now");
   });
 
   it("never leaks null/undefined and omits empty fields", () => {
@@ -153,7 +213,7 @@ describe("buildBondPrompt", () => {
     expect(p).not.toContain("-- Same issuer --");
   });
 
-  it("caps rating history and redemption lists", () => {
+  it("caps rating history at 10 events", () => {
     const events: RatingEvent[] = Array.from({ length: 20 }, (_, i) => ({
       rating: `BB${i}`,
       outlook: null,
@@ -161,18 +221,60 @@ describe("buildBondPrompt", () => {
       rating_date: `2025-01-${String(i + 1).padStart(2, "0")}`,
       press_release: null,
     }));
-    const flows: Cashflow[] = Array.from({ length: 20 }, (_, i) => ({
-      event: "redemption" as const,
-      due_date: `2027-01-${String(i + 1).padStart(2, "0")}`,
-      record_date: null,
-      amount: 500,
-      estimated: false,
-      future: true,
-    }));
-    const p = buildBondPrompt(mk({ rating_timeline: { CRISIL: events }, cashflows: flows }));
+    const p = buildBondPrompt(mk({ rating_timeline: { CRISIL: events } }));
     expect(p.match(/CRISIL BB/g)?.length).toBe(10);
-    expect(p.match(/₹500 on/g)?.length).toBe(12);
-    expect(p).toContain("(+8 more)");
+  });
+
+  it("lists every future flow when under the cap, marking estimates", () => {
+    const flows: Cashflow[] = [
+      ...Array.from({ length: 6 }, (_, i) => ({
+        event: "interest" as const,
+        due_date: `2027-0${i + 1}-15`,
+        record_date: null,
+        amount: 110,
+        estimated: i === 0,
+        future: true,
+      })),
+      {
+        event: "redemption" as const,
+        due_date: "2028-12-19",
+        record_date: null,
+        amount: 10000,
+        estimated: false,
+        future: true,
+      },
+    ];
+    const p = buildBondPrompt(mk({ cashflows: flows, amounts_estimated: true }));
+    expect(p.match(/interest {2}/g)?.length).toBe(6);
+    expect(p).toContain("15 Jan 2027  interest  ≈₹110");
+    expect(p).toContain("15 Feb 2027  interest  ₹110");
+    expect(p).toContain("amounts marked ≈ are estimated");
+  });
+
+  it("caps long schedules but always keeps the redemptions", () => {
+    const flows: Cashflow[] = [
+      ...Array.from({ length: 60 }, (_, i) => ({
+        event: "interest" as const,
+        due_date: `20${27 + Math.floor(i / 12)}-${String((i % 12) + 1).padStart(2, "0")}-15`,
+        record_date: null,
+        amount: 110,
+        estimated: false,
+        future: true,
+      })),
+      {
+        event: "redemption" as const,
+        due_date: "2032-12-19",
+        record_date: null,
+        amount: 10000,
+        estimated: false,
+        future: true,
+      },
+    ];
+    const p = buildBondPrompt(mk({ cashflows: flows }));
+    expect(p).toContain("more interest payments");
+    expect(p).toContain("19 Dec 2032  redemption  ₹10,000");
+    // 38 interest rows kept (40 cap - 1 redemption - 1 ellipsis line)
+    expect(p.match(/ {2}interest {2}/g)?.length).toBe(38);
   });
 
   it("lists rating-rationale and document links, capped at 5 each", () => {

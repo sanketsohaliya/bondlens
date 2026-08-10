@@ -337,6 +337,18 @@ export type BondDetail = {
      */
     days_since_traded: number | null;
     /**
+     * Volume
+     */
+    volume: number | null;
+    /**
+     * Turnover
+     */
+    turnover: number | null;
+    /**
+     * Num Trades
+     */
+    num_trades: number | null;
+    /**
      * Otc Price Pct
      */
     otc_price_pct: number | null;

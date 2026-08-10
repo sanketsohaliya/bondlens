@@ -235,12 +235,22 @@ export default function BondDrawer({
 
 function AiBriefBtn({ bond }: { bond: BondDetail }) {
   const [copied, setCopied] = useState(false);
+  // Depth loads alongside the drawer (same query key as the Order Book
+  // tab, server caches 30s) so the click handler stays synchronous —
+  // popup blockers require a direct user gesture. If it hasn't landed
+  // yet the prompt simply omits the order-book snapshot.
+  const { data: depth } = useQuery({
+    queryKey: ["depth", bond.isin],
+    queryFn: () => api.depth(bond.isin),
+    staleTime: 25_000,
+    refetchOnWindowFocus: false,
+  });
   return (
     <Tip text="Opens ChatGPT with this bond's analysis prompt (also copied — paste into Gemini/Claude if you prefer)">
       <button
         type="button"
         onClick={() => {
-          const prompt = buildBondPrompt(bond);
+          const prompt = buildBondPrompt(bond, { depth: depth ?? null });
           navigator.clipboard.writeText(prompt);
           // Synchronous open so popup blockers treat it as user-initiated.
           window.open(

@@ -1,27 +1,39 @@
 import { fmt } from "../api/client";
-import type { BondDetail, RatingEvent } from "../api/types";
+import type { BondDetail, OrderBook, RatingEvent } from "../api/types";
 
 /* Builds a self-contained prompt for an external AI (ChatGPT/Gemini/Claude)
-   from the drawer's already-loaded BondDetail. Null fields are omitted and
-   long lists capped so the prompt stays paste-friendly (~3.5k chars). */
+   from the drawer's already-loaded BondDetail (plus the cached order-book
+   snapshot when available). Null fields are omitted and long lists capped
+   so the prompt stays paste-friendly (≤ ~7k chars — inside chatgpt.com's
+   ?q= URL limit; the clipboard copy is identical). The full dated cashflow
+   schedule + today's date are included so the AI can independently verify
+   our YTM. */
 
 const MAX_RATING_EVENTS = 10;
-const MAX_REDEMPTIONS = 12;
+const MAX_FLOWS = 40;
 const MAX_SIBLINGS = 8;
 const MAX_LINKS = 5;
 
 const INSTRUCTIONS = `You are a fixed-income analyst covering Indian corporate bonds. I'm a retail
 investor considering the bond below. All amounts are ₹ per unit.
 
-Do two things:
+Do three things:
 1. INVESTMENT BRIEF — what this bond is in plain English, whether the yield
-   compensates for the risk, and what kind of investor it suits.
+   compensates for the risk, and what kind of investor it suits. Compare the
+   yield against a similar-maturity Indian G-sec (search current levels) and
+   say whether the credit spread compensates. Frame returns post-tax: coupon
+   interest is taxed at slab (assume 30%) unless the bond is tax-free.
 2. RISK AUDIT — everything that could go wrong: credit history, default
    records, liquidity, structural quirks, and any data that looks off.
+3. VERIFY — using today's date, the dirty price and the cashflow schedule
+   below, independently recompute the YTM (and check accrued interest
+   against the day-count convention). If your YTM differs from the stated
+   one by more than 0.10 percentage points, flag it and show your working.
 
 Also search the web for recent news on the issuer (results, rating actions,
 defaults, promoter/governance issues) and factor that in. If rating-rationale
-or offer-document links are provided below, read them too.
+or offer-document links are provided below, read them too. If a fact is not
+in the data and you can't verify it, say "unknown" — do not invent numbers.
 
 Be direct and specific. End with a one-line verdict.`;
 
@@ -35,11 +47,40 @@ function yn(v: unknown): string | null {
   return null;
 }
 
+/** Non-empty trimmed string or null. */
+function str(v: unknown): string | null {
+  if (v == null) return null;
+  const s = String(v).trim();
+  return s && s !== "-" && s !== "--" ? s : null;
+}
+
 function listings(b: BondDetail): string | null {
   const parts: string[] = [];
   if (b.on_nse) parts.push(b.nse_symbol ? `NSE (${b.nse_symbol})` : "NSE");
   if (b.on_bse) parts.push(b.bse_scrip_id ? `BSE (${b.bse_scrip_id})` : "BSE");
   return parts.length ? parts.join(", ") : null;
+}
+
+function couponLine(b: BondDetail, t: Record<string, unknown>): string | null {
+  const type = str(t.coupon_type);
+  const floating = type != null && /float/i.test(type);
+  const basis = str(t.coupon_basis);
+  if (b.coupon != null) {
+    return (
+      `Coupon: ${fmt.pct(b.coupon)}${b.frequency ? ` ${b.frequency}` : ""}` +
+      (floating ? ` — FLOATING RATE (resets${basis ? `, basis: ${basis}` : ""})` : "") +
+      (b.face_value != null ? `, face value ₹${b.face_value.toLocaleString("en-IN")}` : "")
+    );
+  }
+  if (b.implied_coupon != null) {
+    return (
+      `Coupon: none periodic — pays everything at maturity (${b.schedule_shape}); ` +
+      `≈${fmt.pct(b.implied_coupon)} effective annual implied by the cashflows ` +
+      `(issuer may quote it under a different compounding convention)` +
+      (b.face_value != null ? `. Face value ₹${b.face_value.toLocaleString("en-IN")}` : "")
+    );
+  }
+  return b.face_value != null ? `Face value: ₹${b.face_value.toLocaleString("en-IN")}` : null;
 }
 
 function ytmLine(b: BondDetail): string | null {
@@ -51,6 +92,39 @@ function ytmLine(b: BondDetail): string | null {
         : "exact, from published cashflows"
       : "approximation";
   return `YTM: ${fmt.pct(b.ytm)} (${method})`;
+}
+
+function liquidityLine(b: BondDetail): string | null {
+  if (b.turnover == null && b.num_trades == null && b.volume == null) return null;
+  const bits = [
+    b.turnover != null ? `turnover ${fmt.inr(b.turnover)}` : null,
+    b.num_trades != null ? `${b.num_trades} trade${b.num_trades === 1 ? "" : "s"}` : null,
+    b.volume != null ? `${b.volume.toLocaleString("en-IN")} units` : null,
+  ].filter(Boolean);
+  return `Liquidity (last traded day): ${bits.join(" · ")}`;
+}
+
+function depthLines(depth: OrderBook | null | undefined): string[] {
+  if (!depth) return [];
+  const out: string[] = [];
+  for (const [name, side] of [
+    ["BSE", depth.bse],
+    ["NSE", depth.nse],
+  ] as const) {
+    if (!side) continue;
+    const bid = side.bids[0];
+    const ask = side.asks[0];
+    if (!bid?.price && !ask?.price) continue;
+    const fmtLevel = (l: { price: number | null; qty: number | null } | undefined) =>
+      l?.price != null ? `₹${l.price.toLocaleString("en-IN")} × ${l.qty ?? "?"}` : "none";
+    const ytm = ask?.price != null ? depth.ytm_at_ask.find((y) => y.price === ask.price) : null;
+    out.push(
+      `Order book now (${name}): best bid ${fmtLevel(bid)}, best ask ${fmtLevel(ask)}` +
+        ` (total bid ${side.total_bid_qty ?? "?"} / ask ${side.total_ask_qty ?? "?"})` +
+        (ytm?.ytm != null ? ` — YTM at best ask ${fmt.pct(ytm.ytm)}` : ""),
+    );
+  }
+  return out;
 }
 
 function ratingEvents(b: BondDetail): string[] {
@@ -97,33 +171,31 @@ function reportLinks(b: BondDetail): string[] {
   return out;
 }
 
-function cashflowLines(b: BondDetail): string[] {
-  const out: string[] = [];
-  if (b.next_payment?.amount) {
-    out.push(
-      `Next payment: ₹${b.next_payment.amount.toLocaleString("en-IN")} ` +
-        `${b.next_payment.event} on ${fmt.date(b.next_payment.due_date)}`,
-    );
-  }
+/** Full dated future schedule so the AI can recompute the YTM itself.
+ * Caps at MAX_FLOWS rows but always keeps the redemption rows. */
+function scheduleLines(b: BondDetail): string[] {
   const future = (b.cashflows ?? []).filter((f) => f.future && f.amount);
-  const nInterest = future.filter((f) => f.event === "interest").length;
-  const redemptions = future.filter((f) => f.event === "redemption");
-  const redTxt = redemptions
-    .slice(0, MAX_REDEMPTIONS)
-    .map((f) => `₹${(f.amount as number).toLocaleString("en-IN")} on ${fmt.date(f.due_date)}`)
-    .join(", ");
-  const more =
-    redemptions.length > MAX_REDEMPTIONS ? ` (+${redemptions.length - MAX_REDEMPTIONS} more)` : "";
-  if (future.length) {
-    out.push(
-      `Future: ${nInterest} interest payment${nInterest === 1 ? "" : "s"}` +
-        (redTxt ? `; redemptions: ${redTxt}${more}` : "; no redemption rows"),
-    );
+  if (!future.length) return [];
+  const row = (f: (typeof future)[number]) =>
+    `${fmt.date(f.due_date)}  ${f.event}  ${f.estimated ? "≈" : ""}₹${(
+      f.amount as number
+    ).toLocaleString("en-IN")}`;
+
+  let rows: string[];
+  if (future.length <= MAX_FLOWS) {
+    rows = future.map(row);
+  } else {
+    const redemptions = future.filter((f) => f.event === "redemption");
+    const keepHead = MAX_FLOWS - redemptions.length - 1;
+    const head = future.filter((f) => f.event === "interest").slice(0, Math.max(keepHead, 5));
+    const skipped = future.length - head.length - redemptions.length;
+    rows = [...head.map(row), `… +${skipped} more interest payments …`, ...redemptions.map(row)];
   }
+  const out = rows;
   if (b.future_total_per_unit) {
     out.push(`Total future receipts: ₹${b.future_total_per_unit.toLocaleString("en-IN")}/unit`);
   }
-  if (b.amounts_estimated) out.push("Note: some cashflow amounts are estimated, not published.");
+  if (b.amounts_estimated) out.push("Note: amounts marked ≈ are estimated, not published.");
   return out;
 }
 
@@ -138,16 +210,24 @@ function siblingLines(b: BondDetail): string[] {
   });
 }
 
-export function buildBondPrompt(b: BondDetail): string {
+export function buildBondPrompt(
+  b: BondDetail,
+  opts?: { depth?: OrderBook | null; today?: Date },
+): string {
   const t = (b.terms ?? {}) as Record<string, unknown>;
+  const today = opts?.today ?? new Date();
   const secured = yn(t.secured);
   const taxFree = yn(t.tax_free);
   const perpetual = yn(t.perpetual) === "yes" || (!b.maturity_date && !!t.perpetual);
+  const put = yn(t.put_indicator);
+  const seniority = str(b.sec_type_desc) ?? str(b.instrument_type);
+  const dayCount = str(t.day_count_convention);
 
   const sections: [string | null, (string | null)[]][] = [
     [
       null,
       [
+        `Today: ${today.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}`,
         `ISIN: ${b.isin}`,
         `Issuer: ${b.issuer_name ?? "unknown"}${b.sector ? ` (${b.sector})` : ""}`,
         b.industry && b.industry !== b.sector ? `Industry: ${b.industry}` : null,
@@ -157,24 +237,18 @@ export function buildBondPrompt(b: BondDetail): string {
     [
       "Terms",
       [
-        b.coupon != null
-          ? `Coupon: ${fmt.pct(b.coupon)}${b.frequency ? ` ${b.frequency}` : ""}` +
-            (b.face_value != null ? `, face value ₹${b.face_value.toLocaleString("en-IN")}` : "")
-          : b.implied_coupon != null
-            ? `Coupon: none periodic — pays everything at maturity (${b.schedule_shape}); ` +
-              `≈${fmt.pct(b.implied_coupon)} effective annual implied by the cashflows ` +
-              `(issuer may quote it under a different compounding convention)` +
-              (b.face_value != null ? `. Face value ₹${b.face_value.toLocaleString("en-IN")}` : "")
-            : b.face_value != null
-              ? `Face value: ₹${b.face_value.toLocaleString("en-IN")}`
-              : null,
+        couponLine(b, t),
+        dayCount ? `Day-count convention: ${dayCount}` : null,
         [
           secured ? `Secured: ${secured}` : null,
           taxFree ? `Tax-free: ${taxFree}` : null,
           perpetual ? "Perpetual: yes" : null,
+          put === "yes" ? "Put option: yes" : null,
         ]
           .filter(Boolean)
           .join(" | ") || null,
+        seniority ? `Security type: ${seniority}` : null,
+        b.trustee_name ? `Trustee: ${b.trustee_name}` : null,
         b.issue_date ? `Issued: ${fmt.date(b.issue_date)}` : null,
         b.maturity_date
           ? `Matures: ${fmt.date(b.maturity_date)}` +
@@ -182,6 +256,12 @@ export function buildBondPrompt(b: BondDetail): string {
           : null,
         b.call_dates?.length
           ? `Call dates: ${b.call_dates.map((d) => fmt.date(d)).join(", ")}`
+          : null,
+        b.further_issues?.length
+          ? `Further issues (re-openings): ${b.further_issues.length}`
+          : null,
+        b.redemption_events?.length
+          ? `Partial redemption events on record: ${b.redemption_events.length}`
           : null,
         `Schedule shape: ${b.schedule_shape}`,
         b.schedule_warnings?.length ? `Schedule warnings: ${b.schedule_warnings.join("; ")}` : null,
@@ -205,6 +285,8 @@ export function buildBondPrompt(b: BondDetail): string {
         b.current_yield != null ? `Current yield: ${fmt.pct(b.current_yield)}` : null,
         b.duration != null ? `Duration: ${fmt.yearsMonths(b.duration)}` : null,
         b.days_since_traded != null ? `Days since last trade: ${b.days_since_traded}` : null,
+        liquidityLine(b),
+        ...depthLines(opts?.depth),
         b.otc_price_pct != null
           ? `OTC institutional benchmark: ${fmt.pct(b.otc_price_pct)} of face` +
             (b.otc_yield != null ? ` @ ${fmt.pct(b.otc_yield)}` : "") +
@@ -224,7 +306,16 @@ export function buildBondPrompt(b: BondDetail): string {
           ` | In default now: ${b.in_default ? "YES" : "no"}`,
       ],
     ],
-    ["Cashflows (summary)", cashflowLines(b)],
+    [
+      "Cashflow schedule (₹ per unit, future)",
+      [
+        b.next_payment?.amount
+          ? `Next payment: ₹${b.next_payment.amount.toLocaleString("en-IN")} ` +
+            `${b.next_payment.event} on ${fmt.date(b.next_payment.due_date)}`
+          : null,
+        ...scheduleLines(b),
+      ],
+    ],
     [reportLinks(b).length ? "Reports & documents" : null, reportLinks(b)],
     [siblingLines(b).length ? "Same issuer" : null, siblingLines(b)],
   ];
