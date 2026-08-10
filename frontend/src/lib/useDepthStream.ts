@@ -6,20 +6,29 @@
 import { useEffect, useState } from "react";
 import type { OrderBook } from "../api/types";
 
+export type StreamStatus =
+  | "idle" // disabled (Kite not connected)
+  | "connecting" // socket created, handshake in flight
+  | "live" // socket open — streaming, even if no tick has arrived yet
+  | "closed"; // errored or closed by the server/network
+
 export function useDepthStream(
   isin: string,
   enabled: boolean,
-): { book: OrderBook | null; live: boolean } {
+): { book: OrderBook | null; status: StreamStatus } {
   const [book, setBook] = useState<OrderBook | null>(null);
-  const [live, setLive] = useState(false);
+  const [status, setStatus] = useState<StreamStatus>("idle");
 
   useEffect(() => {
     setBook(null);
-    setLive(false);
-    if (!enabled) return;
+    if (!enabled) {
+      setStatus("idle");
+      return;
+    }
+    setStatus("connecting");
     const proto = window.location.protocol === "https:" ? "wss" : "ws";
     const ws = new WebSocket(`${proto}://${window.location.host}/api/kite/depth/${isin}`);
-    ws.onopen = () => setLive(true);
+    ws.onopen = () => setStatus("live");
     ws.onmessage = (e) => {
       try {
         setBook(JSON.parse(e.data) as OrderBook);
@@ -27,10 +36,14 @@ export function useDepthStream(
         // ignore malformed frames
       }
     };
-    ws.onclose = () => setLive(false);
-    ws.onerror = () => setLive(false);
-    return () => ws.close();
+    ws.onclose = () => setStatus("closed");
+    ws.onerror = () => setStatus("closed");
+    return () => {
+      // Detach before closing so unmount doesn't set state.
+      ws.onopen = ws.onmessage = ws.onclose = ws.onerror = null;
+      ws.close();
+    };
   }, [isin, enabled]);
 
-  return { book, live };
+  return { book, status };
 }

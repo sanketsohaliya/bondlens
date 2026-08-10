@@ -55,7 +55,11 @@ export default function OrderBook({
   });
   const stream = useDepthStream(isin, connected);
   const data = stream.book ?? rest;
-  const live = stream.live && stream.book != null;
+  // LIVE as soon as the socket is open (the ladder shows the REST
+  // snapshot until the first tick); Refresh belongs only to the states
+  // that genuinely need manual refetching — no Kite, or a dead stream.
+  const live = stream.status === "live";
+  const showRefresh = !connected || stream.status === "closed";
 
   const [ticket, setTicket] = useState<TicketState | null>(null);
 
@@ -100,7 +104,7 @@ export default function OrderBook({
             </a>
           )}
           {connected && <KiteConnectedBadge />}
-          {!live && (
+          {showRefresh && (
             <button
               type="button"
               onClick={() => refetch()}
