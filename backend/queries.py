@@ -387,6 +387,40 @@ def bond_terms(isin: str) -> dict | None:
     return dict(r) if r else None
 
 
+def bonds_symbols(isins: list[str]) -> dict[str, dict]:
+    """isin -> {nse_symbol, nse_series, bse_scrip_id} for a set of bonds
+    (the fields needed to resolve Kite tradingsymbols), in one query."""
+    with db._conn() as conn:
+        rows = conn.execute(
+            "SELECT isin, nse_symbol, nse_series, bse_scrip_id "
+            "FROM bond_analytics WHERE isin = ANY(%s)", (isins,)).fetchall()
+    return {r["isin"]: dict(r) for r in rows}
+
+
+def terms_for(isins: list[str]) -> dict[str, dict]:
+    """bond_terms rows keyed by ISIN, in one query (bulk bond_terms)."""
+    with db._conn() as conn:
+        rows = conn.execute(
+            "SELECT * FROM bond_terms WHERE isin = ANY(%s)",
+            (isins,)).fetchall()
+    return {r["isin"]: dict(r) for r in rows}
+
+
+def cashflows_for(isins: list[str]) -> dict[str, list[dict]]:
+    """bond_cashflows grouped by ISIN, in one query (bulk bond_cashflows)."""
+    out: dict[str, list[dict]] = {}
+    with db._conn() as conn:
+        rows = conn.execute(
+            "SELECT isin, event, due_date, record_date, payment_date, "
+            "amount_payable, amount_redeem, amount_outstanding, "
+            "actual_payment_date, reason_delay_payment "
+            "FROM bond_cashflows WHERE isin = ANY(%s) ORDER BY isin, due_date",
+            (isins,)).fetchall()
+    for r in rows:
+        out.setdefault(r["isin"], []).append(dict(r))
+    return out
+
+
 def bond_trustee(isin: str) -> str | None:
     with db._conn() as conn:
         r = conn.execute(

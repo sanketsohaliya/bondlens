@@ -1,6 +1,8 @@
 // Response types are GENERATED from the backend's OpenAPI schema —
 // run `npm run codegen` (API must be up) after changing bondlens/models.py.
 export type {
+  AskYtm,
+  AskYtmResponse,
   Bond,
   BondDetail,
   BondsResponse,

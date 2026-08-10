@@ -445,6 +445,21 @@ class KiteMargins(BaseModel):
     margin_used: float | None
 
 
+class AskYtmRequest(BaseModel):
+    isins: list[str]
+
+
+class AskYtm(BaseModel):
+    isin: str
+    ask_price: float
+    ask_qty: float | None
+    ytm: float | None
+
+
+class AskYtmResponse(BaseModel):
+    items: list[AskYtm]
+
+
 class KiteOrderId(BaseModel):
     order_id: str
 

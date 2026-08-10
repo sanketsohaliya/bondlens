@@ -73,8 +73,13 @@ export default function App() {
       : params;
   // The sort travels to the API so the 1000-row page is cut in the same
   // order the table displays — otherwise sorting only rearranges whatever
-  // the default turnover ordering happened to include.
-  const sortParams = { sort: sort.key, dir: sort.dir === 1 ? ("asc" as const) : ("desc" as const) };
+  // the default turnover ordering happened to include. ask_ytm is
+  // client-side only (computed from the user's Kite session), so the
+  // page cut falls back to the default turnover order for it.
+  const sortParams = {
+    sort: sort.key === "ask_ytm" ? "turnover" : sort.key,
+    dir: sort.dir === 1 ? ("asc" as const) : ("desc" as const),
+  };
   const bonds = useQuery({
     queryKey: ["bonds", effectiveParams, sortParams],
     queryFn: () => api.bonds({ ...effectiveParams, ...sortParams, limit: 1000 }),

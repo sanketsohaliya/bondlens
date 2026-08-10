@@ -1,7 +1,8 @@
+import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { fmt } from "../api/client";
-import type { Bond } from "../api/types";
+import { api, fmt } from "../api/client";
+import type { AskYtm, Bond } from "../api/types";
 import { nextListName, useHeldIsins, useWatchlists } from "../lib/lists";
 import { useColumnWidths } from "../lib/useColumnWidths";
 import AddLotPopover from "./AddLotPopover";
@@ -20,12 +21,13 @@ const yearsMonths = (years: number) => {
   return `${y}y ${m}mo`;
 };
 
-type SortKey = keyof Pick<
-  Bond,
-  "ytm" | "turnover" | "years_to_maturity" | "rating_rank" | "days_since_traded"
->;
+type SortKey =
+  | keyof Pick<Bond, "ytm" | "turnover" | "years_to_maturity" | "rating_rank" | "days_since_traded">
+  | "ask_ytm"; // client-side only — computed from the user's Kite session
 
-const COLS: { key: SortKey | null; label: string; right?: boolean }[] = [
+type Col = { key: SortKey | null; label: string; right?: boolean };
+
+const BASE_COLS: Col[] = [
   { key: null, label: "" },
   { key: null, label: "Symbol" },
   { key: "ytm", label: "YTM @ LTP" },
@@ -33,6 +35,13 @@ const COLS: { key: SortKey | null; label: string; right?: boolean }[] = [
   { key: "rating_rank", label: "Rating" },
   { key: "years_to_maturity", label: "Maturity", right: true },
   { key: "days_since_traded", label: "Last traded", right: true },
+];
+
+/** With Kite connected, YTM @ Ask slots in right after YTM @ LTP. */
+const KITE_COLS: Col[] = [
+  ...BASE_COLS.slice(0, 3),
+  { key: "ask_ytm", label: "YTM @ Ask" },
+  ...BASE_COLS.slice(3),
 ];
 
 const COLUMN_WIDTHS_KEY = "explore-col-widths";
@@ -60,21 +69,47 @@ export default function ExploreTable({
       onSortChange?.(next);
       return next;
     });
-  const { widths, tableRef, startResize } = useColumnWidths(COLUMN_WIDTHS_KEY, COLS.length, {
+
+  // YTM @ Ask: best-ask yields fetched under the user's own Kite session.
+  const { data: kite } = useQuery({
+    queryKey: ["kite-status"],
+    queryFn: api.kite.status,
+    staleTime: 120_000,
+    refetchOnWindowFocus: false,
+  });
+  const kiteConnected = kite?.connected ?? false;
+  const isins = useMemo(() => bonds.map((b) => b.isin), [bonds]);
+  const askYtm = useQuery({
+    queryKey: ["ask-ytm", isins.join(",")],
+    queryFn: () => api.kite.askYtm(isins),
+    enabled: kiteConnected && isins.length > 0,
+    staleTime: 55_000, // just under the server's 60s per-user cache
+    refetchOnWindowFocus: false,
+  });
+  const askMap = useMemo(() => {
+    const m = new Map<string, AskYtm>();
+    for (const item of askYtm.data?.items ?? []) m.set(item.isin, item);
+    return m;
+  }, [askYtm.data]);
+
+  const cols = kiteConnected ? KITE_COLS : BASE_COLS;
+  const { widths, tableRef, startResize } = useColumnWidths(COLUMN_WIDTHS_KEY, cols.length, {
     legacyKey: LEGACY_COLUMN_WIDTHS_KEY,
   });
 
   const sorted = useMemo(() => {
+    const get = (b: Bond) =>
+      sort.key === "ask_ytm" ? (askMap.get(b.isin)?.ytm ?? null) : b[sort.key];
     const rows = [...bonds];
     rows.sort((a, b) => {
-      const av = a[sort.key];
-      const bv = b[sort.key];
+      const av = get(a);
+      const bv = get(b);
       if (av == null) return 1;
       if (bv == null) return -1;
       return (av < bv ? -1 : av > bv ? 1 : 0) * sort.dir;
     });
     return rows;
-  }, [bonds, sort]);
+  }, [bonds, sort, askMap]);
 
   if (error) {
     return <div className="p-8 text-center text-red-400 text-sm">{error}</div>;
@@ -87,8 +122,11 @@ export default function ExploreTable({
 
   return (
     <div className="overflow-x-auto scroll-slim">
-      <table ref={tableRef} className={`w-full text-sm ${widths ? "table-fixed" : ""}`}>
-        {widths && (
+      <table
+        ref={tableRef}
+        className={`w-full text-sm ${widths && widths.length === cols.length ? "table-fixed" : ""}`}
+      >
+        {widths && widths.length === cols.length && (
           <colgroup>
             {widths.map((w, i) => (
               <col key={i} style={{ width: w }} />
@@ -97,7 +135,7 @@ export default function ExploreTable({
         )}
         <thead className="text-[11px] font-semibold uppercase tracking-wider text-zinc-500 border-b-2 border-zinc-100">
           <tr>
-            {COLS.map((c, i) => (
+            {cols.map((c, i) => (
               <th
                 key={i}
                 className={`relative px-3 py-3 whitespace-nowrap ${c.right ? "text-right" : "text-left"} ${c.key ? "cursor-pointer select-none hover:text-zinc-300" : ""}`}
@@ -127,7 +165,12 @@ export default function ExploreTable({
         </thead>
         <tbody>
           {sorted.map((b) => (
-            <Row key={b.isin} bond={b} onSelect={onSelect} />
+            <Row
+              key={b.isin}
+              bond={b}
+              onSelect={onSelect}
+              ask={kiteConnected ? (askMap.get(b.isin) ?? null) : undefined}
+            />
           ))}
         </tbody>
       </table>
@@ -141,9 +184,12 @@ export default function ExploreTable({
 function Row({
   bond: b,
   onSelect,
+  ask,
 }: {
   bond: Bond;
   onSelect: (isin: string, tab?: "ratings" | "chart") => void;
+  /** undefined = Kite not connected (no column); null = no live ask. */
+  ask?: AskYtm | null;
 }) {
   return (
     <tr
@@ -256,6 +302,28 @@ function Row({
           </div>
         )}
       </td>
+      {/* YTM @ Ask (only when Kite is connected): the yield locked buying
+          at the best resting ask across NSE/BSE, from the user's session. */}
+      {ask !== undefined && (
+        <td
+          className="px-3 py-2.5 whitespace-nowrap"
+          title="Yield locked buying at the best ask (NSE/BSE), from your Kite session"
+        >
+          {ask == null ? (
+            <span className="text-zinc-600">–</span>
+          ) : (
+            <>
+              <div className={ask.ytm != null ? "text-emerald-400 font-medium" : "text-zinc-500"}>
+                {ask.ytm != null ? fmt.pct(ask.ytm) : "–"}
+              </div>
+              <div className="text-[11px] text-zinc-500">
+                {fmt.inrFull(ask.ask_price)}
+                {ask.ask_qty != null && ` × ${fmt.num(ask.ask_qty, 0)}`}
+              </div>
+            </>
+          )}
+        </td>
+      )}
       <td
         className="group/turnover px-3 py-2.5 whitespace-nowrap text-sm leading-snug"
         onClick={(e) => {

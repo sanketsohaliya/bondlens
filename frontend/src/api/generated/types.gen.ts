@@ -5,6 +5,48 @@ export type ClientOptions = {
 };
 
 /**
+ * AskYtm
+ */
+export type AskYtm = {
+    /**
+     * Isin
+     */
+    isin: string;
+    /**
+     * Ask Price
+     */
+    ask_price: number;
+    /**
+     * Ask Qty
+     */
+    ask_qty: number | null;
+    /**
+     * Ytm
+     */
+    ytm: number | null;
+};
+
+/**
+ * AskYtmRequest
+ */
+export type AskYtmRequest = {
+    /**
+     * Isins
+     */
+    isins: Array<string>;
+};
+
+/**
+ * AskYtmResponse
+ */
+export type AskYtmResponse = {
+    /**
+     * Items
+     */
+    items: Array<AskYtm>;
+};
+
+/**
  * Body_auth_google_api_auth_google_post
  */
 export type BodyAuthGoogleApiAuthGooglePost = {
@@ -2564,6 +2606,31 @@ export type KiteMarginsApiKiteMarginsGetResponses = {
 };
 
 export type KiteMarginsApiKiteMarginsGetResponse = KiteMarginsApiKiteMarginsGetResponses[keyof KiteMarginsApiKiteMarginsGetResponses];
+
+export type KiteAskYtmApiKiteAskYtmPostData = {
+    body: AskYtmRequest;
+    path?: never;
+    query?: never;
+    url: '/api/kite/ask-ytm';
+};
+
+export type KiteAskYtmApiKiteAskYtmPostErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type KiteAskYtmApiKiteAskYtmPostError = KiteAskYtmApiKiteAskYtmPostErrors[keyof KiteAskYtmApiKiteAskYtmPostErrors];
+
+export type KiteAskYtmApiKiteAskYtmPostResponses = {
+    /**
+     * Successful Response
+     */
+    200: AskYtmResponse;
+};
+
+export type KiteAskYtmApiKiteAskYtmPostResponse = KiteAskYtmApiKiteAskYtmPostResponses[keyof KiteAskYtmApiKiteAskYtmPostResponses];
 
 export type StatusApiStatusGetData = {
     body?: never;

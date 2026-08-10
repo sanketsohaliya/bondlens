@@ -26,7 +26,7 @@ from fastapi import (
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import RedirectResponse
 
-from . import auth, db, depth, kite, kite_connect, kite_ticker, models, queries
+from . import ask_ytm, auth, db, depth, kite, kite_connect, kite_ticker, models, queries
 from .analytics import portfolio as pf
 from .analytics import ratings, schedule, yields
 from .analytics.compute import STALE_AFTER_DAYS
@@ -609,6 +609,17 @@ def kite_cancel_order(order_id: str,
 def kite_margins(user_id: int = Depends(auth.require_user)):
     """Equity-segment funds snapshot from the user's Zerodha account."""
     return _kite_call(kite_connect.margins, user_id)
+
+
+@router.post("/api/kite/ask-ytm", response_model=models.AskYtmResponse)
+def kite_ask_ytm(body: models.AskYtmRequest,
+                 user_id: int = Depends(auth.require_user)):
+    """Best-ask price/qty and the YTM locked buying at it, for the
+    explorer's YTM @ Ask column — fetched under the user's own Kite
+    session. Empty when Kite isn't connected."""
+    if not kite_connect.configured() or kite_connect.token_for(user_id) is None:
+        return {"items": []}
+    return {"items": ask_ytm.compute(user_id, body.isins)}
 
 
 @app.websocket("/api/kite/depth/{isin}")

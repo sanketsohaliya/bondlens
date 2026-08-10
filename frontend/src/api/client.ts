@@ -1,4 +1,5 @@
 import type {
+  AskYtmResponse,
   BondDetail,
   BondsResponse,
   ExploreParams,
@@ -89,6 +90,7 @@ export const api = {
     cancelOrder: (orderId: string) =>
       request<{ ok: boolean }>("DELETE", `/api/kite/orders/${orderId}`),
     margins: () => get<KiteMargins>("/api/kite/margins"),
+    askYtm: (isins: string[]) => request<AskYtmResponse>("POST", "/api/kite/ask-ytm", { isins }),
   },
   notifications: {
     get: () => get<NotificationsResponse>("/api/notifications"),
