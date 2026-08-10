@@ -73,32 +73,14 @@ export default function SignIn({ onSignedIn }: { onSignedIn: (user: User) => voi
       <div className="pointer-events-none absolute -top-32 left-1/3 h-[560px] w-[900px] rounded-full bg-emerald-500/[0.06] blur-3xl" />
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_bottom,rgba(24,24,27,0.6),transparent_60%)]" />
 
-      {/* Header: brand hero top-left, slim sign-in card top-right. */}
-      <div className="relative flex flex-col lg:flex-row items-center lg:items-start justify-between gap-8">
-        <div className="text-center lg:text-left">
-          <div className="flex items-center justify-center lg:justify-start gap-3.5">
-            <Logo size={52} className="rounded-xl ring-1 ring-zinc-800" />
-            <h1 className="text-4xl xl:text-5xl font-extrabold tracking-tight text-zinc-100">
-              Bond<span className="text-emerald-400">Lens</span>
-            </h1>
-          </div>
-          <p className="mt-3 text-xl xl:text-2xl font-bold tracking-tight text-zinc-200">
-            Every listed corporate bond.{" "}
-            <span className="bg-gradient-to-r from-emerald-300 to-emerald-500 bg-clip-text text-transparent">
-              One lens.
-            </span>
-          </p>
-          <div className="mt-4 flex flex-wrap justify-center lg:justify-start gap-2">
-            {["2,000+ listed NCDs", "Live YTM & ratings", "Broker-connected orders"].map((c) => (
-              <span
-                key={c}
-                className="inline-flex items-center gap-1.5 rounded-full border border-zinc-800 bg-zinc-900/60 px-3 py-1 text-xs text-zinc-300"
-              >
-                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                {c}
-              </span>
-            ))}
-          </div>
+      {/* Slim navbar: quiet brand top-left, sign-in card top-right.
+          The tagline/pills are the hero's own header (LoginShowcase). */}
+      <div className="relative flex flex-col lg:flex-row items-center lg:items-start justify-between gap-6">
+        <div className="flex items-center gap-2.5">
+          <Logo size={34} className="rounded-lg ring-1 ring-zinc-800" />
+          <h1 className="text-2xl font-bold tracking-tight text-zinc-100">
+            Bond<span className="text-emerald-400">Lens</span>
+          </h1>
         </div>
 
         <div className="w-72 shrink-0 rounded-xl border border-zinc-800/80 bg-zinc-900/70 backdrop-blur-sm shadow-[0_0_50px_-15px_rgba(16,185,129,0.2)] p-5 text-center">
@@ -114,8 +96,9 @@ export default function SignIn({ onSignedIn }: { onSignedIn: (user: User) => voi
         </div>
       </div>
 
-      {/* The collage fills everything between header and footer. */}
-      <div className="relative flex-1 hidden lg:block mt-4">
+      {/* The hero (tagline + pills + collage) centers itself in the
+          space between navbar and footer. */}
+      <div className="relative flex-1 hidden lg:block">
         <LoginShowcase />
       </div>
 

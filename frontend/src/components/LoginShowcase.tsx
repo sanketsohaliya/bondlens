@@ -8,6 +8,8 @@ import { useEffect, useState } from "react";
 
 const TICK_MS = 2000;
 
+const CHIPS = ["2,000+ listed NCDs", "Live YTM & ratings", "Broker-connected orders"];
+
 // -- Explorer rows: [symbol, issuer, ytm, base price, rating, maturity, seed]
 const ROWS = [
   ["9NBFC27", "NBFC FINANCE LTD", "11.84", 101250, "AA-", "Jun 2027", 1],
@@ -59,10 +61,28 @@ export default function LoginShowcase() {
   }, [reduced]);
 
   return (
-    <div className="select-none h-full">
-      {/* Collage: tilted main panel + floating cards with symmetric
-          overlaps, scaled to fill the page between header and footer. */}
-      <div className="relative h-full min-h-[24rem] max-w-5xl mx-auto">
+    <div className="select-none h-full flex flex-col justify-center">
+      {/* The hero's own header: tagline + proof pills, centered. */}
+      <h2 className="text-center text-3xl xl:text-4xl font-extrabold tracking-tight text-zinc-100">
+        Every listed corporate bond.{" "}
+        <span className="bg-gradient-to-r from-emerald-300 to-emerald-500 bg-clip-text text-transparent">
+          One lens.
+        </span>
+      </h2>
+      <div className="mt-4 flex justify-center gap-2">
+        {CHIPS.map((c) => (
+          <span
+            key={c}
+            className="inline-flex items-center gap-1.5 rounded-full border border-zinc-800 bg-zinc-900/60 px-3 py-1 text-xs text-zinc-300"
+          >
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+            {c}
+          </span>
+        ))}
+      </div>
+
+      {/* Collage: tilted main panel + floating cards with symmetric overlaps. */}
+      <div className="relative mt-9 h-[24rem] xl:h-[26rem] w-full max-w-5xl mx-auto">
         <div
           className="absolute inset-x-10 inset-y-2 rounded-2xl border border-zinc-800 bg-zinc-900/70 backdrop-blur-sm ring-1 ring-emerald-500/10 shadow-[0_20px_80px_-20px_rgba(16,185,129,0.35)] overflow-hidden"
           style={{ transform: "perspective(1600px) rotateY(-4deg) rotateX(2deg)" }}
