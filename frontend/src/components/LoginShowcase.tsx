@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import Logo from "./Logo";
 
 /* Marketing hero for the sign-in page: a perspective-tilted explorer
    panel with floating order-book / income / rating cards overlapping
@@ -8,8 +7,6 @@ import Logo from "./Logo";
    rendered in code so it stays crisp, weightless and on-theme. */
 
 const TICK_MS = 2000;
-
-const CHIPS = ["2,000+ listed NCDs", "Live YTM & ratings", "Broker-connected orders"];
 
 // -- Explorer rows: [symbol, issuer, ytm, base price, rating, maturity, seed]
 const ROWS = [
@@ -62,39 +59,13 @@ export default function LoginShowcase() {
   }, [reduced]);
 
   return (
-    <div className="select-none">
-      {/* Brand first — the product name outranks the tagline. */}
-      <div className="flex items-center gap-3.5">
-        <Logo size={56} className="rounded-xl ring-1 ring-zinc-800" />
-        <span className="text-5xl xl:text-6xl font-extrabold tracking-tight text-zinc-100">
-          Bond<span className="text-emerald-400">Lens</span>
-        </span>
-      </div>
-
-      <h2 className="mt-5 text-2xl xl:text-3xl font-bold tracking-tight leading-snug text-zinc-200">
-        Every listed corporate bond.{" "}
-        <span className="bg-gradient-to-r from-emerald-300 to-emerald-500 bg-clip-text text-transparent">
-          One lens.
-        </span>
-      </h2>
-
-      <div className="mt-5 flex flex-wrap gap-2">
-        {CHIPS.map((c) => (
-          <span
-            key={c}
-            className="inline-flex items-center gap-1.5 rounded-full border border-zinc-800 bg-zinc-900/60 px-3 py-1 text-xs text-zinc-300"
-          >
-            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-            {c}
-          </span>
-        ))}
-      </div>
-
-      {/* Collage: tilted main panel + floating cards with symmetric overlaps. */}
-      <div className="relative mt-8 h-[24rem]">
+    <div className="select-none h-full">
+      {/* Collage: tilted main panel + floating cards with symmetric
+          overlaps, scaled to fill the page between header and footer. */}
+      <div className="relative h-full min-h-[24rem] max-w-5xl mx-auto">
         <div
-          className="absolute inset-x-6 inset-y-0 rounded-2xl border border-zinc-800 bg-zinc-900/70 backdrop-blur-sm ring-1 ring-emerald-500/10 shadow-[0_20px_80px_-20px_rgba(16,185,129,0.35)] overflow-hidden"
-          style={{ transform: "perspective(1400px) rotateY(-5deg) rotateX(2deg)" }}
+          className="absolute inset-x-10 inset-y-2 rounded-2xl border border-zinc-800 bg-zinc-900/70 backdrop-blur-sm ring-1 ring-emerald-500/10 shadow-[0_20px_80px_-20px_rgba(16,185,129,0.35)] overflow-hidden"
+          style={{ transform: "perspective(1600px) rotateY(-4deg) rotateX(2deg)" }}
         >
           <div className="flex items-center gap-1.5 px-4 py-2.5 border-b border-zinc-800/80 bg-zinc-900/80">
             <span className="h-2.5 w-2.5 rounded-full bg-zinc-700" />
@@ -105,13 +76,15 @@ export default function LoginShowcase() {
               <span className="ml-2 text-zinc-600">— demo data</span>
             </span>
           </div>
-          <ExplorerTable tick={tick} />
+          <div className="h-[calc(100%-41px)]">
+            <ExplorerTable tick={tick} />
+          </div>
         </div>
 
-        <DepthCard tick={tick} className="absolute -right-2 -top-6 w-64 rotate-2" delay="0s" />
-        <IncomeCard className="absolute -left-2 -bottom-6 w-56 -rotate-2" delay="1.3s" />
+        <DepthCard tick={tick} className="absolute -right-4 top-2 w-72 rotate-2" delay="0s" />
+        <IncomeCard className="absolute -left-4 bottom-4 w-64 -rotate-2" delay="1.3s" />
         <div
-          className="absolute left-10 -top-4 rounded-lg border border-emerald-500/30 bg-zinc-900/90 px-3 py-1.5 text-xs shadow-xl"
+          className="absolute left-14 -top-3 rounded-lg border border-emerald-500/30 bg-zinc-900/90 px-3 py-1.5 text-xs shadow-xl"
           style={reduced ? undefined : { animation: "float-y 7s ease-in-out .6s infinite" }}
         >
           <span className="font-semibold text-zinc-100">AA-</span>
@@ -120,7 +93,7 @@ export default function LoginShowcase() {
 
         {!reduced && (
           <div
-            className="absolute left-1/2 -translate-x-1/2 -bottom-3 rounded-lg border border-zinc-700 bg-zinc-900/95 px-4 py-2 text-xs text-zinc-200 shadow-2xl whitespace-nowrap"
+            className="absolute left-1/2 -translate-x-1/2 bottom-0 rounded-lg border border-zinc-700 bg-zinc-900/95 px-4 py-2 text-xs text-zinc-200 shadow-2xl whitespace-nowrap"
             style={{ animation: "toast-cycle 8s ease-in-out 2s infinite" }}
           >
             <span className="text-emerald-400">✓</span> Order placed — 51 units @ ₹99,750
@@ -133,54 +106,59 @@ export default function LoginShowcase() {
 
 function ExplorerTable({ tick }: { tick: number }) {
   return (
-    <div className="px-4 text-xs">
-      <div className="grid grid-cols-[1.7fr_.7fr_1fr_.7fr_.9fr] gap-2 text-[10px] uppercase tracking-wide text-zinc-600 py-2 border-b border-zinc-800">
+    <div className="px-5 text-[13px] h-full flex flex-col">
+      <div className="grid grid-cols-[1.7fr_.7fr_1fr_.7fr_.9fr] gap-2 text-[10px] uppercase tracking-wide text-zinc-600 py-2.5 border-b border-zinc-800">
         <span>Symbol</span>
         <span className="text-right">YTM %</span>
         <span className="text-right">LTP</span>
         <span>Rating</span>
         <span className="text-right">Maturity</span>
       </div>
-      {ROWS.map(([sym, issuer, ytm, base, rating, mat, seed], i) => {
-        // A few rows tick each cycle: price nudges, arrow follows the move.
-        const w = wave(tick, seed);
-        const moves = Math.abs(w) > 0.45;
-        const delta = moves ? Math.round(w * 8) * 10 : 0;
-        const price = base + delta;
-        const up = delta >= 0;
-        // One row's YTM drifts a couple of bps for life-likeness.
-        const shownYtm = sym === "11HFC29" ? (Number(ytm) + wave(tick, 99) * 0.02).toFixed(2) : ytm;
-        return (
-          <div
-            key={sym}
-            style={rise(i)}
-            className="grid grid-cols-[1.7fr_.7fr_1fr_.7fr_.9fr] gap-2 items-center py-[7px] border-b border-zinc-900"
-          >
-            <span>
-              <span className="font-medium text-zinc-200">{sym}</span>
-              <span className="block text-[9px] text-zinc-600 truncate">{issuer}</span>
-            </span>
-            <span className="text-right font-semibold text-emerald-400">{shownYtm}%</span>
-            <span
-              key={price} /* remount on change so the flash replays */
-              className="text-right text-zinc-300 rounded"
-              style={moves ? { animation: "tick-flash 1.2s ease-out" } : undefined}
+      {/* justify-around distributes the rows over whatever height the
+          page gives the panel — no dead space at tall viewports. */}
+      <div className="flex-1 flex flex-col justify-around">
+        {ROWS.map(([sym, issuer, ytm, base, rating, mat, seed], i) => {
+          // A few rows tick each cycle: price nudges, arrow follows the move.
+          const w = wave(tick, seed);
+          const moves = Math.abs(w) > 0.45;
+          const delta = moves ? Math.round(w * 8) * 10 : 0;
+          const price = base + delta;
+          const up = delta >= 0;
+          // One row's YTM drifts a couple of bps for life-likeness.
+          const shownYtm =
+            sym === "11HFC29" ? (Number(ytm) + wave(tick, 99) * 0.02).toFixed(2) : ytm;
+          return (
+            <div
+              key={sym}
+              style={rise(i)}
+              className="grid grid-cols-[1.7fr_.7fr_1fr_.7fr_.9fr] gap-2 items-center py-1.5 border-b border-zinc-900"
             >
-              {inr(price)}
-              <span className={up ? "text-emerald-500" : "text-red-400"}>{up ? " ▲" : " ▼"}</span>
-            </span>
-            <span className="text-zinc-300">
-              {rating}
-              {sym === "10MFI28" && (
-                <span className="ml-1.5 text-[8px] px-1 py-0.5 rounded bg-red-500/15 text-red-400 border border-red-500/30">
-                  DOWNGRADED
-                </span>
-              )}
-            </span>
-            <span className="text-right text-zinc-400">{mat}</span>
-          </div>
-        );
-      })}
+              <span>
+                <span className="font-medium text-zinc-200">{sym}</span>
+                <span className="block text-[9px] text-zinc-600 truncate">{issuer}</span>
+              </span>
+              <span className="text-right font-semibold text-emerald-400">{shownYtm}%</span>
+              <span
+                key={price} /* remount on change so the flash replays */
+                className="text-right text-zinc-300 rounded"
+                style={moves ? { animation: "tick-flash 1.2s ease-out" } : undefined}
+              >
+                {inr(price)}
+                <span className={up ? "text-emerald-500" : "text-red-400"}>{up ? " ▲" : " ▼"}</span>
+              </span>
+              <span className="text-zinc-300">
+                {rating}
+                {sym === "10MFI28" && (
+                  <span className="ml-1.5 text-[8px] px-1 py-0.5 rounded bg-red-500/15 text-red-400 border border-red-500/30">
+                    DOWNGRADED
+                  </span>
+                )}
+              </span>
+              <span className="text-right text-zinc-400">{mat}</span>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
