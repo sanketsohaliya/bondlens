@@ -235,18 +235,23 @@ def get_portfolio_lots(user_id: int) -> list[dict[str, Any]]:
     return [_lot_row(r) for r in rows]
 
 
-def _validate_lot(units: float, price: float | None, platform: str | None):
+def _validate_lot(units: float, price: float | None, purchase_date: Any,
+                  platform: str | None):
+    """Units, price and purchase date are hard requirements (Pydantic
+    enforces this at the API edge; this is defense in depth)."""
     if not units > 0:
         raise WatchlistError(400, "Units must be positive")
-    if price is not None and not price > 0:
-        raise WatchlistError(400, "Price must be positive")
+    if price is None or not price > 0:
+        raise WatchlistError(400, "Price per unit is required and must be positive")
+    if purchase_date is None:
+        raise WatchlistError(400, "Purchase date is required")
     if platform is not None and len(platform) > 40:
         raise WatchlistError(400, "Platform must be at most 40 characters")
 
 
-def add_lot(user_id: int, isin: str, units: float, price: float | None,
+def add_lot(user_id: int, isin: str, units: float, price: float,
             purchase_date: Any, platform: str | None) -> dict[str, Any]:
-    _validate_lot(units, price, platform)
+    _validate_lot(units, price, purchase_date, platform)
     with _conn() as conn:
         known = conn.execute("SELECT 1 FROM bonds WHERE isin = %s",
                              (isin,)).fetchone()
@@ -269,9 +274,9 @@ def add_lot(user_id: int, isin: str, units: float, price: float | None,
     return _lot_row(row)
 
 
-def update_lot(user_id: int, lot_id: int, units: float, price: float | None,
+def update_lot(user_id: int, lot_id: int, units: float, price: float,
                purchase_date: Any, platform: str | None) -> dict[str, Any]:
-    _validate_lot(units, price, platform)
+    _validate_lot(units, price, purchase_date, platform)
     with _conn() as conn:
         row = conn.execute(
             "UPDATE user_portfolio_lots "

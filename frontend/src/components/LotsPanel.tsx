@@ -136,15 +136,19 @@ function LotEditor({
       setError("Units must be positive");
       return;
     }
-    const pr = price ? Number(price) : null;
-    if (pr !== null && (Number.isNaN(pr) || pr <= 0)) {
-      setError("Price must be positive");
+    const pr = Number(price);
+    if (!price || Number.isNaN(pr) || pr <= 0) {
+      setError("Price per unit is required");
+      return;
+    }
+    if (!date) {
+      setError("Purchase date is required");
       return;
     }
     onSave({
       units: u,
       price: pr,
-      purchase_date: date || null,
+      purchase_date: date,
       platform: platform.trim() || null,
     });
   };
@@ -173,13 +177,15 @@ function LotEditor({
         />
         <input
           inputMode="decimal"
+          required
           value={price}
           onChange={(e) => setPrice(e.target.value)}
-          placeholder="₹ / unit"
+          placeholder="₹ / unit *"
           className={field}
         />
         <input
           type="date"
+          required
           value={date}
           onChange={(e) => setDate(e.target.value)}
           className={`${field} [color-scheme:dark]`}

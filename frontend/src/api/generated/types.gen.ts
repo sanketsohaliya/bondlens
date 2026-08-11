@@ -942,11 +942,11 @@ export type LotCreate = {
     /**
      * Price
      */
-    price?: number | null;
+    price: number;
     /**
      * Purchase Date
      */
-    purchase_date?: string | null;
+    purchase_date: string;
     /**
      * Platform
      */
@@ -964,11 +964,11 @@ export type LotUpdate = {
     /**
      * Price
      */
-    price?: number | null;
+    price: number;
     /**
      * Purchase Date
      */
-    purchase_date?: string | null;
+    purchase_date: string;
     /**
      * Platform
      */
@@ -1100,11 +1100,11 @@ export type PortfolioLot = {
     /**
      * Price
      */
-    price: number | null;
+    price: number;
     /**
      * Purchase Date
      */
-    purchase_date: string | null;
+    purchase_date: string;
     /**
      * Platform
      */
@@ -1217,6 +1217,10 @@ export type PortfolioPosition = {
      * Isin
      */
     isin: string;
+    /**
+     * Avg Price
+     */
+    avg_price: number | null;
     /**
      * Issuer Name
      */

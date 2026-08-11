@@ -59,6 +59,7 @@ def build_positions(lots: list[dict[str, Any]],
         rank = core.get("rating_rank")
         positions.append({
             "isin": isin,
+            "avg_price": round(paid, 2) if paid is not None else None,
             "issuer_name": core.get("issuer_name"),
             "credit_rating": core.get("credit_rating"),
             "rating_rank": rank,

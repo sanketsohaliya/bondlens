@@ -39,31 +39,33 @@ def test_position_math_with_prices():
     [p] = pf.build_positions(lots, {"INE000A00001": core()})
     assert p["units"] == 15
     assert p["invested"] == pytest.approx(15150)   # 10x1000 + 5x1030
+    assert p["avg_price"] == pytest.approx(1010)   # weighted paid avg
     assert p["value"] == pytest.approx(15750)      # 15 x ltp 1050
     assert p["gain"] == pytest.approx(600)
     assert p["gain_pct"] == pytest.approx(3.96, abs=0.01)
     assert p["rating_grade"] == "AA"
 
 
-def test_no_fake_pnl_without_lot_price():
-    lots = [lot(price=None)]
+def test_avg_price_null_when_any_lot_unpriced():
+    # Legacy rows predating the NOT NULL migration must not fabricate an
+    # average from face-value stand-ins.
+    lots = [lot(units=10, price=1000), lot(id=2, units=5, price=None)]
     [p] = pf.build_positions(lots, {"INE000A00001": core()})
-    assert p["invested"] == 10000       # falls back to face value
-    assert p["value"] == 10500          # marks at ltp
-    assert p["gain"] is None            # but no P&L claimed
-    assert p["gain_pct"] is None
+    assert p["avg_price"] is None
+    assert p["gain"] is None
 
 
 def test_value_fallback_chain_without_market_price():
     lots = [lot(price=990.0)]
     [p] = pf.build_positions(lots, {"INE000A00001": core(ltp=None)})
+    assert p["avg_price"] == pytest.approx(990)
     assert p["value"] == pytest.approx(9900)   # marks at paid price
     assert p["gain"] is None                   # no market price -> no P&L
 
 
 def test_unknown_isin_survives():
-    [p] = pf.build_positions([lot(price=None)], {})
-    assert p["invested"] is None and p["value"] is None
+    [p] = pf.build_positions([lot(price=1000.0)], {})
+    assert p["value"] == pytest.approx(10000)  # marks at paid price
     assert p["issuer_name"] is None and p["rating_grade"] is None
 
 
@@ -301,7 +303,7 @@ class FakeStore:
                 if v["user_id"] == user_id]
 
     def add_lot(self, user_id, isin, units, price, purchase_date, platform):
-        db._validate_lot(units, price, platform)
+        db._validate_lot(units, price, purchase_date, platform)
         if isin == "INE404NOPE99":
             raise db.WatchlistError(404, "Unknown ISIN")
         lot_id = self.next_id
@@ -313,7 +315,7 @@ class FakeStore:
         return {k: v for k, v in row.items() if k != "user_id"}
 
     def update_lot(self, user_id, lot_id, units, price, purchase_date, platform):
-        db._validate_lot(units, price, platform)
+        db._validate_lot(units, price, purchase_date, platform)
         row = self.lots.get(lot_id)
         if row is None or row["user_id"] != user_id:
             raise db.WatchlistError(404, "Lot not found")
@@ -361,7 +363,8 @@ def test_lot_crud_flow(client):
     assert p["units"] == 10 and p["lots"][0]["platform"] == "IndiaBonds"
 
     r = client.patch(f"/api/portfolio/lots/{lot_id}",
-                     json={"units": 12, "price": 1000})
+                     json={"units": 12, "price": 1000,
+                           "purchase_date": "2025-06-01"})
     assert r.status_code == 200 and r.json()["units"] == 12
 
     assert client.delete(f"/api/portfolio/lots/{lot_id}").status_code == 200
@@ -369,11 +372,15 @@ def test_lot_crud_flow(client):
 
 
 def test_lot_validation(client):
-    bad = [{"isin": "INE000A00001", "units": 0},
-           {"isin": "INE000A00001", "units": 5, "price": -1},
-           {"isin": "INE404NOPE99", "units": 5}]
-    for body, status in zip(bad, (400, 400, 404), strict=True):
+    ok = {"units": 5, "price": 1000, "purchase_date": "2025-06-01"}
+    # Units, price and purchase date are hard requirements (Pydantic 422).
+    bad = [{"isin": "INE000A00001", **ok, "units": 0},
+           {"isin": "INE000A00001", **ok, "price": -1},
+           {"isin": "INE000A00001", "units": 5, "price": 1000},   # no date
+           {"isin": "INE000A00001", "units": 5,
+            "purchase_date": "2025-06-01"},                        # no price
+           {"isin": "INE404NOPE99", **ok}]
+    for body, status in zip(bad, (422, 422, 422, 422, 404), strict=True):
         assert client.post("/api/portfolio/lots", json=body).status_code == status
-    assert client.patch("/api/portfolio/lots/999",
-                        json={"units": 1}).status_code == 404
+    assert client.patch("/api/portfolio/lots/999", json=ok).status_code == 404
     assert client.delete("/api/portfolio/lots/999").status_code == 404

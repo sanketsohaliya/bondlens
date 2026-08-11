@@ -40,10 +40,12 @@ export type {
 } from "./generated";
 
 // Lot create/update request bodies (hand-maintained).
+// Units, price and purchase date are hard requirements (API rejects
+// them missing; the DB columns are NOT NULL).
 export interface LotInput {
   units: number;
-  price?: number | null;
-  purchase_date?: string | null;
+  price: number;
+  purchase_date: string;
   platform?: string | null;
 }
 

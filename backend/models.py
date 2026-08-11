@@ -248,28 +248,29 @@ class PortfolioLot(BaseModel):
     id: int
     isin: str
     units: float
-    price: float | None
-    purchase_date: date | None
+    price: float
+    purchase_date: date
     platform: str | None
 
 
 class LotCreate(BaseModel):
     isin: str
-    units: float
-    price: float | None = None
-    purchase_date: date | None = None
+    units: float = Field(gt=0)
+    price: float = Field(gt=0)
+    purchase_date: date
     platform: str | None = None
 
 
 class LotUpdate(BaseModel):
-    units: float
-    price: float | None = None
-    purchase_date: date | None = None
+    units: float = Field(gt=0)
+    price: float = Field(gt=0)
+    purchase_date: date
     platform: str | None = None
 
 
 class PortfolioPosition(BaseModel):
     isin: str
+    avg_price: float | None  # units-weighted paid price
     issuer_name: str | None
     credit_rating: str | None
     rating_rank: int | None

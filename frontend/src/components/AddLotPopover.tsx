@@ -6,8 +6,8 @@ import { useLotMutations } from "../lib/portfolio";
     an event beats prop-drilling through table rows and the drawer). */
 export const GOTO_PORTFOLIO_EVENT = "bondlens:goto-portfolio";
 
-/** Small fixed-position form: units required; price/date/platform
-    optional. Used by the ◆ marker in the table and the drawer. */
+/** Small fixed-position form: units, price and purchase date required;
+    platform optional. Used by the ◆ marker in the table and the drawer. */
 export default function AddLotPopover({
   isin,
   held,
@@ -32,15 +32,19 @@ export default function AddLotPopover({
       setError("Units must be a positive number");
       return;
     }
-    const p = price ? Number(price) : null;
-    if (p !== null && (Number.isNaN(p) || p <= 0)) {
-      setError("Price must be a positive number");
+    const p = Number(price);
+    if (!price || Number.isNaN(p) || p <= 0) {
+      setError("Price paid per unit is required");
+      return;
+    }
+    if (!date) {
+      setError("Purchase date is required");
       return;
     }
     const lot: LotInput = {
       units: u,
       price: p,
-      purchase_date: date || null,
+      purchase_date: date,
       platform: platform.trim() || null,
     };
     add.mutate(
@@ -97,20 +101,22 @@ export default function AddLotPopover({
           />
         </label>
         <label className="block">
-          <span className="block text-[10px] text-zinc-500 mb-0.5">Price paid / unit (₹)</span>
+          <span className="block text-[10px] text-zinc-500 mb-0.5">Price paid / unit (₹) *</span>
           <input
             inputMode="decimal"
+            required
             value={price}
             onChange={(e) => setPrice(e.target.value)}
-            placeholder="optional"
+            placeholder="e.g. 1000"
             className={field}
           />
         </label>
         <div className="flex gap-2">
           <label className="block flex-1">
-            <span className="block text-[10px] text-zinc-500 mb-0.5">Purchase date</span>
+            <span className="block text-[10px] text-zinc-500 mb-0.5">Purchase date *</span>
             <input
               type="date"
+              required
               value={date}
               onChange={(e) => setDate(e.target.value)}
               className={`${field} [color-scheme:dark]`}

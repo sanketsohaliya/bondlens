@@ -92,7 +92,6 @@ export default function Portfolio({
   }
 
   const { summary, positions, cashflows, income, news } = data;
-  const hasUndatedLot = positions.some((p) => p.lots.some((l) => !l.purchase_date));
   const sliced = filter ? positions.filter((p) => filter.isins.includes(p.isin)) : positions;
   const q = nameQuery.trim();
   const shown = q
@@ -172,7 +171,7 @@ export default function Portfolio({
           {tab === "cashflow" &&
             (cashflows.length > 0 ? (
               <>
-                <IncomeBanner income={income} hasUndatedLot={hasUndatedLot} />
+                <IncomeBanner income={income} />
                 <CashflowChart cashflows={cashflows} onSelect={onSelect} />
                 <CashflowGrid cashflows={cashflows} onSelect={onSelect} />
               </>
@@ -250,7 +249,7 @@ type HoldingsSortKey =
   | "rating"
   | "units"
   | "invested"
-  | "ltp"
+  | "avg_price"
   | "value"
   | "gain"
   | "ytm"
@@ -267,7 +266,7 @@ const HOLDINGS_ACCESSORS: Record<
   rating: (p) => p.rating_rank,
   units: (p) => p.units,
   invested: (p) => p.invested,
-  ltp: (p) => p.ltp,
+  avg_price: (p) => p.avg_price,
   value: (p) => p.value,
   gain: (p) => p.gain,
   ytm: (p) => p.ytm,
@@ -280,11 +279,11 @@ const HOLDINGS_COLS: Array<{ label: string; key: HoldingsSortKey | null; right?:
   { label: "Issuer", key: "issuer" },
   { label: "Rating", key: "rating" },
   { label: "Units", key: "units", right: true },
+  { label: "Avg / LTP", key: "avg_price", right: true },
   { label: "Invested", key: "invested", right: true },
-  { label: "LTP", key: "ltp", right: true },
   { label: "Value", key: "value", right: true },
   { label: "P&L", key: "gain", right: true },
-  { label: "YTM", key: "ytm", right: true },
+  { label: "YTM @ LTP", key: "ytm", right: true },
   { label: "Maturity", key: "maturity" },
   { label: "Next payment", key: "next_payment" },
 ];
@@ -451,8 +450,16 @@ function PositionRow({
           />
         </td>
         <td className={`${TD} text-right tabular-nums`}>{fmt.num(p.units, 2)}</td>
+        {/* Avg paid price primary, market LTP beneath. */}
+        <td className={`${TD} text-right tabular-nums`}>
+          <div className="text-zinc-200 font-medium">
+            {p.avg_price != null ? fmt.inrFull(p.avg_price) : "–"}
+          </div>
+          {p.ltp != null && (
+            <div className="text-[10px] text-zinc-500">LTP {fmt.inrFull(p.ltp)}</div>
+          )}
+        </td>
         <td className={`${TD} text-right tabular-nums`}>{fmt.inr(p.invested)}</td>
-        <td className={`${TD} text-right tabular-nums`}>{fmt.inrFull(p.ltp)}</td>
         <td className={`${TD} text-right tabular-nums font-medium text-zinc-200`}>
           {fmt.inr(p.value)}
         </td>
@@ -512,16 +519,10 @@ function PositionRow({
 /** Received-so-far vs projected, from the same month buckets the chart
  * draws — the numbers cannot disagree. Hidden until something has been
  * received. */
-function IncomeBanner({
-  income,
-  hasUndatedLot,
-}: {
-  income: PortfolioIncome;
-  hasUndatedLot: boolean;
-}) {
+function IncomeBanner({ income }: { income: PortfolioIncome }) {
   const received = income.received_interest + income.received_principal;
   const projected = income.projected_interest + income.projected_principal;
-  if (received <= 0 && !hasUndatedLot) return null;
+  if (received <= 0) return null;
   return (
     <div className="flex flex-wrap items-center gap-x-6 gap-y-2 border-b border-zinc-800 bg-zinc-900/30 px-4 py-2">
       {received > 0 && (
@@ -556,12 +557,6 @@ function IncomeBanner({
             tip={`Interest ${fmt.inr(income.projected_interest)} · Principal ${fmt.inr(income.projected_principal)}`}
           />
         </>
-      )}
-      {hasUndatedLot && (
-        <span className="text-[11px] text-zinc-600">
-          Lots without a purchase date are excluded from received income — add dates to include
-          them.
-        </span>
       )}
     </div>
   );
