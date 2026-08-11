@@ -212,15 +212,18 @@ export default function TradeChart({
     };
   }, [filtered]);
 
-  const recent = useMemo(
+  const [showAll, setShowAll] = useState(false);
+  const sortedTrades = useMemo(
     () =>
-      [...filtered]
-        .sort(
-          (a, b) => b.trade_date.localeCompare(a.trade_date) || (a.segment < b.segment ? -1 : 1),
-        )
-        .slice(0, 14),
+      [...filtered].sort(
+        (a, b) => b.trade_date.localeCompare(a.trade_date) || (a.segment < b.segment ? -1 : 1),
+      ),
     [filtered],
   );
+  const recent = showAll ? sortedTrades : sortedTrades.slice(0, 14);
+  // A huge "All"-range list shouldn't stick around when filters change.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reset on filter change is the point
+  useEffect(() => setShowAll(false), [range, exchange]);
 
   return (
     <div className="space-y-3">
@@ -304,6 +307,7 @@ export default function TradeChart({
                 ],
                 ["Units traded (retail)", stats.retailVolume.toLocaleString("en-IN")],
                 ["Trades (retail)", stats.trades ? stats.trades.toLocaleString("en-IN") : "–"],
+                ["Face value", faceValue != null ? fmt.inrFull(faceValue) : "–"],
               ] as const
             ).map(([label, value]) => (
               <StatBox key={label} label={label} value={value} />
@@ -314,9 +318,13 @@ export default function TradeChart({
             <h3 className="text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-2">
               Recent trades
             </h3>
-            <div className="rounded-lg border border-zinc-800 overflow-x-auto">
+            <div
+              className={`rounded-lg border border-zinc-800 overflow-x-auto ${
+                showAll ? "max-h-96 overflow-y-auto scroll-slim" : ""
+              }`}
+            >
               <table className="w-full text-xs">
-                <thead>
+                <thead className={showAll ? "sticky top-0 bg-zinc-950 z-10" : ""}>
                   <tr className="text-left text-zinc-500 border-b border-zinc-800">
                     <th className="px-3 py-1.5 font-medium">Date</th>
                     <th className="px-3 py-1.5 font-medium">Segment</th>
@@ -345,11 +353,24 @@ export default function TradeChart({
                         </span>
                       </td>
                       <td className="px-3 py-1.5 text-zinc-200 whitespace-nowrap">
-                        {t.segment === "retail"
-                          ? fmt.inr(t.close != null ? Number(t.close) : null)
-                          : (t.wap ?? t.last_price) != null
-                            ? `${fmt.num(Number(t.wap ?? t.last_price))}%`
-                            : "–"}
+                        {t.segment === "retail" ? (
+                          fmt.inr(t.close != null ? Number(t.close) : null)
+                        ) : (t.wap ?? t.last_price) != null ? (
+                          faceValue != null ? (
+                            <div title="Clean price (% of face × face value) — excludes accrued interest, unlike retail dirty ₹">
+                              <div>
+                                {fmt.inrFull((Number(t.wap ?? t.last_price) / 100) * faceValue)}
+                              </div>
+                              <div className="text-[10px] text-zinc-500">
+                                {fmt.num(Number(t.wap ?? t.last_price))}% of face
+                              </div>
+                            </div>
+                          ) : (
+                            `${fmt.num(Number(t.wap ?? t.last_price))}%`
+                          )
+                        ) : (
+                          "–"
+                        )}
                       </td>
                       <td className="px-3 py-1.5 text-zinc-400">
                         {fmt.pct(
@@ -369,6 +390,17 @@ export default function TradeChart({
                 </tbody>
               </table>
             </div>
+            {sortedTrades.length > 14 && (
+              <button
+                type="button"
+                onClick={() => setShowAll(!showAll)}
+                className="mt-2 text-xs text-emerald-400 hover:text-emerald-300"
+              >
+                {showAll
+                  ? "Show less ▴"
+                  : `Show all (${sortedTrades.length.toLocaleString("en-IN")}) ▾`}
+              </button>
+            )}
           </div>
         </>
       )}
