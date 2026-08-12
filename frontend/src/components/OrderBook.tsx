@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { api, fmt } from "../api/client";
 import type { DepthSide, KiteOrder, YtmAtPrice } from "../api/types";
 import { useDepthStream } from "../lib/useDepthStream";
@@ -379,6 +379,16 @@ function OrdersStrip({ isin, onModify }: { isin: string; onModify: (t: TicketSta
       qc.invalidateQueries({ queryKey: ["kite-margins"] });
     },
   });
+  // Filled bond BUYs become portfolio lots server-side; refresh the
+  // portfolio-derived caches only when something was actually created.
+  const newLots = data?.new_lots ?? 0;
+  useEffect(() => {
+    if (newLots > 0) {
+      qc.invalidateQueries({ queryKey: ["portfolio"] });
+      qc.invalidateQueries({ queryKey: ["lists"] });
+      qc.invalidateQueries({ queryKey: ["notifications"] });
+    }
+  }, [newLots, qc]);
 
   // The server resolves each order's tradingsymbol back to its ISIN.
   const mine = (data?.orders ?? []).filter((o) => o.isin === isin);

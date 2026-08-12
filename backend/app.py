@@ -26,7 +26,18 @@ from fastapi import (
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import RedirectResponse
 
-from . import ask_ytm, auth, db, depth, kite, kite_connect, kite_ticker, models, queries
+from . import (
+    ask_ytm,
+    auth,
+    db,
+    depth,
+    fills,
+    kite,
+    kite_connect,
+    kite_ticker,
+    models,
+    queries,
+)
 from .analytics import portfolio as pf
 from .analytics import ratings, schedule, yields
 from .analytics.compute import STALE_AFTER_DAYS
@@ -577,8 +588,9 @@ def kite_place_order(body: models.KiteOrderRequest,
 @router.get("/api/kite/orders", response_model=models.KiteOrdersResponse)
 def kite_orders(user_id: int = Depends(auth.require_user)):
     """Today's orders on the user's Zerodha account (Kite is the system
-    of record; nothing is stored app-side). Bond orders are resolved
-    back to their ISIN/issuer; other instruments pass through plain."""
+    of record for orders). Bond orders are resolved back to their
+    ISIN/issuer; filled bond BUYs are reconciled into portfolio lots
+    (new_lots tells the UI when to refresh the portfolio)."""
     orders = _kite_call(kite_connect.list_orders, user_id)
     bonds = queries.symbol_bond_map()
     for o in orders:
@@ -586,7 +598,11 @@ def kite_orders(user_id: int = Depends(auth.require_user)):
                          o.get("tradingsymbol") or ""))
         o["isin"] = hit["isin"] if hit else None
         o["issuer_name"] = hit["issuer_name"] if hit else None
-    return {"orders": orders}
+    try:
+        new_lots = fills.process_orders(user_id, orders)
+    except Exception:  # noqa: BLE001 - reconciliation must never break the list
+        new_lots = 0
+    return {"orders": orders, "new_lots": new_lots}
 
 
 @router.put("/api/kite/orders/{order_id}", response_model=models.KiteOrderId)

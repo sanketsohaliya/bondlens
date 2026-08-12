@@ -483,6 +483,9 @@ class KiteOrder(BaseModel):
 
 class KiteOrdersResponse(BaseModel):
     orders: list[KiteOrder]
+    # Lots auto-created from freshly filled bond BUYs during this fetch —
+    # the UI refreshes the portfolio only when > 0.
+    new_lots: int = 0
 
 
 class Health(BaseModel):

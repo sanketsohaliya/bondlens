@@ -67,6 +67,9 @@ services:
       DATABASE_URL: postgresql://bondlens:bondlens@db:5432/bondlens
       NTFY_TOPIC: bondlens-sanket-x7k2m9   # subscribe to this in the ntfy app
       BACKUP_DIR: /desktop
+      # The Kite fill sweep needs the same app credentials as the api.
+      KITE_API_KEY: ${KITE_API_KEY:-}
+      KITE_API_SECRET: ${KITE_API_SECRET:-}
     volumes:
       # Weekly pg_dump lands on the (OneDrive-redirected) Windows Desktop,
       # replacing the previous one. Bonus: OneDrive syncs it offsite.

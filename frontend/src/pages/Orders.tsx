@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { api, fmt } from "../api/client";
 import type { KiteOrder } from "../api/types";
 import OrderTicket from "../components/OrderTicket";
@@ -36,6 +36,16 @@ export default function Orders({ onSelect }: { onSelect: (isin: string) => void 
     refetchInterval: 30_000,
     refetchOnWindowFocus: false,
   });
+  // Filled bond BUYs become portfolio lots server-side; refresh the
+  // portfolio-derived caches only when something was actually created.
+  const newLots = data?.new_lots ?? 0;
+  useEffect(() => {
+    if (newLots > 0) {
+      qc.invalidateQueries({ queryKey: ["portfolio"] });
+      qc.invalidateQueries({ queryKey: ["lists"] });
+      qc.invalidateQueries({ queryKey: ["notifications"] });
+    }
+  }, [newLots, qc]);
   const cancel = useMutation({
     mutationFn: (orderId: string) => api.kite.cancelOrder(orderId),
     onSettled: () => {

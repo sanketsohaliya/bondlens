@@ -328,7 +328,40 @@ def delete_kite_token(user_id: int) -> None:
                      (user_id,))
 
 
+# --- Kite fill ledger (orders reconciled into the portfolio) ----------------
+
+def get_processed_order_ids(user_id: int) -> set[str]:
+    with _conn() as conn:
+        rows = conn.execute(
+            "SELECT order_id FROM kite_fills WHERE user_id = %s",
+            (user_id,)).fetchall()
+    return {r["order_id"] for r in rows}
+
+
+def record_fill(user_id: int, order_id: str, lot_id: int | None) -> None:
+    """Mark an order as reconciled (idempotent on re-runs)."""
+    with _conn() as conn:
+        conn.execute(
+            "INSERT INTO kite_fills (user_id, order_id, lot_id) "
+            "VALUES (%s, %s, %s) ON CONFLICT (user_id, order_id) DO NOTHING",
+            (user_id, order_id, lot_id))
+
+
 # --- Notifications ----------------------------------------------------------
+
+def add_notification(user_id: int, kind: str, severity: str, isin: str,
+                     title: str, body: str, dedupe_key: str) -> bool:
+    """Insert one notification; the (user_id, dedupe_key) constraint makes
+    repeats no-ops. Returns True when a row was actually inserted."""
+    with _conn() as conn:
+        cur = conn.execute(
+            "INSERT INTO user_notifications "
+            "(user_id, kind, severity, isin, title, body, dedupe_key) "
+            "VALUES (%s, %s, %s, %s, %s, %s, %s) "
+            "ON CONFLICT (user_id, dedupe_key) DO NOTHING",
+            (user_id, kind, severity, isin, title, body, dedupe_key))
+        return cur.rowcount > 0
+
 
 def get_notifications(user_id: int, limit: int = 50) -> dict[str, Any]:
     """Newest-first notification feed plus the unread count."""

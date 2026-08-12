@@ -28,3 +28,8 @@
 #    Idempotent via the (user_id, dedupe_key) unique constraint.
 30 7 * * * cd /app && python scripts/generate_notifications.py
 30 19 * * 1-5 cd /app && python scripts/generate_notifications.py
+
+# 8) Kite fill sweep — every 10 min during market hours (Mon-Fri): turns
+#    filled bond BUYs into portfolio lots for users with a live token.
+#    Idempotent via the kite_fills (user_id, order_id) primary key.
+*/10 9-16 * * 1-5 cd /app && python scripts/sweep_kite_fills.py

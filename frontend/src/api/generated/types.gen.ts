@@ -891,6 +891,10 @@ export type KiteOrdersResponse = {
      * Orders
      */
     orders: Array<KiteOrder>;
+    /**
+     * New Lots
+     */
+    new_lots?: number;
 };
 
 /**
