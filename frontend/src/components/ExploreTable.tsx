@@ -99,12 +99,16 @@ export default function ExploreTable({
     legacyKey: LEGACY_COLUMN_WIDTHS_KEY,
   });
 
+  // Ask-YTM sorting uses only that column's values (no-ask rows last).
+  // Only when the column has no data at all — Kite disconnected, or the
+  // market closed so nothing quotes — does the sort fall back to the
+  // LTP-based YTM column wholesale.
+  const askAvailable = useMemo(() => [...askMap.values()].some((a) => a.ytm != null), [askMap]);
+  const effectiveKey = sort.key === "ask_ytm" && !askAvailable ? "ytm" : sort.key;
+
   const sorted = useMemo(() => {
-    // Ask-YTM sorting blends in each row's LTP-based YTM when no ask
-    // exists — one coherent "best available yield" ordering instead of
-    // ask-less bonds sinking to the bottom.
     const get = (b: Bond) =>
-      sort.key === "ask_ytm" ? (askMap.get(b.isin)?.ytm ?? b.ytm ?? null) : b[sort.key];
+      effectiveKey === "ask_ytm" ? (askMap.get(b.isin)?.ytm ?? null) : b[effectiveKey];
     const rows = [...bonds];
     rows.sort((a, b) => {
       const av = get(a);
@@ -114,11 +118,10 @@ export default function ExploreTable({
       return (av < bv ? -1 : av > bv ? 1 : 0) * sort.dir;
     });
     return rows;
-  }, [bonds, sort, askMap]);
+  }, [bonds, sort.dir, effectiveKey, askMap]);
 
-  // Without Kite the ask column isn't rendered, but ask-YTM sorting has
-  // degraded to plain YTM — show the arrow on the YTM @ LTP header.
-  const shownSortKey = !kiteConnected && sort.key === "ask_ytm" ? "ytm" : sort.key;
+  // The arrow sits on the column that actually orders the rows.
+  const shownSortKey = effectiveKey;
 
   if (error) {
     return <div className="p-8 text-center text-red-400 text-sm">{error}</div>;
