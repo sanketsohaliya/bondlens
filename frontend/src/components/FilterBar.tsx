@@ -128,6 +128,10 @@ function FilterFields({
     "focus:outline-none focus:border-zinc-400 placeholder:text-zinc-600 " +
     (active ? "border-zinc-500 text-zinc-100" : "border-zinc-700 text-zinc-600");
 
+  // Equal-height cells: selects render this invisible stand-in where the
+  // numeric fields have their slider, so the items-end grid stays aligned.
+  const sliderSpacer = <span aria-hidden className="block h-1 mt-1" />;
+
   const clearX = (key: NumKey | SelKey) => (
     <button
       type="button"
@@ -195,6 +199,7 @@ function FilterFields({
             <option key={o}>{o}</option>
           ))}
         </select>
+        {sliderSpacer}
       </label>
     );
   };
@@ -277,6 +282,7 @@ function FilterFields({
               <option value="otc">Trades OTC</option>
               <option value="both">Retail + OTC</option>
             </select>
+            {sliderSpacer}
           </label>
         );
       }
@@ -299,6 +305,7 @@ function FilterFields({
               <option value="maturity">At maturity (zero coupon / cumulative)</option>
               <option value="periodic">Periodic coupons</option>
             </select>
+            {sliderSpacer}
           </label>
         );
       case "exchange":
@@ -328,6 +335,7 @@ function FilterFields({
               <option value="secured">Secured</option>
               <option value="unsecured">Unsecured</option>
             </select>
+            {sliderSpacer}
           </label>
         );
       }
@@ -343,6 +351,7 @@ function FilterFields({
               <option value="">Any</option>
               <option value="exact">Exact only</option>
             </select>
+            {sliderSpacer}
           </label>
         );
     }
@@ -372,14 +381,14 @@ function FilterFields({
                 setAdded((a) => a.filter((x) => x !== id));
                 set(clearExtra[id]);
               }}
-              className="pb-2 text-zinc-600 hover:text-red-400 text-xs leading-none"
+              className="pb-4 text-zinc-600 hover:text-red-400 text-xs leading-none"
             >
               ×
             </button>
           </span>
         ))}
 
-        <span className="relative self-end justify-self-start">
+        <span className="relative self-end justify-self-start mb-2">
           <button
             type="button"
             onClick={() => setAddOpen(!addOpen)}
@@ -417,7 +426,7 @@ function FilterFields({
         </span>
       </div>
 
-      <span className="flex items-end gap-2 self-end">
+      <span className="flex items-end gap-2 self-end mb-2">
         <WatchlistChip modes={modes} onModes={onModes} />
         <button
           type="button"
