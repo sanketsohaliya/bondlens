@@ -6,8 +6,15 @@ the token expires would otherwise be lost).
 Run by cron every 10 minutes during market hours; a user's expired
 token 403s, clears itself, and the user is skipped until they
 reconnect.
+
+    python scripts/sweep_kite_fills.py
 """
-from backend import db, fills, kite_connect, queries
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from backend import db, fills, kite_connect, queries  # noqa: E402
 
 
 def main() -> None:
