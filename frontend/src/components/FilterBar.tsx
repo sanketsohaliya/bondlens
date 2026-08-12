@@ -4,14 +4,10 @@ import { api, fmt } from "../api/client";
 import type { ExploreParams, Filters } from "../api/types";
 import { nextListName, useWatchlists } from "../lib/lists";
 
-/* What a fresh screen starts with: decent yield, real retail liquidity,
-   investment-grade, at least a year to run, recently traded. */
+/* What a fresh screen starts with: investment-grade only — everything
+   else unrestricted (the ask-YTM default sort surfaces the best deals). */
 export const DEFAULT_FILTERS: ExploreParams = {
-  min_ytm: 10,
-  min_turnover: 51000,
   min_rating: "BBB-",
-  min_years: 1,
-  traded_within: 1,
 };
 
 /** v1's describeFilters(): human-readable summary of active filters. */
@@ -73,7 +69,7 @@ export default function FilterBar({
       params={params}
       set={set}
       filters={filters}
-      onReset={() => onChange({ q: params.q })}
+      onReset={() => onChange({ ...DEFAULT_FILTERS, q: params.q })}
       modes={modes}
       onModes={onModes}
       dimReason={dimReason}
@@ -91,6 +87,19 @@ type NumKey =
   | "min_otc_turnover"
   | "traded_within";
 type SelKey = "min_rating" | "sector" | "frequency" | "exchange";
+
+/* Drag ranges for the numeric boxes (typing past a max still works;
+   the slider just pins at its end). 0 = filter off. */
+const SLIDERS: Record<NumKey, { max: number; step: number }> = {
+  min_ytm: { max: 30, step: 0.5 },
+  max_ytm: { max: 30, step: 0.5 },
+  min_years: { max: 15, step: 0.5 },
+  max_years: { max: 15, step: 0.5 },
+  max_ltp: { max: 200_000, step: 5_000 },
+  min_turnover: { max: 2_000_000, step: 50_000 },
+  min_otc_turnover: { max: 100_000_000, step: 1_000_000 },
+  traded_within: { max: 30, step: 1 },
+};
 
 /* One always-visible row. Fields with a value are highlighted in emerald. */
 function FilterFields({
@@ -119,18 +128,50 @@ function FilterFields({
     "focus:outline-none focus:border-zinc-400 placeholder:text-zinc-600 " +
     (active ? "border-zinc-500 text-zinc-100" : "border-zinc-700 text-zinc-600");
 
+  const clearX = (key: NumKey | SelKey) => (
+    <button
+      type="button"
+      title="Clear"
+      onClick={() => set({ [key]: undefined } as Partial<ExploreParams>)}
+      className="text-zinc-600 hover:text-zinc-300 leading-none px-0.5"
+    >
+      ×
+    </button>
+  );
+
   const num = (label: string, key: NumKey) => {
     const active = params[key] != null;
+    const range = SLIDERS[key];
+    // 0 (or an emptied box) means "no filter" — a 0-threshold would still
+    // exclude rows with no value at all, which is never what's wanted.
+    const apply = (raw: string) => {
+      const v = raw === "" ? undefined : +raw;
+      set({
+        [key]: v == null || Number.isNaN(v) || v === 0 ? undefined : v,
+      } as Partial<ExploreParams>);
+    };
     return (
       <label>
-        <span className={lbl(active)}>{label}</span>
+        <span className={`flex items-center justify-between ${lbl(active)}`}>
+          {label}
+          {active && clearX(key)}
+        </span>
         <input
           type="number"
           className={box(active)}
+          placeholder="Any"
           value={params[key] ?? ""}
-          onChange={(e) =>
-            set({ [key]: e.target.value ? +e.target.value : undefined } as Partial<ExploreParams>)
-          }
+          onChange={(e) => apply(e.target.value)}
+        />
+        <input
+          type="range"
+          aria-label={`${label} slider`}
+          min={0}
+          max={range.max}
+          step={range.step}
+          value={Math.min(params[key] ?? 0, range.max)}
+          onChange={(e) => apply(e.target.value)}
+          className="w-full h-1 mt-1 accent-emerald-500 cursor-pointer"
         />
       </label>
     );
@@ -140,7 +181,10 @@ function FilterFields({
     const active = !!params[key];
     return (
       <label>
-        <span className={lbl(active)}>{label}</span>
+        <span className={`flex items-center justify-between ${lbl(active)}`}>
+          {label}
+          {active && clearX(key)}
+        </span>
         <select
           className={box(active)}
           value={params[key] ?? ""}

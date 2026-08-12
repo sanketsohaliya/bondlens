@@ -53,6 +53,7 @@ export default function ExploreTable({
   bonds,
   loading,
   error,
+  initialSort,
   onSelect,
   onSortChange,
 }: {
@@ -60,9 +61,10 @@ export default function ExploreTable({
   loading: boolean;
   error: string | null;
   onSelect: (isin: string, tab?: "ratings" | "chart") => void;
+  initialSort?: SortState;
   onSortChange?: (s: SortState) => void;
 }) {
-  const [sort, setSortState] = useState<SortState>({ key: "turnover", dir: -1 });
+  const [sort, setSortState] = useState<SortState>(initialSort ?? { key: "ask_ytm", dir: -1 });
   const setSort = (update: (s: SortState) => SortState) =>
     setSortState((s) => {
       const next = update(s);
@@ -98,8 +100,11 @@ export default function ExploreTable({
   });
 
   const sorted = useMemo(() => {
+    // Ask-YTM sorting blends in each row's LTP-based YTM when no ask
+    // exists — one coherent "best available yield" ordering instead of
+    // ask-less bonds sinking to the bottom.
     const get = (b: Bond) =>
-      sort.key === "ask_ytm" ? (askMap.get(b.isin)?.ytm ?? null) : b[sort.key];
+      sort.key === "ask_ytm" ? (askMap.get(b.isin)?.ytm ?? b.ytm ?? null) : b[sort.key];
     const rows = [...bonds];
     rows.sort((a, b) => {
       const av = get(a);
@@ -110,6 +115,10 @@ export default function ExploreTable({
     });
     return rows;
   }, [bonds, sort, askMap]);
+
+  // Without Kite the ask column isn't rendered, but ask-YTM sorting has
+  // degraded to plain YTM — show the arrow on the YTM @ LTP header.
+  const shownSortKey = !kiteConnected && sort.key === "ask_ytm" ? "ytm" : sort.key;
 
   if (error) {
     return <div className="p-8 text-center text-red-400 text-sm">{error}</div>;
@@ -147,8 +156,10 @@ export default function ExploreTable({
                   }))
                 }
               >
-                <span className={c.key === sort.key ? "text-zinc-200" : undefined}>{c.label}</span>
-                {c.key === sort.key && (
+                <span className={c.key === shownSortKey ? "text-zinc-200" : undefined}>
+                  {c.label}
+                </span>
+                {c.key === shownSortKey && (
                   <span className="ml-1 text-emerald-500/80">{sort.dir === -1 ? "▼" : "▲"}</span>
                 )}
                 {i > 0 && (
@@ -313,7 +324,7 @@ function Row({
             <span className="text-zinc-600">–</span>
           ) : (
             <>
-              <div className={ask.ytm != null ? "text-emerald-400 font-medium" : "text-zinc-500"}>
+              <div className={ask.ytm != null ? "text-zinc-200 font-medium" : "text-zinc-500"}>
                 {ask.ytm != null ? fmt.pct(ask.ytm) : "–"}
               </div>
               <div className="text-[11px] text-zinc-500">

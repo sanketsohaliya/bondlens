@@ -16,16 +16,41 @@ import Portfolio from "./pages/Portfolio";
 
 type Page = "explore" | "portfolio" | "orders";
 
+// Filters and sort survive reloads — set them once, they stick. Search
+// (q) and list views (isins) are session things, never persisted.
+const SAVED_FILTERS_KEY = "explore-filters";
+const SAVED_SORT_KEY = "explore-sort";
+const DEFAULT_SORT: SortState = { key: "ask_ytm", dir: -1 };
+
+function loadSaved<T extends object>(key: string, fallback: T): T {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? { ...fallback, ...(JSON.parse(raw) as Partial<T>) } : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
 export default function App() {
   const [page, setPage] = useState<Page>("explore");
-  const [params, setParams] = useState<ExploreParams>(DEFAULT_FILTERS);
+  const [params, setParams] = useState<ExploreParams>(() =>
+    loadSaved(SAVED_FILTERS_KEY, DEFAULT_FILTERS),
+  );
   const [modes, setModes] = useState<ListModes>({
     watchlist: false,
     watchlistId: null,
   });
   const [selected, setSelected] = useState<{ isin: string; tab?: Tab } | null>(null);
-  const [sort, setSort] = useState<SortState>({ key: "turnover", dir: -1 });
+  const [sort, setSort] = useState<SortState>(() => loadSaved(SAVED_SORT_KEY, DEFAULT_SORT));
   const { lists: watchlists } = useWatchlists();
+
+  useEffect(() => {
+    const { q: _q, isins: _isins, ...filters } = params;
+    localStorage.setItem(SAVED_FILTERS_KEY, JSON.stringify(filters));
+  }, [params]);
+  useEffect(() => {
+    localStorage.setItem(SAVED_SORT_KEY, JSON.stringify(sort));
+  }, [sort]);
 
   // Deep components (add-lot popover) can ask to open the portfolio page.
   useEffect(() => {
@@ -74,10 +99,10 @@ export default function App() {
   // The sort travels to the API so the 1000-row page is cut in the same
   // order the table displays — otherwise sorting only rearranges whatever
   // the default turnover ordering happened to include. ask_ytm is
-  // client-side only (computed from the user's Kite session), so the
-  // page cut falls back to the default turnover order for it.
+  // client-side only (computed from the user's Kite session); ytm is by
+  // far its best page-cut proxy, since the table blends the two anyway.
   const sortParams = {
-    sort: sort.key === "ask_ytm" ? "turnover" : sort.key,
+    sort: sort.key === "ask_ytm" ? "ytm" : sort.key,
     dir: sort.dir === 1 ? ("asc" as const) : ("desc" as const),
   };
   const bonds = useQuery({
@@ -177,6 +202,7 @@ export default function App() {
                 loading={bonds.isLoading && (!listMode || listIsins.length > 0)}
                 error={bonds.error?.message ?? null}
                 onSelect={(isin, tab) => setSelected({ isin, tab })}
+                initialSort={sort}
                 onSortChange={setSort}
               />
             </>
