@@ -47,6 +47,37 @@ const KITE_COLS: Col[] = [
 const COLUMN_WIDTHS_KEY = "explore-col-widths";
 const LEGACY_COLUMN_WIDTHS_KEY = "screener-col-widths";
 
+/* Last-known asks, so reloads paint straight into the live order instead
+   of reordering when the fetch lands. 30 min: fresh enough to predict
+   the current order, expired by the next session (no stale-ask sorting,
+   no snapshot→ytm re-shift after hours). */
+const ASK_SNAPSHOT_KEY = "ask-ytm-snapshot";
+const ASK_SNAPSHOT_TTL = 30 * 60 * 1000;
+const ASK_SNAPSHOT_CAP = 2000;
+
+function loadAskSnapshot(): Map<string, AskYtm> | null {
+  try {
+    const raw = localStorage.getItem(ASK_SNAPSHOT_KEY);
+    if (!raw) return null;
+    const { ts, items } = JSON.parse(raw) as { ts: number; items: AskYtm[] };
+    if (Date.now() - ts > ASK_SNAPSHOT_TTL) return null;
+    return new Map(items.map((i) => [i.isin, i]));
+  } catch {
+    return null;
+  }
+}
+
+function saveAskSnapshot(fresh: AskYtm[]) {
+  try {
+    const merged = loadAskSnapshot() ?? new Map<string, AskYtm>();
+    for (const item of fresh) merged.set(item.isin, item);
+    const items = [...merged.values()].slice(-ASK_SNAPSHOT_CAP);
+    localStorage.setItem(ASK_SNAPSHOT_KEY, JSON.stringify({ ts: Date.now(), items }));
+  } catch {
+    /* storage full/unavailable — snapshot is only an optimization */
+  }
+}
+
 export type SortState = { key: SortKey; dir: 1 | -1 };
 
 export default function ExploreTable({
@@ -88,11 +119,30 @@ export default function ExploreTable({
     staleTime: 55_000, // just under the server's 60s per-user cache
     refetchOnWindowFocus: false,
   });
-  const askMap = useMemo(() => {
-    const m = new Map<string, AskYtm>();
-    for (const item of askYtm.data?.items ?? []) m.set(item.isin, item);
-    return m;
+  const [snapshot] = useState(loadAskSnapshot);
+  useEffect(() => {
+    if (askYtm.data?.items?.length) saveAskSnapshot(askYtm.data.items);
   }, [askYtm.data]);
+  const askMap = useMemo(() => {
+    // Fresh data wins outright (even empty ⇒ the ytm fallback below);
+    // the snapshot only bridges the seconds before the first fetch lands.
+    if (askYtm.data) {
+      const m = new Map<string, AskYtm>();
+      for (const item of askYtm.data.items) m.set(item.isin, item);
+      return m;
+    }
+    return snapshot ?? new Map<string, AskYtm>();
+  }, [askYtm.data, snapshot]);
+
+  // Painting before the asks arrive would order by LTP-YTM and then
+  // visibly reorder — hold the loading state for the one first fetch
+  // (kite status unknown counts as pending; a disconnected user's ask
+  // query is disabled, so isLoading stays false and nothing holds).
+  const holdForAsks =
+    sort.key === "ask_ytm" &&
+    snapshot == null &&
+    bonds.length > 0 &&
+    (kite === undefined || (kiteConnected && askYtm.isLoading));
 
   const cols = kiteConnected ? KITE_COLS : BASE_COLS;
   const { widths, tableRef, startResize } = useColumnWidths(COLUMN_WIDTHS_KEY, cols.length, {
@@ -126,9 +176,11 @@ export default function ExploreTable({
   if (error) {
     return <div className="p-8 text-center text-red-400 text-sm">{error}</div>;
   }
-  if (loading) {
+  if (loading || holdForAsks) {
     return (
-      <div className="p-8 text-center text-zinc-500 text-sm animate-pulse">Loading bonds…</div>
+      <div className="p-8 text-center text-zinc-500 text-sm animate-pulse">
+        {loading ? "Loading bonds…" : "Loading live asks…"}
+      </div>
     );
   }
 

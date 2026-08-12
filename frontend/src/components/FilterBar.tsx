@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { api, fmt } from "../api/client";
 import type { ExploreParams, Filters } from "../api/types";
 import { nextListName, useWatchlists } from "../lib/lists";
@@ -102,17 +102,21 @@ const opts = (values: number[], label: (v: number) => string, sign: "≥" | "≤
   values.map((v) => ({ v, label: `${sign} ${label(v)}` }));
 
 const NUM_OPTIONS: Record<NumKey, Array<{ v: number; label: string }>> = {
-  min_ytm: opts([8, 9, 10, 11, 12, 13, 14, 15, 18, 20], (v) => `${v}%`, "≥"),
-  max_ytm: opts([10, 12, 14, 16, 18, 20, 25], (v) => `${v}%`, "≤"),
+  min_ytm: opts([4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 18, 20], (v) => `${v}%`, "≥"),
+  max_ytm: opts([8, 10, 12, 14, 16, 18, 20, 25], (v) => `${v}%`, "≤"),
   min_years: opts([0.5, 1, 2, 3, 5, 7, 10], yrs, "≥"),
-  max_years: opts([1, 2, 3, 5, 7, 10, 15], yrs, "≤"),
+  max_years: opts([0.5, 1, 2, 3, 5, 7, 10, 15], yrs, "≤"),
   max_ltp: opts([1_000, 10_000, 50_000, 100_000, 200_000, 500_000], inr, "≤"),
   min_turnover: opts(
-    [10_000, 50_000, 100_000, 500_000, 1_000_000, 5_000_000, 10_000_000],
+    [1_000, 5_000, 10_000, 50_000, 100_000, 500_000, 1_000_000, 5_000_000, 10_000_000],
     inr,
     "≥",
   ),
-  min_otc_turnover: opts([1_000_000, 5_000_000, 10_000_000, 50_000_000, 100_000_000], inr, "≥"),
+  min_otc_turnover: opts(
+    [100_000, 1_000_000, 5_000_000, 10_000_000, 50_000_000, 100_000_000],
+    inr,
+    "≥",
+  ),
   traded_within: opts([1, 2, 3, 5, 10, 20], (v) => `${v} sess`, "≤"),
 };
 
@@ -143,18 +147,23 @@ function FilterFields({
     "focus:outline-none focus:border-zinc-400 placeholder:text-zinc-600 " +
     (active ? "border-zinc-500 text-zinc-100" : "border-zinc-700 text-zinc-600");
 
-  const clearX = (key: NumKey | SelKey) => (
+  // Label-row ×: with onRemove (default filters) it always shows and also
+  // hides the box; otherwise (extras) it appears when active and clears.
+  const clearX = (key: NumKey | SelKey, onRemove?: () => void) => (
     <button
       type="button"
-      title="Clear"
-      onClick={() => set({ [key]: undefined } as Partial<ExploreParams>)}
+      title={onRemove ? "Remove filter" : "Clear"}
+      onClick={() => {
+        set({ [key]: undefined } as Partial<ExploreParams>);
+        onRemove?.();
+      }}
       className="text-zinc-600 hover:text-zinc-300 leading-none px-0.5"
     >
       ×
     </button>
   );
 
-  const num = (label: string, key: NumKey) => {
+  const num = (label: string, key: NumKey, onRemove?: () => void) => {
     const current = params[key];
     const active = current != null;
     const options = NUM_OPTIONS[key];
@@ -163,10 +172,10 @@ function FilterFields({
     const offList = current != null && !options.some((o) => o.v === current);
     const sign = key.startsWith("max") || key === "traded_within" ? "≤" : "≥";
     return (
-      <label>
+      <label className="flex-1 min-w-0">
         <span className={`flex items-center justify-between ${lbl(active)}`}>
           {label}
-          {active && clearX(key)}
+          {(active || onRemove) && clearX(key, onRemove)}
         </span>
         <select
           className={box(active)}
@@ -189,13 +198,13 @@ function FilterFields({
     );
   };
 
-  const sel = (label: string, key: SelKey, options: string[]) => {
+  const sel = (label: string, key: SelKey, options: string[], onRemove?: () => void) => {
     const active = !!params[key];
     return (
-      <label>
+      <label className="flex-1 min-w-0">
         <span className={`flex items-center justify-between ${lbl(active)}`}>
           {label}
-          {active && clearX(key)}
+          {(active || onRemove) && clearX(key, onRemove)}
         </span>
         <select
           className={box(active)}
@@ -245,6 +254,33 @@ function FilterFields({
   const [added, setAdded] = useState<ExtraId[]>([]);
   const [addOpen, setAddOpen] = useState(false);
   const visible = EXTRAS.filter(([id]) => added.includes(id) || extraActive[id]);
+
+  // The five essentials are removable too: × hides the box (and clears
+  // its value); the + Filter menu brings it back. Layout preference, so
+  // it persists — and survives Clear, which resets values, not layout.
+  const DEFAULT_FIELDS = [
+    ["min_ytm", "Min YTM %"],
+    ["min_turnover", "Retail trd ₹"],
+    ["min_rating", "Min rating"],
+    ["min_years", "Min mat (y)"],
+    ["traded_within", "Last traded ≤ (sess)"],
+  ] as const;
+  type DefaultId = (typeof DEFAULT_FIELDS)[number][0];
+  const [hiddenDefaults, setHiddenDefaults] = useState<DefaultId[]>(() => {
+    try {
+      return JSON.parse(localStorage.getItem("explore-hidden-filters") ?? "[]");
+    } catch {
+      return [];
+    }
+  });
+  useEffect(() => {
+    localStorage.setItem("explore-hidden-filters", JSON.stringify(hiddenDefaults));
+  }, [hiddenDefaults]);
+  // A set value always wins visibility (e.g. Clear restoring min_rating).
+  const defaultShown = (id: DefaultId) => !hiddenDefaults.includes(id) || params[id] != null;
+  const hideDefault = (id: DefaultId) =>
+    setHiddenDefaults((h) => (h.includes(id) ? h : [...h, id]));
+  const hiddenDefaultFields = DEFAULT_FIELDS.filter(([id]) => !defaultShown(id));
 
   const clearExtra: Record<ExtraId, Partial<ExploreParams>> = {
     max_ytm: { max_ytm: undefined },
@@ -368,11 +404,17 @@ function FilterFields({
         }`}
         title={dimReason}
       >
-        {num("Min YTM %", "min_ytm")}
-        {num("Retail trd ₹", "min_turnover")}
-        {sel("Min rating", "min_rating", filters?.ratings ?? [])}
-        {num("Min mat (y)", "min_years")}
-        {num("Last traded ≤ (sess)", "traded_within")}
+        {DEFAULT_FIELDS.filter(([id]) => defaultShown(id)).map(([id, label]) =>
+          id === "min_rating" ? (
+            <span key={id} className="flex items-end gap-1">
+              {sel(label, id, filters?.ratings ?? [], () => hideDefault(id))}
+            </span>
+          ) : (
+            <span key={id} className="flex items-end gap-1">
+              {num(label, id, () => hideDefault(id))}
+            </span>
+          ),
+        )}
 
         {visible.map(([id, label]) => (
           <span key={id} className="flex items-end gap-1">
@@ -407,6 +449,19 @@ function FilterFields({
                 aria-hidden="true"
               />
               <div className="absolute left-0 top-full mt-2 z-30 w-44 rounded-lg border border-zinc-700 bg-zinc-900 shadow-xl py-1">
+                {hiddenDefaultFields.map(([id, label]) => (
+                  <button
+                    type="button"
+                    key={id}
+                    onClick={() => {
+                      setHiddenDefaults((h) => h.filter((x) => x !== id));
+                      setAddOpen(false);
+                    }}
+                    className="w-full px-3 py-2 text-xs text-left text-zinc-300 hover:bg-zinc-800"
+                  >
+                    {label}
+                  </button>
+                ))}
                 {EXTRAS.filter(([id]) => !visible.some(([v]) => v === id)).map(([id, label]) => (
                   <button
                     type="button"
@@ -420,9 +475,10 @@ function FilterFields({
                     {label}
                   </button>
                 ))}
-                {EXTRAS.every(([id]) => visible.some(([v]) => v === id)) && (
-                  <div className="px-3 py-2 text-xs text-zinc-600">All filters added</div>
-                )}
+                {hiddenDefaultFields.length === 0 &&
+                  EXTRAS.every(([id]) => visible.some(([v]) => v === id)) && (
+                    <div className="px-3 py-2 text-xs text-zinc-600">All filters added</div>
+                  )}
               </div>
             </>
           )}
