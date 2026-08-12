@@ -88,17 +88,32 @@ type NumKey =
   | "traded_within";
 type SelKey = "min_rating" | "sector" | "frequency" | "exchange";
 
-/* Drag ranges for the numeric boxes (typing past a max still works;
-   the slider just pins at its end). 0 = filter off. */
-const SLIDERS: Record<NumKey, { max: number; step: number }> = {
-  min_ytm: { max: 30, step: 0.5 },
-  max_ytm: { max: 30, step: 0.5 },
-  min_years: { max: 15, step: 0.5 },
-  max_years: { max: 15, step: 0.5 },
-  max_ltp: { max: 200_000, step: 5_000 },
-  min_turnover: { max: 2_000_000, step: 50_000 },
-  min_otc_turnover: { max: 100_000_000, step: 1_000_000 },
-  traded_within: { max: 30, step: 1 },
+/* Curated dropdown steps for the numeric filters. Every option is
+   itself an inequality (min ⇒ ≥, max ⇒ ≤), so the endpoint options
+   naturally absorb odd values — "≥ 20%" covers a 27% oddball. */
+const inr = (v: number) =>
+  v >= 10_000_000
+    ? `₹${v / 10_000_000} Cr`
+    : v >= 100_000
+      ? `₹${v / 100_000} L`
+      : `₹${v.toLocaleString("en-IN")}`;
+const yrs = (v: number) => (v < 1 ? `${v * 12}mo` : `${v}y`);
+const opts = (values: number[], label: (v: number) => string, sign: "≥" | "≤") =>
+  values.map((v) => ({ v, label: `${sign} ${label(v)}` }));
+
+const NUM_OPTIONS: Record<NumKey, Array<{ v: number; label: string }>> = {
+  min_ytm: opts([8, 9, 10, 11, 12, 13, 14, 15, 18, 20], (v) => `${v}%`, "≥"),
+  max_ytm: opts([10, 12, 14, 16, 18, 20, 25], (v) => `${v}%`, "≤"),
+  min_years: opts([0.5, 1, 2, 3, 5, 7, 10], yrs, "≥"),
+  max_years: opts([1, 2, 3, 5, 7, 10, 15], yrs, "≤"),
+  max_ltp: opts([1_000, 10_000, 50_000, 100_000, 200_000, 500_000], inr, "≤"),
+  min_turnover: opts(
+    [10_000, 50_000, 100_000, 500_000, 1_000_000, 5_000_000, 10_000_000],
+    inr,
+    "≥",
+  ),
+  min_otc_turnover: opts([1_000_000, 5_000_000, 10_000_000, 50_000_000, 100_000_000], inr, "≥"),
+  traded_within: opts([1, 2, 3, 5, 10, 20], (v) => `${v} sess`, "≤"),
 };
 
 /* One always-visible row. Fields with a value are highlighted in emerald. */
@@ -128,10 +143,6 @@ function FilterFields({
     "focus:outline-none focus:border-zinc-400 placeholder:text-zinc-600 " +
     (active ? "border-zinc-500 text-zinc-100" : "border-zinc-700 text-zinc-600");
 
-  // Equal-height cells: selects render this invisible stand-in where the
-  // numeric fields have their slider, so the items-end grid stays aligned.
-  const sliderSpacer = <span aria-hidden className="block h-1 mt-1" />;
-
   const clearX = (key: NumKey | SelKey) => (
     <button
       type="button"
@@ -144,39 +155,36 @@ function FilterFields({
   );
 
   const num = (label: string, key: NumKey) => {
-    const active = params[key] != null;
-    const range = SLIDERS[key];
-    // 0 (or an emptied box) means "no filter" — a 0-threshold would still
-    // exclude rows with no value at all, which is never what's wanted.
-    const apply = (raw: string) => {
-      const v = raw === "" ? undefined : +raw;
-      set({
-        [key]: v == null || Number.isNaN(v) || v === 0 ? undefined : v,
-      } as Partial<ExploreParams>);
-    };
+    const current = params[key];
+    const active = current != null;
+    const options = NUM_OPTIONS[key];
+    // A persisted value from before the preset lists (or a preset that
+    // later changed) still displays and filters until the user moves on.
+    const offList = current != null && !options.some((o) => o.v === current);
+    const sign = key.startsWith("max") || key === "traded_within" ? "≤" : "≥";
     return (
       <label>
         <span className={`flex items-center justify-between ${lbl(active)}`}>
           {label}
           {active && clearX(key)}
         </span>
-        <input
-          type="number"
+        <select
           className={box(active)}
-          placeholder="Any"
-          value={params[key] ?? ""}
-          onChange={(e) => apply(e.target.value)}
-        />
-        <input
-          type="range"
-          aria-label={`${label} slider`}
-          min={0}
-          max={range.max}
-          step={range.step}
-          value={Math.min(params[key] ?? 0, range.max)}
-          onChange={(e) => apply(e.target.value)}
-          className="w-full h-1 mt-1 accent-emerald-500 cursor-pointer"
-        />
+          value={current ?? ""}
+          onChange={(e) =>
+            set({
+              [key]: e.target.value === "" ? undefined : +e.target.value,
+            } as Partial<ExploreParams>)
+          }
+        >
+          <option value="">Any</option>
+          {offList && <option value={current}>{`${sign} ${current}`}</option>}
+          {options.map((o) => (
+            <option key={o.v} value={o.v}>
+              {o.label}
+            </option>
+          ))}
+        </select>
       </label>
     );
   };
@@ -199,7 +207,6 @@ function FilterFields({
             <option key={o}>{o}</option>
           ))}
         </select>
-        {sliderSpacer}
       </label>
     );
   };
@@ -282,7 +289,6 @@ function FilterFields({
               <option value="otc">Trades OTC</option>
               <option value="both">Retail + OTC</option>
             </select>
-            {sliderSpacer}
           </label>
         );
       }
@@ -305,7 +311,6 @@ function FilterFields({
               <option value="maturity">At maturity (zero coupon / cumulative)</option>
               <option value="periodic">Periodic coupons</option>
             </select>
-            {sliderSpacer}
           </label>
         );
       case "exchange":
@@ -335,7 +340,6 @@ function FilterFields({
               <option value="secured">Secured</option>
               <option value="unsecured">Unsecured</option>
             </select>
-            {sliderSpacer}
           </label>
         );
       }
@@ -351,7 +355,6 @@ function FilterFields({
               <option value="">Any</option>
               <option value="exact">Exact only</option>
             </select>
-            {sliderSpacer}
           </label>
         );
     }
@@ -381,14 +384,14 @@ function FilterFields({
                 setAdded((a) => a.filter((x) => x !== id));
                 set(clearExtra[id]);
               }}
-              className="pb-4 text-zinc-600 hover:text-red-400 text-xs leading-none"
+              className="pb-2 text-zinc-600 hover:text-red-400 text-xs leading-none"
             >
               ×
             </button>
           </span>
         ))}
 
-        <span className="relative self-end justify-self-start mb-2">
+        <span className="relative self-end justify-self-start">
           <button
             type="button"
             onClick={() => setAddOpen(!addOpen)}
@@ -426,7 +429,7 @@ function FilterFields({
         </span>
       </div>
 
-      <span className="flex items-end gap-2 self-end mb-2">
+      <span className="flex items-end gap-2 self-end">
         <WatchlistChip modes={modes} onModes={onModes} />
         <button
           type="button"
