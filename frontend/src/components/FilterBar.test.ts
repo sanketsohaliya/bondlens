@@ -2,14 +2,26 @@ import { describe, expect, it } from "vitest";
 import { DEFAULT_FILTERS, describeFilters } from "./FilterBar";
 
 describe("default filters", () => {
-  it("starts with investment-grade only — everything else unrestricted", () => {
-    expect(DEFAULT_FILTERS).toEqual({ min_rating: "BBB-" });
+  it("starts with the five essentials", () => {
+    expect(DEFAULT_FILTERS).toEqual({
+      min_ytm: 5,
+      min_turnover: 10000,
+      min_rating: "BBB-",
+      min_years: 0.5,
+      traded_within: 5,
+    });
   });
 });
 
 describe("describeFilters", () => {
   it("summarizes the default filter set", () => {
-    expect(describeFilters(DEFAULT_FILTERS)).toEqual(["rating ≥ BBB-"]);
+    expect(describeFilters(DEFAULT_FILTERS)).toEqual([
+      "rating ≥ BBB-",
+      "YTM ≥ 5%",
+      "maturity ≥ 0.5y",
+      "retail traded ≥ ₹10,000",
+      "traded within 5 sessions",
+    ]);
   });
 
   it("covers ranges, ticket size and boolean flags", () => {

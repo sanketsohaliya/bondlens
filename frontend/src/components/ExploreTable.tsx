@@ -416,6 +416,14 @@ function Row({
             )}
           </>
         )}
+        {b.otc_turnover != null && (
+          <div
+            className="text-[11px] text-zinc-500"
+            title="OTC turnover on its last OTC trade date"
+          >
+            OTC {fmt.inr(b.otc_turnover)}
+          </div>
+        )}
       </td>
       <td
         className="px-3 py-2.5 whitespace-nowrap hover:underline decoration-zinc-600 underline-offset-2"

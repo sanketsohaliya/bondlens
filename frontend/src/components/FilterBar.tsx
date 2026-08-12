@@ -4,10 +4,14 @@ import { api, fmt } from "../api/client";
 import type { ExploreParams, Filters } from "../api/types";
 import { nextListName, useWatchlists } from "../lib/lists";
 
-/* What a fresh screen starts with: investment-grade only — everything
-   else unrestricted (the ask-YTM default sort surfaces the best deals). */
+/* What a fresh screen starts with: decent yield, minimal liquidity,
+   investment-grade, six months to run, traded within the week. */
 export const DEFAULT_FILTERS: ExploreParams = {
+  min_ytm: 5,
+  min_turnover: 10_000,
   min_rating: "BBB-",
+  min_years: 0.5,
+  traded_within: 5,
 };
 
 /** v1's describeFilters(): human-readable summary of active filters. */
@@ -117,17 +121,16 @@ const NUM_OPTIONS: Record<NumKey, Array<{ v: number; label: string }>> = {
     inr,
     "≥",
   ),
-  // Values are trading sessions; the labels speak calendar so the
-  // parenthetical keeps the precise meaning visible.
+  // Values are trading sessions; the labels speak calendar.
   traded_within: [
     { v: 1, label: "Today" },
     { v: 2, label: "≤ 2 days" },
-    { v: 5, label: "≤ 1 week (5 sess)" },
-    { v: 10, label: "≤ 2 weeks (10 sess)" },
-    { v: 21, label: "≤ 1 month (21 sess)" },
-    { v: 63, label: "≤ 3 months (63 sess)" },
-    { v: 126, label: "≤ 6 months (126 sess)" },
-    { v: 250, label: "≤ 1 year (250 sess)" },
+    { v: 5, label: "≤ 1 week" },
+    { v: 10, label: "≤ 2 weeks" },
+    { v: 21, label: "≤ 1 month" },
+    { v: 63, label: "≤ 3 months" },
+    { v: 126, label: "≤ 6 months" },
+    { v: 250, label: "≤ 1 year" },
   ],
 };
 
@@ -235,16 +238,18 @@ function FilterFields({
   // "+ Filter" and appears once added (or whenever a preset sets its params).
   // Removing one clears its params.
   const EXTRAS = [
+    // Range-completers first (max ends of the default mins), then
+    // liquidity, issuer attributes, coupon mechanics, technical.
     ["max_ytm", "Max YTM %"],
-    ["sector", "Sector"],
-    ["frequency", "Pays"],
-    ["payout", "Payout"],
-    ["exchange", "Exchange"],
     ["max_years", "Max maturity"],
     ["max_ltp", "Ticket size"],
     ["min_otc_turnover", "OTC turnover"],
     ["segment", "Segment"],
+    ["sector", "Sector"],
     ["security", "Security"],
+    ["frequency", "Pays"],
+    ["payout", "Payout"],
+    ["exchange", "Exchange"],
     ["ytm_basis", "YTM basis"],
   ] as const;
   type ExtraId = (typeof EXTRAS)[number][0];
@@ -271,9 +276,9 @@ function FilterFields({
   // it persists — and survives Clear, which resets values, not layout.
   const DEFAULT_FIELDS = [
     ["min_ytm", "Min YTM %"],
-    ["min_turnover", "Retail trd ₹"],
     ["min_rating", "Min rating"],
     ["min_years", "Min mat (y)"],
+    ["min_turnover", "Retail trd ₹"],
     ["traded_within", "Last traded"],
   ] as const;
   type DefaultId = (typeof DEFAULT_FIELDS)[number][0];
@@ -516,11 +521,15 @@ function FilterFields({
         <WatchlistChip modes={modes} onModes={onModes} />
         <button
           type="button"
-          title="Remove all filters and show everything"
-          onClick={onReset}
+          title="Reset filters and layout to the defaults"
+          onClick={() => {
+            setHiddenDefaults([]);
+            setAdded([]);
+            onReset();
+          }}
           className="px-2.5 py-1.5 rounded-md border border-zinc-700 text-xs font-medium text-red-400 hover:border-red-400 transition-colors whitespace-nowrap"
         >
-          Clear
+          Reset
         </button>
       </span>
     </div>
