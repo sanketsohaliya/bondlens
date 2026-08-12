@@ -296,7 +296,19 @@ function FilterFields({
     ytm_basis: { exact_only: undefined },
   };
 
-  const extraControl = (id: ExtraId) => {
+  // Extras carry their remove × in the label row, same as the defaults.
+  const removeX = (onRemove: () => void) => (
+    <button
+      type="button"
+      title="Remove filter"
+      onClick={onRemove}
+      className="text-zinc-600 hover:text-zinc-300 leading-none px-0.5"
+    >
+      ×
+    </button>
+  );
+
+  const extraControl = (id: ExtraId, onRemove: () => void) => {
     switch (id) {
       case "segment": {
         const v =
@@ -308,8 +320,11 @@ function FilterFields({
                 ? "otc"
                 : "";
         return (
-          <label className="flex-1">
-            <span className={lbl(!!v)}>Segment</span>
+          <label className="flex-1 min-w-0">
+            <span className={`flex items-center justify-between ${lbl(!!v)}`}>
+              Segment
+              {removeX(onRemove)}
+            </span>
             <select
               className={box(!!v)}
               value={v}
@@ -329,15 +344,18 @@ function FilterFields({
         );
       }
       case "max_ytm":
-        return num("Max YTM %", "max_ytm");
+        return num("Max YTM %", "max_ytm", onRemove);
       case "sector":
-        return sel("Sector", "sector", filters?.sectors ?? []);
+        return sel("Sector", "sector", filters?.sectors ?? [], onRemove);
       case "frequency":
-        return sel("Pays", "frequency", filters?.frequencies ?? []);
+        return sel("Pays", "frequency", filters?.frequencies ?? [], onRemove);
       case "payout":
         return (
-          <label className="flex-1">
-            <span className={lbl(!!params.payout)}>Payout</span>
+          <label className="flex-1 min-w-0">
+            <span className={`flex items-center justify-between ${lbl(!!params.payout)}`}>
+              Payout
+              {removeX(onRemove)}
+            </span>
             <select
               className={box(!!params.payout)}
               value={params.payout ?? ""}
@@ -350,18 +368,21 @@ function FilterFields({
           </label>
         );
       case "exchange":
-        return sel("Exchange", "exchange", ["NSE", "BSE"]);
+        return sel("Exchange", "exchange", ["NSE", "BSE"], onRemove);
       case "max_years":
-        return num("Max mat (y)", "max_years");
+        return num("Max mat (y)", "max_years", onRemove);
       case "max_ltp":
-        return num("Ticket ₹ max", "max_ltp");
+        return num("Ticket ₹ max", "max_ltp", onRemove);
       case "min_otc_turnover":
-        return num("OTC trd ₹", "min_otc_turnover");
+        return num("OTC trd ₹", "min_otc_turnover", onRemove);
       case "security": {
         const v = params.secured_only ? "secured" : params.unsecured_only ? "unsecured" : "";
         return (
-          <label className="flex-1">
-            <span className={lbl(!!v)}>Security</span>
+          <label className="flex-1 min-w-0">
+            <span className={`flex items-center justify-between ${lbl(!!v)}`}>
+              Security
+              {removeX(onRemove)}
+            </span>
             <select
               className={box(!!v)}
               value={v}
@@ -381,8 +402,11 @@ function FilterFields({
       }
       case "ytm_basis":
         return (
-          <label className="flex-1">
-            <span className={lbl(!!params.exact_only)}>YTM basis</span>
+          <label className="flex-1 min-w-0">
+            <span className={`flex items-center justify-between ${lbl(!!params.exact_only)}`}>
+              YTM basis
+              {removeX(onRemove)}
+            </span>
             <select
               className={box(!!params.exact_only)}
               value={params.exact_only ? "exact" : ""}
@@ -416,20 +440,12 @@ function FilterFields({
           ),
         )}
 
-        {visible.map(([id, label]) => (
+        {visible.map(([id]) => (
           <span key={id} className="flex items-end gap-1">
-            {extraControl(id)}
-            <button
-              type="button"
-              title={`Remove ${label} filter`}
-              onClick={() => {
-                setAdded((a) => a.filter((x) => x !== id));
-                set(clearExtra[id]);
-              }}
-              className="pb-2 text-zinc-600 hover:text-red-400 text-xs leading-none"
-            >
-              ×
-            </button>
+            {extraControl(id, () => {
+              setAdded((a) => a.filter((x) => x !== id));
+              set(clearExtra[id]);
+            })}
           </span>
         ))}
 
