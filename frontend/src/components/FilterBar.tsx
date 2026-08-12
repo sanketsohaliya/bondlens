@@ -117,7 +117,18 @@ const NUM_OPTIONS: Record<NumKey, Array<{ v: number; label: string }>> = {
     inr,
     "≥",
   ),
-  traded_within: opts([1, 2, 3, 5, 10, 20], (v) => `${v} sess`, "≤"),
+  // Values are trading sessions; the labels speak calendar so the
+  // parenthetical keeps the precise meaning visible.
+  traded_within: [
+    { v: 1, label: "Today" },
+    { v: 2, label: "≤ 2 days" },
+    { v: 5, label: "≤ 1 week (5 sess)" },
+    { v: 10, label: "≤ 2 weeks (10 sess)" },
+    { v: 21, label: "≤ 1 month (21 sess)" },
+    { v: 63, label: "≤ 3 months (63 sess)" },
+    { v: 126, label: "≤ 6 months (126 sess)" },
+    { v: 250, label: "≤ 1 year (250 sess)" },
+  ],
 };
 
 /* One always-visible row. Fields with a value are highlighted in emerald. */
@@ -263,7 +274,7 @@ function FilterFields({
     ["min_turnover", "Retail trd ₹"],
     ["min_rating", "Min rating"],
     ["min_years", "Min mat (y)"],
-    ["traded_within", "Last traded ≤ (sess)"],
+    ["traded_within", "Last traded"],
   ] as const;
   type DefaultId = (typeof DEFAULT_FIELDS)[number][0];
   const [hiddenDefaults, setHiddenDefaults] = useState<DefaultId[]>(() => {
