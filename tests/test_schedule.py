@@ -150,6 +150,57 @@ def test_nsdl_duplicated_cumulative_collapsed():
     assert sum(f.amount or 0 for f in s.flows) == 1578.25
 
 
+# --- above-face redemption payouts split into principal + interest ---------
+
+def test_cumulative_payout_split_into_principal_and_interest():
+    # CYQURE INE0Z4807015: face 1,00,000 zero coupon publishing the whole
+    # maturity payout (1,60,597) as one Full Redemption row. The excess is
+    # interest — otherwise projected principal exceeds what was lent.
+    flows = [_cf("Full Redemption", date(2028, 3, 17), payable=160597)]
+    s = schedule.build("X", flows, _terms(
+        face_value=100000, coupon_rate=0, coupon_basis="Zero Coupon",
+        interest_payment_frequency="On Maturity",
+        redemption_date=date(2028, 3, 17)), today=TODAY)
+    assert s.usable and s.redemption_matches_face
+    [red] = [f for f in s.flows if f.event == "redemption"]
+    [inte] = [f for f in s.flows if f.event == "interest"]
+    assert red.amount == 100000
+    assert inte.amount == 60597
+    assert inte.due_date == red.due_date
+    assert any("reclassified as interest" in w for w in s.warnings)
+
+
+def test_double_face_payout_split():
+    # CHEMMANUR INE051307CC2 shape: face 1,000, published redemption
+    # 2,000.28 with no interest rows.
+    flows = [_cf("Full Redemption", date(2031, 9, 10), payable=2000.28)]
+    s = schedule.build("X", flows, _terms(
+        face_value=1000, coupon_rate=None,
+        interest_payment_frequency="On Maturity",
+        redemption_date=date(2031, 9, 10)), today=TODAY)
+    [red] = [f for f in s.flows if f.event == "redemption"]
+    [inte] = [f for f in s.flows if f.event == "interest"]
+    assert red.amount == 1000
+    assert inte.amount == 1000.28
+
+
+def test_exact_face_redemption_not_split():
+    flows = [_cf("Interest", date(2027, 1, 1), payable=100),
+             _cf("Full Redemption", date(2030, 1, 1), redeem=1000)]
+    s = schedule.build("X", flows, _terms(), today=TODAY)
+    assert len([f for f in s.flows if f.event == "interest"]) == 1
+    assert not any("reclassified" in w for w in s.warnings)
+
+
+def test_premium_within_tolerance_not_split():
+    # 1.5% premium sits inside _FACE_TOL — leave the row alone.
+    flows = [_cf("Full Redemption", date(2030, 1, 1), redeem=1015)]
+    s = schedule.build("X", flows, _terms(coupon_rate=None), today=TODAY)
+    [red] = [f for f in s.flows if f.event == "redemption"]
+    assert red.amount == 1015
+    assert not any("reclassified" in w for w in s.warnings)
+
+
 def test_genuine_staggered_untouched_by_dedup():
     # Real partial redemptions differ in date (or amount) — the dedup
     # must not collapse them.

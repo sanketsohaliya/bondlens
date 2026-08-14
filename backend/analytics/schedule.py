@@ -255,6 +255,28 @@ def build(isin: str, cashflows: list[dict], terms: dict | None,
                 f"redemption total {redemption_total:,.2f} vs face "
                 f"{face:,.0f} (ratio {ratio:.3f}) — unreconciled")
 
+    # --- split above-face payouts into principal + interest ----------------
+    # Cumulative bonds often publish face + accumulated interest as one
+    # "Full Redemption" amount (observed at 1.6x and 2x face). The excess
+    # over face is interest, not principal — otherwise "projected
+    # principal" exceeds what was ever lent. Same dated totals, so YTM is
+    # untouched. Runs after rescaling so amounts are per-unit; single
+    # redemptions only (staggered schedules redeem face in parts).
+    if (face and len(redemptions) == 1
+            and (amt := redemptions[0].amount) is not None
+            and amt > face * (1.0 + _FACE_TOL)):
+        r = redemptions[0]
+        excess = round(amt - face, 2)
+        flows.append(Flow(event="interest", due_date=r.due_date,
+                          record_date=r.record_date, amount=excess,
+                          estimated=r.estimated))
+        r.amount = face
+        interest = [f for f in flows if f.event == "interest"]
+        sched.redemption_matches_face = True
+        sched.warnings.append(
+            f"redemption exceeded face by {excess:,.2f} — "
+            "reclassified as interest")
+
     # --- frequency fallback: infer from the flow spacing ------------------
     if sched.periods_per_year is None and sched.frequency not in ("cumulative",):
         name, ppy = infer_frequency_from_flows(interest)
