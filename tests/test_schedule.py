@@ -114,6 +114,57 @@ def test_partially_redeemed_face_is_current():
     assert s.usable  # future 500 == current face 500
 
 
+# --- NSDL tranche duplication (INE523L07728 / INE523L07751 regression) -----
+
+def test_nsdl_duplicated_schedule_collapsed():
+    # 955NWIL27 shape: NSDL repeated the whole per-unit schedule 15-27x
+    # (once per further-issue tranche). Without dedup this classified as
+    # staggered and rescaled amounts "issue-level" by 15 -> 16.94% YTM.
+    flows = []
+    for year in range(2023, 2028):
+        flows += [_cf("Interest", date(year, 7, 29), payable=95.5)] * 27
+    flows += [_cf("Redemption", date(2027, 7, 29), payable=1000)] * 15
+    s = schedule.build("X", flows, _terms(
+        coupon_rate=9.55, redemption_date=date(2027, 7, 15)), today=TODAY)
+    assert s.shape == "plain"
+    assert s.scale == 1.0
+    assert s.usable and s.redemption_matches_face
+    assert len(s.flows) == 6  # 5 coupons + 1 redemption
+    [red] = [f for f in s.flows if f.event == "redemption"]
+    assert red.amount == 1000
+    assert any("duplicated schedule rows" in w for w in s.warnings)
+
+
+def test_nsdl_duplicated_cumulative_collapsed():
+    # NWIL27 shape: zero-coupon-style payout duplicated 18x/10x -> was
+    # showing 41% YTM from 10 "partial" redemptions + 18 interest flows.
+    flows = ([_cf("Interest", date(2027, 7, 29), payable=578.25)] * 18
+             + [_cf("Redemption", date(2027, 7, 29), payable=1000)] * 10)
+    s = schedule.build("X", flows, _terms(
+        coupon_rate=0, interest_payment_frequency=None,
+        redemption_date=date(2027, 7, 15)), today=TODAY)
+    assert s.shape in ("zero_coupon", "cumulative")
+    assert s.scale == 1.0
+    assert s.usable
+    assert len(s.flows) == 2
+    assert sum(f.amount or 0 for f in s.flows) == 1578.25
+
+
+def test_genuine_staggered_untouched_by_dedup():
+    # Real partial redemptions differ in date (or amount) — the dedup
+    # must not collapse them.
+    flows = [_cf("Interest", date(2027, 1, 1), payable=100),
+             _cf("Partial Redemption", date(2027, 1, 1), redeem=500),
+             _cf("Interest", date(2028, 1, 1), payable=50),
+             _cf("Partial Redemption", date(2028, 1, 1), redeem=500)]
+    s = schedule.build("X", flows, _terms(
+        redemption_type="Partial Redemption By Face Value"), today=TODAY)
+    assert s.shape == "staggered"
+    assert s.usable
+    assert len([f for f in s.flows if f.event == "redemption"]) == 2
+    assert not any("duplicated" in w for w in s.warnings)
+
+
 def test_zero_coupon_premium_redemption():
     flows = [_cf("Full Redemption", date(2029, 7, 29), redeem=2000)]
     s = schedule.build("X", flows, _terms(

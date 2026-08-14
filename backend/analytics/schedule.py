@@ -163,6 +163,24 @@ def build(isin: str, cashflows: list[dict], terms: dict | None,
     sched.frequency, sched.periods_per_year = freq_name, ppy
 
     flows = _normalize_rows(cashflows)
+    # NSDL repeats the entire per-unit schedule once per further-issue
+    # tranche for some bonds (observed up to 27 copies). Collapse exact
+    # duplicates, or N identical full redemptions masquerade as a
+    # staggered issue-level schedule and everything gets rescaled.
+    # Genuine staggered schedules survive: real partial redemptions
+    # differ in date or amount.
+    seen: set[tuple] = set()
+    unique: list[Flow] = []
+    for f in flows:
+        key = (f.event, f.due_date, f.record_date, f.amount)
+        if key not in seen:
+            seen.add(key)
+            unique.append(f)
+    if len(unique) < len(flows):
+        sched.warnings.append(
+            f"collapsed {len(flows) - len(unique)} duplicated schedule rows "
+            "(NSDL repeats schedules per reissue tranche)")
+        flows = unique
     if not flows:
         if perpetual:
             sched.shape = "perpetual"
