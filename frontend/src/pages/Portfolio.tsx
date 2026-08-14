@@ -517,47 +517,42 @@ function PositionRow({
 // --- Cashflow chart + grid --------------------------------------------------
 
 /** Received-so-far vs projected, from the same month buckets the chart
- * draws — the numbers cannot disagree. Hidden until something has been
- * received. */
+ * draws — the numbers cannot disagree. Always shown: "₹0 received" is
+ * information, not noise. */
 function IncomeBanner({ income }: { income: PortfolioIncome }) {
   const received = income.received_interest + income.received_principal;
   const projected = income.projected_interest + income.projected_principal;
-  if (received <= 0) return null;
   return (
     <div className="flex flex-wrap items-center gap-x-6 gap-y-2 border-b border-zinc-800 bg-zinc-900/30 px-4 py-2">
-      {received > 0 && (
+      <IncomeItem
+        label="Received so far"
+        value={fmt.inr(received)}
+        valueClass="text-zinc-100"
+        tip={`Interest ${fmt.inr(income.received_interest)} · Principal ${fmt.inr(income.received_principal)}`}
+      />
+      {/* The split only earns its place when both parts are non-zero;
+          "principal ₹0" is noise. Colours match the chart legend. */}
+      {income.received_principal > 0 && income.received_interest > 0 && (
         <>
           <IncomeItem
-            label="Received so far"
-            value={fmt.inr(received)}
-            valueClass="text-zinc-100"
-            tip={`Interest ${fmt.inr(income.received_interest)} · Principal ${fmt.inr(income.received_principal)}`}
+            label="Interest"
+            value={fmt.inr(income.received_interest)}
+            valueClass="text-sky-400"
           />
-          {/* The split only earns its place when both parts are non-zero;
-              "principal ₹0" is noise. Colours match the chart legend. */}
-          {income.received_principal > 0 && (
-            <>
-              <IncomeItem
-                label="Interest"
-                value={fmt.inr(income.received_interest)}
-                valueClass="text-sky-400"
-              />
-              <IncomeItem
-                label="Principal"
-                value={fmt.inr(income.received_principal)}
-                valueClass="text-emerald-400"
-              />
-            </>
-          )}
-          <span className="self-stretch w-px bg-zinc-800" />
           <IncomeItem
-            label="Projected"
-            value={fmt.inr(projected)}
+            label="Principal"
+            value={fmt.inr(income.received_principal)}
             valueClass="text-emerald-400"
-            tip={`Interest ${fmt.inr(income.projected_interest)} · Principal ${fmt.inr(income.projected_principal)}`}
           />
         </>
       )}
+      <span className="self-stretch w-px bg-zinc-800" />
+      <IncomeItem
+        label="Projected"
+        value={fmt.inr(projected)}
+        valueClass="text-emerald-400"
+        tip={`Interest ${fmt.inr(income.projected_interest)} · Principal ${fmt.inr(income.projected_principal)}`}
+      />
     </div>
   );
 }
@@ -710,14 +705,19 @@ function CashflowChart({
       const d = new Date(`${cf.month}-01`);
       const money = (v: number) => `₹${v.toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
       const num = `text-align:right;font-variant-numeric:tabular-nums;padding-left:12px`;
+      // Already-received months read as history: dim the amounts.
+      const past = isPastMonth(cf.month);
+      const intCol = past ? "#38bdf880" : "#38bdf8";
+      const prinCol = past ? "#10b98180" : "#10b981";
+      const labelCol = past ? "#a1a1aa" : "#e4e4e7";
       const bondLines = (cf.bonds ?? [])
         .map(
           (b) =>
-            `<tr><td style="color:#e4e4e7;padding-right:10px">${b.estimated ? "≈" : ""}${b.label}</td>` +
+            `<tr><td style="color:${labelCol};padding-right:10px">${b.estimated ? "≈" : ""}${b.label}</td>` +
             `<td style="font-family:ui-monospace,monospace;color:#71717a;padding-right:2px">${b.isin}</td>` +
             `<td style="color:#71717a;${num}">${dayMonth(b.dates ?? [])}</td>` +
-            `<td style="color:#38bdf8;${num}">${b.interest > 0 ? money(b.interest) : "–"}</td>` +
-            `<td style="color:#10b981;${num}">${b.principal > 0 ? money(b.principal) : "–"}</td>` +
+            `<td style="color:${intCol};${num}">${b.interest > 0 ? money(b.interest) : "–"}</td>` +
+            `<td style="color:${prinCol};${num}">${b.principal > 0 ? money(b.principal) : "–"}</td>` +
             `<td style="color:#a1a1aa;${num}">${money(b.interest + b.principal)}</td></tr>`,
         )
         .join("");
@@ -727,14 +727,14 @@ function CashflowChart({
         `<td style="padding-right:10px">Bond</td>` +
         `<td style="padding-right:2px">ISIN</td>` +
         `<td style="${num}">Date</td>` +
-        `<td style="color:#38bdf8;${num}">Interest</td>` +
-        `<td style="color:#10b981;${num}">Principal</td>` +
+        `<td style="color:${intCol};${num}">Interest</td>` +
+        `<td style="color:${prinCol};${num}">Principal</td>` +
         `<td style="${num}">Total</td>` +
         `</tr></thead><tbody>${bondLines}` +
         `<tr style="border-top:1px solid #3f3f46;font-weight:500">` +
         `<td style="color:#71717a;padding-right:2px">Total</td><td></td><td></td>` +
-        `<td style="color:#38bdf8;${num}">${cf.interest > 0 ? money(cf.interest) : "–"}</td>` +
-        `<td style="color:#10b981;${num}">${cf.principal > 0 ? money(cf.principal) : "–"}</td>` +
+        `<td style="color:${intCol};${num}">${cf.interest > 0 ? money(cf.interest) : "–"}</td>` +
+        `<td style="color:${prinCol};${num}">${cf.principal > 0 ? money(cf.principal) : "–"}</td>` +
         `<td style="color:#e4e4e7;${num}">${money(cf.interest + cf.principal)}</td>` +
         `</tr></tbody></table>`;
       el.style.display = "block";
@@ -839,6 +839,11 @@ function MonthPopover({
 
   const alignRight = rect.left > window.innerWidth / 2;
   const below = rect.top < 240;
+  // Already-received months read as history: dim the amounts.
+  const past = isPastMonth(m.month);
+  const intCls = past ? "text-sky-400/50" : "text-sky-400";
+  const prinCls = past ? "text-emerald-400/50" : "text-emerald-400";
+  const labelCls = past ? "text-zinc-500" : "text-zinc-300";
   return (
     <>
       {pinned && <div className="fixed inset-0 z-20" onClick={onClose} aria-hidden="true" />}
@@ -867,7 +872,7 @@ function MonthPopover({
           <tbody>
             {m.bonds.map((b) => (
               <tr key={b.isin}>
-                <td className="pr-3 text-zinc-300">
+                <td className={`pr-3 ${labelCls}`}>
                   {b.estimated && <span className="text-zinc-500">≈</span>}
                   {pinned && onSelectBond ? (
                     <button
@@ -889,10 +894,10 @@ function MonthPopover({
                   </span>
                 </td>
                 <td className="pr-3 text-right text-zinc-500">{dayMonth(b.dates ?? [])}</td>
-                <td className="pr-3 text-right text-sky-400">
+                <td className={`pr-3 text-right ${intCls}`}>
                   {b.interest > 0 ? fmt.inr(b.interest) : "–"}
                 </td>
-                <td className="text-right text-emerald-400">
+                <td className={`text-right ${prinCls}`}>
                   {b.principal > 0 ? fmt.inr(b.principal) : "–"}
                 </td>
               </tr>
@@ -901,10 +906,10 @@ function MonthPopover({
               <td className="pr-3 text-zinc-500">Total</td>
               <td />
               <td />
-              <td className="pr-3 text-right text-sky-400">
+              <td className={`pr-3 text-right ${intCls}`}>
                 {m.interest > 0 ? fmt.inr(m.interest) : "–"}
               </td>
-              <td className="text-right text-emerald-400">
+              <td className={`text-right ${prinCls}`}>
                 {m.principal > 0 ? fmt.inr(m.principal) : "–"}
               </td>
             </tr>

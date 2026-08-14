@@ -362,7 +362,7 @@ export default function TradeChart({
                                 {fmt.inrFull((Number(t.wap ?? t.last_price) / 100) * faceValue)}
                               </div>
                               <div className="text-[10px] text-zinc-500">
-                                {fmt.num(Number(t.wap ?? t.last_price))}% of face
+                                {fmt.num(Number(t.wap ?? t.last_price))}%
                               </div>
                             </div>
                           ) : (

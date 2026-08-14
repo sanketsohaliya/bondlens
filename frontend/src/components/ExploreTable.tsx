@@ -91,7 +91,7 @@ export default function ExploreTable({
   bonds: Bond[];
   loading: boolean;
   error: string | null;
-  onSelect: (isin: string, tab?: "ratings" | "chart") => void;
+  onSelect: (isin: string, tab?: "ratings" | "chart" | "order book") => void;
   initialSort?: SortState;
   onSortChange?: (s: SortState) => void;
 }) {
@@ -253,7 +253,7 @@ function Row({
   ask,
 }: {
   bond: Bond;
-  onSelect: (isin: string, tab?: "ratings" | "chart") => void;
+  onSelect: (isin: string, tab?: "ratings" | "chart" | "order book") => void;
   /** undefined = Kite not connected (no column); null = no live ask. */
   ask?: AskYtm | null;
 }) {
@@ -369,17 +369,29 @@ function Row({
         )}
       </td>
       {/* YTM @ Ask (only when Kite is connected): the yield locked buying
-          at the best resting ask across NSE/BSE, from the user's session. */}
+          at the best resting ask across NSE/BSE, from the user's session.
+          Clicking jumps to the order book to act on it. */}
       {ask !== undefined && (
         <td
-          className="px-3 py-2.5 whitespace-nowrap"
-          title="Yield locked buying at the best ask (NSE/BSE), from your Kite session"
+          className="group/ask px-3 py-2.5 whitespace-nowrap cursor-pointer"
+          title={
+            "Yield locked buying at the best ask (NSE/BSE), from your Kite session" +
+            (ask?.ask_price != null && ask?.ask_qty != null
+              ? ` — ticket ${fmt.inr(ask.ask_price * ask.ask_qty)} to lift the best ask`
+              : "")
+          }
+          onClick={(e) => {
+            e.stopPropagation();
+            onSelect(b.isin, "order book");
+          }}
         >
           {ask == null ? (
             <span className="text-zinc-600">–</span>
           ) : (
             <>
-              <div className={ask.ytm != null ? "text-zinc-200 font-medium" : "text-zinc-500"}>
+              <div
+                className={`${ask.ytm != null ? "text-zinc-200 font-medium" : "text-zinc-500"} group-hover/ask:underline decoration-zinc-600 underline-offset-2`}
+              >
                 {ask.ytm != null ? fmt.pct(ask.ytm) : "–"}
               </div>
               <div className="text-[11px] text-zinc-500">
@@ -419,7 +431,10 @@ function Row({
         {b.otc_turnover != null && (
           <div
             className="text-[11px] text-zinc-500"
-            title="OTC turnover on its last OTC trade date"
+            title={
+              "OTC turnover on its last OTC trade date" +
+              (b.otc_price_pct != null ? ` · at ${fmt.num(Number(b.otc_price_pct))}% of face` : "")
+            }
           >
             OTC {fmt.inr(b.otc_turnover)}
           </div>
