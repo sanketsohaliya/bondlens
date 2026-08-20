@@ -239,10 +239,11 @@ def test_cumulative_split_still_works_when_no_same_date_interest():
     assert inte.amount == 60597
 
 
-def test_interest_on_wrong_face_basis_withheld():
+def test_interest_on_wrong_face_basis_rescaled():
     # 79NHIT35 / INE0H7R07017: current face 300, coupon 7.9%, but NSDL
     # publishes interest on the 3,000 original-face basis (~119/half) —
-    # exact YTM came out 92.73% (true ~7.4%).
+    # exact YTM came out 92.73% (true ~7.4%). The amounts are rescaled by
+    # the implied factor so the exact solve prices the traded bond.
     flows = [_cf("Interest", date(2026, 11, 14), payable=119.47),
              _cf("Interest", date(2027, 5, 14), payable=117.53),
              _cf("Interest", date(2027, 11, 14), payable=119.47),
@@ -253,23 +254,45 @@ def test_interest_on_wrong_face_basis_withheld():
         interest_payment_frequency="Twice a year",
         redemption_type="Partial Redemption By Face Value",
         redemption_date=date(2035, 10, 25)), today=TODAY)
-    assert not s.usable
-    assert any("wrong face basis" in w for w in s.warnings)
+    assert s.usable and s.amounts_estimated
+    assert any("original face basis" in w for w in s.warnings)
+    rescaled = [f.amount for f in s.flows if f.event == "interest"]
+    # ~119 / ~10 ≈ 11.85 (coupon 7.9% x face 300 / 2)
+    assert all(a is not None and 10 < a < 14 for a in rescaled)
 
 
-def test_sane_interest_amounts_not_withheld():
+def test_sane_interest_amounts_not_rescaled():
     # 9.55% annual on face 1000 — implied rate matches the coupon.
     flows = [_cf("Interest", date(2027 + i, 1, 1), payable=95.5) for i in range(3)]
     flows.append(_cf("Full Redemption", date(2030, 1, 1), redeem=1000))
     s = schedule.build("X", flows, _terms(coupon_rate=9.55), today=TODAY)
     assert s.usable
-    assert not any("wrong face basis" in w for w in s.warnings)
+    assert not any("face basis" in w for w in s.warnings)
 
 
-def test_misleading_on_maturity_frequency_still_withheld():
-    # 738REC27TF's frequency free-text ends "…AND ON MATURITY", which the
-    # classifier maps to 'cumulative' — but the redemption is exactly
-    # face, so nothing carries the coupons: still a data gap.
+def test_missing_future_coupons_synthesized():
+    # 738REC27TF / INE020B07GX4: only one long-past interest row; the
+    # synthesized redemption alone priced a couponless bond → -5.09% on
+    # a premium tax-free (true ~5.2%). Coupons are now synthesized from
+    # terms and the exact solve lands near the OTC print.
+    flows = [_cf("Interest", date(2013, 12, 1), payable=73.8)]
+    s = schedule.build("X", flows, _terms(
+        coupon_rate=7.38, redemption_date=date(2027, 12, 19)), today=TODAY)
+    assert s.usable and s.amounts_estimated
+    assert any("synthesized from terms" in w for w in s.warnings)
+    future_int = [f for f in s.flows
+                  if f.event == "interest" and f.due_date > TODAY]
+    assert len(future_int) == 2  # Dec 2026 + Dec 2027 anchored at maturity
+    assert all(f.amount == 73.8 and f.estimated for f in future_int)
+    from backend.analytics import yields
+    y = yields.exact_ytm(1072.0, s, today=date(2026, 8, 20))
+    assert y is not None and 4.5 < y < 6.0  # was -5.09
+
+
+def test_misleading_on_maturity_frequency_also_synthesized():
+    # The frequency free-text ends "…AND ON MATURITY" → classified
+    # 'cumulative', but the redemption is exactly face so nothing carries
+    # the coupons: synthesize (annual fallback), don't trust the label.
     flows = [_cf("Interest", date(2013, 12, 1), payable=73.8)]
     s = schedule.build("X", flows, _terms(
         coupon_rate=7.38,
@@ -277,20 +300,8 @@ def test_misleading_on_maturity_frequency_still_withheld():
             "1ST INTEREST PAYMENT WILL BE ON 01/12/2013 AND THEREAFTER IN "
             "1ST DECEMBER EACH YEAR AND ON MATURITY"),
         redemption_date=date(2027, 12, 19)), today=TODAY)
-    assert not s.usable
-    assert any("no future interest flows" in w for w in s.warnings)
-
-
-def test_coupon_bond_without_future_interest_withheld():
-    # 738REC27TF / INE020B07GX4: only one long-past interest row; the
-    # synthesized redemption alone priced a couponless bond → -5.09% on
-    # a premium tax-free (true ~5.2%). Exact YTM must be withheld
-    # (approx fallback).
-    flows = [_cf("Interest", date(2013, 12, 1), payable=73.8)]
-    s = schedule.build("X", flows, _terms(
-        coupon_rate=7.38, redemption_date=date(2027, 12, 19)), today=TODAY)
-    assert not s.usable
-    assert any("no future interest flows" in w for w in s.warnings)
+    assert s.usable
+    assert any("synthesized from terms" in w for w in s.warnings)
 
 
 def test_zero_coupon_without_interest_rows_still_usable():

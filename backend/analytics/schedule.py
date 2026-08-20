@@ -20,6 +20,7 @@ Missing interest amounts are estimated from the coupon rate, face value
 outstanding and the actual day-count between flows; every estimated flow
 is flagged so downstream YTMs can be labeled exact vs estimated.
 """
+import calendar
 import itertools
 from dataclasses import dataclass, field
 from datetime import date
@@ -78,17 +79,13 @@ class Schedule:
     allotment_date: date | None = None  # accrual anchor for the first period
     amounts_estimated: bool = False  # any flow amount was estimated
     redemption_matches_face: bool = False
-    # Interest amounts contradict the bond's own terms (wrong face basis,
-    # missing coupon rows) — exact YTM on them would be confidently wrong.
-    flows_suspect: bool = False
     warnings: list[str] = field(default_factory=list)
 
     @property
     def usable(self) -> bool:
         """Good enough for exact YTM: dated flows whose principal
-        reconciles with face value (perpetuals never redeem by design)
-        and whose interest amounts don't contradict the bond's terms."""
-        if not self.flows or self.flows_suspect:
+        reconciles with face value (perpetuals never redeem by design)."""
+        if not self.flows:
             return False
         return self.redemption_matches_face or self.shape == "perpetual"
 
@@ -328,12 +325,12 @@ def build(isin: str, cashflows: list[dict], terms: dict | None,
     if any(f.estimated for f in flows):
         sched.amounts_estimated = True
 
-    # --- implied-rate sanity: interest on the wrong face basis -------------
+    # --- repair interest published on the wrong face basis -----------------
     # Amortized bonds sometimes publish interest computed on the ORIGINAL
     # face while bond_terms carries the reduced current face (79NHIT35:
     # coupon 7.9% on face 300, published coupons ~119 — the 3,000
-    # original-face basis). Exact YTM on such flows is confidently wrong;
-    # withhold it so compute falls back to the coupon-based approximation.
+    # original-face basis). Rescale by the implied factor so the exact
+    # solve prices the bond that actually trades.
     zero_basis = "zero" in (terms.get("coupon_basis") or "").lower()
     if face and coupon and len(interest) >= 2:
         dated = sorted((f for f in interest if f.amount),
@@ -346,31 +343,47 @@ def build(isin: str, cashflows: list[dict], terms: dict | None,
         if implied:
             med = sorted(implied)[len(implied) // 2]
             if med > coupon * 2.5:
-                sched.flows_suspect = True
+                k = med / coupon
+                for f in interest:
+                    if f.amount:
+                        f.amount = round(f.amount / k, 2)
+                        f.estimated = True
+                sched.amounts_estimated = True
                 sched.warnings.append(
-                    f"interest amounts imply {med:,.1f}% vs coupon "
-                    f"{coupon:g}% — wrong face basis; exact YTM withheld")
+                    f"interest amounts ÷{k:,.1f} — published on the "
+                    "original face basis, rescaled to the current face")
 
-    # --- coupon bond with no future coupons: incomplete schedule -----------
+    # --- synthesize missing future coupons ----------------------------------
     # When NSDL publishes no future interest rows for a coupon-bearing
     # bond (and the above-face split produced none either), an "exact"
     # solve on the bare redemption prices a bond that doesn't exist —
     # premium bonds come out with negative YTMs (738REC27TF: -5.09% vs
-    # true ~5.2%). Bullet bonds pay their final coupon at maturity, so a
-    # future redemption without any future interest is a data gap. A
-    # cumulative-frequency label only excuses this when the redemption
-    # actually carries the accumulated payout (exceeds face) — free text
-    # like "…AND ON MATURITY" misclassifies plain annual bonds.
+    # true ~5.2%). Bullet bonds pay coupons to maturity, so generate the
+    # missing ones from the terms instead. A cumulative-frequency label
+    # only excuses the gap when the redemption actually carries the
+    # accumulated payout (exceeds face) — free text like "…AND ON
+    # MATURITY" misclassifies plain annual bonds.
     future_red = sum(f.amount or 0 for f in redemptions if f.due_date > today)
     genuinely_cumulative = bool(
         face and future_red > face * (1.0 + _FACE_TOL))
-    if (coupon and not zero_basis and not genuinely_cumulative
+    if (face and coupon and not zero_basis and not genuinely_cumulative
             and future_red > 0
             and not any(f.due_date > today for f in interest)):
-        sched.flows_suspect = True
+        m = sched.periods_per_year or 1
+        final = max(f.due_date for f in redemptions if f.due_date > today)
+        step = 12 // m if m in (1, 2, 4, 12) else 12
+        due, synthesized = final, []
+        while due > today:
+            synthesized.append(Flow(
+                event="interest", due_date=due,
+                amount=round(face * coupon / 100.0 / m, 2), estimated=True))
+            due = _months_back(due, step)
+        flows.extend(synthesized)
+        interest = [f for f in flows if f.event == "interest"]
+        sched.amounts_estimated = True
         sched.warnings.append(
-            f"coupon bond ({coupon:g}%) with no future interest flows — "
-            "exact YTM withheld")
+            f"{len(synthesized)} future coupon(s) synthesized from terms "
+            f"({coupon:g}% ÷ {m}/yr) — none were published")
 
     # --- classify shape ----------------------------------------------------
     zero_coupon = "zero" in (terms.get("coupon_basis") or "").lower()
@@ -398,6 +411,13 @@ def build(isin: str, cashflows: list[dict], terms: dict | None,
 
     sched.flows = sorted(flows, key=lambda f: (f.due_date, f.event))
     return sched
+
+
+def _months_back(d: date, months: int) -> date:
+    """Same day-of-month ``months`` earlier (clamped to the month end)."""
+    y, m = divmod((d.year * 12 + d.month - 1) - months, 12)
+    last = calendar.monthrange(y, m + 1)[1]
+    return date(y, m + 1, min(d.day, last))
 
 
 def _normalize_rows(cashflows: list[dict]) -> list[Flow]:

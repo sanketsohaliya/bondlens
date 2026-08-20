@@ -157,16 +157,8 @@ export default function ExploreTable({
   const effectiveKey = sort.key === "ask_ytm" && !askAvailable ? "ytm" : sort.key;
 
   const sorted = useMemo(() => {
-    // Unreliable YTMs (near-maturity artifacts, OTC disagreement) sort
-    // as missing — junk numbers must never top the list.
     const get = (b: Bond) =>
-      effectiveKey === "ask_ytm"
-        ? (askMap.get(b.isin)?.ytm ?? null)
-        : effectiveKey === "ytm"
-          ? b.ytm_reliable === false
-            ? null
-            : b.ytm
-          : b[effectiveKey];
+      effectiveKey === "ask_ytm" ? (askMap.get(b.isin)?.ytm ?? null) : b[effectiveKey];
     const rows = [...bonds];
     rows.sort((a, b) => {
       const av = get(a);
@@ -301,27 +293,29 @@ function Row({
       <td className="px-3 py-2.5 whitespace-nowrap">
         <div>
           <span
-            className={
-              b.ytm_reliable === false
-                ? "text-zinc-600 font-medium"
-                : b.ytm != null
-                  ? "text-zinc-200 font-medium"
-                  : "text-zinc-500"
-            }
+            className={b.ytm != null ? "text-zinc-200 font-medium" : "text-zinc-500"}
             title={
-              b.ytm_reliable === false
-                ? b.coupon_basis?.startsWith("Variable")
-                  ? "Floating / market-linked coupon — YTM assumes the current rate holds; indicative only"
-                  : "Unreliable — near maturity, out of band, or disagrees with recent OTC prints; treat with caution"
-                : b.ytm_method === "exact"
-                  ? "From the actual payment schedule"
-                  : b.ytm_method
-                    ? "Estimated"
-                    : undefined
+              b.ytm_method === "exact"
+                ? "From the actual payment schedule"
+                : b.ytm_method
+                  ? "Estimated"
+                  : undefined
             }
           >
             {fmt.pct(b.ytm)}
           </span>
+          {b.ytm != null && b.ytm_reliable === false && (
+            <span
+              className="ml-1 text-[10px] text-amber-500/80 align-middle"
+              title={
+                b.coupon_basis?.startsWith("Variable")
+                  ? "Floating / market-linked coupon — YTM assumes the current rate holds; indicative only"
+                  : "Caution — near maturity, out of band, or differs from recent OTC prints; verify before acting"
+              }
+            >
+              ⚠
+            </span>
+          )}
           {b.ytm_method === "ytc" && (
             <span
               className="ml-1 text-[10px] text-zinc-500"

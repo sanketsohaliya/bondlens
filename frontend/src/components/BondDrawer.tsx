@@ -521,10 +521,10 @@ function Overview({
             b.ytm_reliable === false ? " ⚠" : ""
           }`}
           value={fmt.pct(b.ytm)}
-          accent={b.ytm_reliable !== false}
+          accent
           tip={
             b.ytm_reliable === false
-              ? `Unreliable — near maturity, out of band, or disagrees with recent OTC prints; treat with caution. ${ytmTip(b) ?? ""}`
+              ? `Caution — near maturity, out of band, or differs from recent OTC prints; verify before acting. ${ytmTip(b) ?? ""}`
               : ytmTip(b)
           }
         />
