@@ -38,8 +38,8 @@ from . import (
     models,
     queries,
 )
+from .analytics import compute, ratings, schedule, yields
 from .analytics import portfolio as pf
-from .analytics import ratings, schedule, yields
 from .analytics.compute import STALE_AFTER_DAYS
 
 # redirect_slashes builds its 307 from the proxied (http) scheme, which
@@ -411,6 +411,11 @@ def bond_detail(isin: str, price: float | None = Query(None, gt=0)):
         "ytm_exact": exact,
         "ytm_approx": approx,
         "ytm": best,
+        "ytm_reliable": compute.ytm_reliability(
+            best, red_date, today,
+            terms.get("coupon_basis") if terms else None,
+            otc_yield=None if custom_price else core.get("otc_yield"),
+            otc_trade_date=None if custom_price else core.get("otc_trade_date")),
         "yield_to_worst": ytw,
         "call_dates": call_dates,
         "current_yield": yields.current_yield(ltp, coupon, face),

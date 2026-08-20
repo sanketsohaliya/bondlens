@@ -201,6 +201,91 @@ def test_premium_within_tolerance_not_split():
     assert not any("reclassified" in w for w in s.warnings)
 
 
+# --- YTM audit regressions (2026-08) ----------------------------------------
+
+def test_final_coupon_folded_and_listed_drops_copy():
+    # 975AHFL28 / INE538L07536: NSDL lists the final coupon BOTH as its
+    # own row (97.50) AND inside the redemption (1,097.50) — the folded
+    # copy double-counted the coupon and inflated YTM to 13.84% (true
+    # ~9.5%, OTC prints 8.39%).
+    flows = [_cf("Interest", date(2026, 9, 29), payable=97.5),
+             _cf("Interest", date(2027, 9, 29), payable=97.5),
+             _cf("Interest", date(2028, 9, 29), payable=97.5),
+             _cf("Full Redemption", date(2028, 9, 29), payable=1097.5)]
+    s = schedule.build("X", flows, _terms(
+        coupon_rate=9.75, redemption_date=date(2028, 9, 29)), today=TODAY)
+    assert s.usable
+    [red] = [f for f in s.flows if f.event == "redemption"]
+    assert red.amount == 1000
+    final = [f for f in s.flows
+             if f.event == "interest" and f.due_date == date(2028, 9, 29)]
+    assert len(final) == 1 and final[0].amount == 97.5  # no duplicate added
+    assert any("folded copy dropped" in w for w in s.warnings)
+    from backend.analytics import yields
+    y = yields.exact_ytm(1090.0, s, today=date(2026, 8, 20))
+    assert y is not None and 9.0 < y < 10.0  # was 13.84
+
+
+def test_cumulative_split_still_works_when_no_same_date_interest():
+    # CYQURE-style: no separate final interest row — the excess IS new
+    # information and must still be split out (regression guard for the
+    # duplicate-drop change).
+    flows = [_cf("Full Redemption", date(2028, 3, 17), payable=160597)]
+    s = schedule.build("X", flows, _terms(
+        face_value=100000, coupon_rate=0, coupon_basis="Zero Coupon",
+        interest_payment_frequency="On Maturity",
+        redemption_date=date(2028, 3, 17)), today=TODAY)
+    [inte] = [f for f in s.flows if f.event == "interest"]
+    assert inte.amount == 60597
+
+
+def test_interest_on_wrong_face_basis_withheld():
+    # 79NHIT35 / INE0H7R07017: current face 300, coupon 7.9%, but NSDL
+    # publishes interest on the 3,000 original-face basis (~119/half) —
+    # exact YTM came out 92.73% (true ~7.4%).
+    flows = [_cf("Interest", date(2026, 11, 14), payable=119.47),
+             _cf("Interest", date(2027, 5, 14), payable=117.53),
+             _cf("Interest", date(2027, 11, 14), payable=119.47),
+             _cf("Partial Redemption", date(2027, 11, 14), redeem=150),
+             _cf("Partial Redemption", date(2035, 10, 25), redeem=150)]
+    s = schedule.build("X", flows, _terms(
+        face_value=300, coupon_rate=7.9,
+        interest_payment_frequency="Twice a year",
+        redemption_type="Partial Redemption By Face Value",
+        redemption_date=date(2035, 10, 25)), today=TODAY)
+    assert not s.usable
+    assert any("wrong face basis" in w for w in s.warnings)
+
+
+def test_sane_interest_amounts_not_withheld():
+    # 9.55% annual on face 1000 — implied rate matches the coupon.
+    flows = [_cf("Interest", date(2027 + i, 1, 1), payable=95.5) for i in range(3)]
+    flows.append(_cf("Full Redemption", date(2030, 1, 1), redeem=1000))
+    s = schedule.build("X", flows, _terms(coupon_rate=9.55), today=TODAY)
+    assert s.usable
+    assert not any("wrong face basis" in w for w in s.warnings)
+
+
+def test_coupon_bond_without_future_interest_withheld():
+    # 738REC27TF / INE020B07GX4: only one long-past interest row; the
+    # synthesized redemption alone priced a couponless bond → -5.09% on
+    # a premium tax-free (true ~5.2%). Exact YTM must be withheld
+    # (approx fallback).
+    flows = [_cf("Interest", date(2013, 12, 1), payable=73.8)]
+    s = schedule.build("X", flows, _terms(
+        coupon_rate=7.38, redemption_date=date(2027, 12, 19)), today=TODAY)
+    assert not s.usable
+    assert any("no future interest flows" in w for w in s.warnings)
+
+
+def test_zero_coupon_without_interest_rows_still_usable():
+    flows = [_cf("Full Redemption", date(2028, 1, 1), redeem=1000)]
+    s = schedule.build("X", flows, _terms(
+        coupon_rate=None, coupon_basis="Zero Coupon",
+        interest_payment_frequency=None), today=TODAY)
+    assert s.usable
+
+
 def test_genuine_staggered_untouched_by_dedup():
     # Real partial redemptions differ in date (or amount) — the dedup
     # must not collapse them.

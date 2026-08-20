@@ -157,8 +157,16 @@ export default function ExploreTable({
   const effectiveKey = sort.key === "ask_ytm" && !askAvailable ? "ytm" : sort.key;
 
   const sorted = useMemo(() => {
+    // Unreliable YTMs (near-maturity artifacts, OTC disagreement) sort
+    // as missing — junk numbers must never top the list.
     const get = (b: Bond) =>
-      effectiveKey === "ask_ytm" ? (askMap.get(b.isin)?.ytm ?? null) : b[effectiveKey];
+      effectiveKey === "ask_ytm"
+        ? (askMap.get(b.isin)?.ytm ?? null)
+        : effectiveKey === "ytm"
+          ? b.ytm_reliable === false
+            ? null
+            : b.ytm
+          : b[effectiveKey];
     const rows = [...bonds];
     rows.sort((a, b) => {
       const av = get(a);
@@ -304,7 +312,7 @@ function Row({
               b.ytm_reliable === false
                 ? b.coupon_basis?.startsWith("Variable")
                   ? "Floating / market-linked coupon — YTM assumes the current rate holds; indicative only"
-                  : "Likely an annualization artifact (near maturity or out of band) — treat with caution"
+                  : "Unreliable — near maturity, out of band, or disagrees with recent OTC prints; treat with caution"
                 : b.ytm_method === "exact"
                   ? "From the actual payment schedule"
                   : b.ytm_method

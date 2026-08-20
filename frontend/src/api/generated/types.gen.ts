@@ -459,6 +459,10 @@ export type BondDetail = {
      */
     ytm: number | null;
     /**
+     * Ytm Reliable
+     */
+    ytm_reliable: boolean | null;
+    /**
      * Yield To Worst
      */
     yield_to_worst: number | null;

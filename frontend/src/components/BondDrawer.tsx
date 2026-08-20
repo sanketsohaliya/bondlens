@@ -517,10 +517,16 @@ function Overview({
         }
       >
         <Stat
-          label={`YTM ${b.ytm_exact != null ? "(exact)" : "(approx)"}`}
+          label={`YTM ${b.ytm_exact != null ? "(exact)" : "(approx)"}${
+            b.ytm_reliable === false ? " ⚠" : ""
+          }`}
           value={fmt.pct(b.ytm)}
-          accent
-          tip={ytmTip(b)}
+          accent={b.ytm_reliable !== false}
+          tip={
+            b.ytm_reliable === false
+              ? `Unreliable — near maturity, out of band, or disagrees with recent OTC prints; treat with caution. ${ytmTip(b) ?? ""}`
+              : ytmTip(b)
+          }
         />
         {b.yield_to_worst != null && b.yield_to_worst !== b.ytm && (
           <Stat label="Yield to worst" value={fmt.pct(b.yield_to_worst)} />

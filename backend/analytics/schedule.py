@@ -78,13 +78,17 @@ class Schedule:
     allotment_date: date | None = None  # accrual anchor for the first period
     amounts_estimated: bool = False  # any flow amount was estimated
     redemption_matches_face: bool = False
+    # Interest amounts contradict the bond's own terms (wrong face basis,
+    # missing coupon rows) — exact YTM on them would be confidently wrong.
+    flows_suspect: bool = False
     warnings: list[str] = field(default_factory=list)
 
     @property
     def usable(self) -> bool:
         """Good enough for exact YTM: dated flows whose principal
-        reconciles with face value (perpetuals never redeem by design)."""
-        if not self.flows:
+        reconciles with face value (perpetuals never redeem by design)
+        and whose interest amounts don't contradict the bond's terms."""
+        if not self.flows or self.flows_suspect:
             return False
         return self.redemption_matches_face or self.shape == "perpetual"
 
@@ -267,15 +271,29 @@ def build(isin: str, cashflows: list[dict], terms: dict | None,
             and amt > face * (1.0 + _FACE_TOL)):
         r = redemptions[0]
         excess = round(amt - face, 2)
-        flows.append(Flow(event="interest", due_date=r.due_date,
-                          record_date=r.record_date, amount=excess,
-                          estimated=r.estimated))
-        r.amount = face
-        interest = [f for f in flows if f.event == "interest"]
+        # NSDL sometimes lists the final coupon BOTH as its own interest
+        # row AND folded into the redemption amount (INE538L07536:
+        # interest 97.50 + redemption 1,097.50 on the same date) — that
+        # double-counts the coupon and inflates YTM. When the excess
+        # matches the same-date interest, drop the folded copy.
+        same_date_interest = sum(f.amount or 0 for f in interest
+                                 if f.due_date == r.due_date)
+        if (same_date_interest
+                and abs(excess - same_date_interest) <= face * _FACE_TOL):
+            r.amount = face
+            sched.warnings.append(
+                f"final coupon {excess:,.2f} listed both separately and "
+                "inside the redemption — folded copy dropped")
+        else:
+            flows.append(Flow(event="interest", due_date=r.due_date,
+                              record_date=r.record_date, amount=excess,
+                              estimated=r.estimated))
+            r.amount = face
+            interest = [f for f in flows if f.event == "interest"]
+            sched.warnings.append(
+                f"redemption exceeded face by {excess:,.2f} — "
+                "reclassified as interest")
         sched.redemption_matches_face = True
-        sched.warnings.append(
-            f"redemption exceeded face by {excess:,.2f} — "
-            "reclassified as interest")
 
     # --- frequency fallback: infer from the flow spacing ------------------
     if sched.periods_per_year is None and sched.frequency not in ("cumulative",):
@@ -309,6 +327,45 @@ def build(isin: str, cashflows: list[dict], terms: dict | None,
         _estimate_missing(interest, redemptions, face, coupon, dc)
     if any(f.estimated for f in flows):
         sched.amounts_estimated = True
+
+    # --- implied-rate sanity: interest on the wrong face basis -------------
+    # Amortized bonds sometimes publish interest computed on the ORIGINAL
+    # face while bond_terms carries the reduced current face (79NHIT35:
+    # coupon 7.9% on face 300, published coupons ~119 — the 3,000
+    # original-face basis). Exact YTM on such flows is confidently wrong;
+    # withhold it so compute falls back to the coupon-based approximation.
+    zero_basis = "zero" in (terms.get("coupon_basis") or "").lower()
+    if face and coupon and len(interest) >= 2:
+        dated = sorted((f for f in interest if f.amount),
+                       key=lambda f: f.due_date)
+        implied = []
+        for prev, cur in itertools.pairwise(dated):
+            gap = (cur.due_date - prev.due_date).days / 365.0
+            if gap > 0.04 and cur.amount:  # ignore same-date splits
+                implied.append(cur.amount / (face * gap) * 100.0)
+        if implied:
+            med = sorted(implied)[len(implied) // 2]
+            if med > coupon * 2.5:
+                sched.flows_suspect = True
+                sched.warnings.append(
+                    f"interest amounts imply {med:,.1f}% vs coupon "
+                    f"{coupon:g}% — wrong face basis; exact YTM withheld")
+
+    # --- coupon bond with no future coupons: incomplete schedule -----------
+    # When NSDL publishes no future interest rows for a coupon-bearing
+    # bond (and the above-face split produced none either), an "exact"
+    # solve on the bare redemption prices a bond that doesn't exist —
+    # premium bonds come out with negative YTMs (738REC27TF: -5.09% vs
+    # true ~5.2%). Bullet bonds pay their final coupon at maturity, so a
+    # future redemption without any future interest is a data gap.
+    if (coupon and not zero_basis
+            and sched.frequency not in ("cumulative",)
+            and any(f.due_date > today for f in redemptions)
+            and not any(f.due_date > today for f in interest)):
+        sched.flows_suspect = True
+        sched.warnings.append(
+            f"coupon bond ({coupon:g}%) with no future interest flows — "
+            "exact YTM withheld")
 
     # --- classify shape ----------------------------------------------------
     zero_coupon = "zero" in (terms.get("coupon_basis") or "").lower()

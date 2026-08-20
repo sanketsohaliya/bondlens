@@ -166,6 +166,7 @@ class BondDetail(BaseModel):
     ytm_exact: float | None
     ytm_approx: float | None
     ytm: float | None
+    ytm_reliable: bool | None
     yield_to_worst: float | None
     call_dates: list[date]
     current_yield: float | None

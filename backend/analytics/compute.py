@@ -50,10 +50,16 @@ def _yn(v: str | None) -> bool | None:
 _RELIABLE = (-1.0, 50.0)
 _RELIABLE_NEAR = (0.0, 20.0)
 _NEAR_DAYS = 90
+# Institutional OTC prints are a strong sanity anchor: a fresh OTC yield
+# disagreeing with our computed YTM by more than this flags data trouble.
+_OTC_CHECK_MAX_GAP = 3.0
+_OTC_CHECK_MAX_AGE_DAYS = 14
 
 
 def ytm_reliability(ytm: float | None, maturity: date | None,
-                    today: date, coupon_basis: str | None = None) -> bool | None:
+                    today: date, coupon_basis: str | None = None,
+                    otc_yield: float | None = None,
+                    otc_trade_date: date | None = None) -> bool | None:
     """False = display with caution; None = no YTM to judge."""
     if ytm is None:
         return None
@@ -66,7 +72,13 @@ def ytm_reliability(ytm: float | None, maturity: date | None,
         return False
     if maturity is not None and (maturity - today).days < _NEAR_DAYS:
         lo, hi = _RELIABLE_NEAR
-        return lo <= ytm <= hi
+        if not lo <= ytm <= hi:
+            return False
+    # Cross-check against a fresh institutional OTC print.
+    if (otc_yield is not None and otc_trade_date is not None
+            and (today - otc_trade_date).days <= _OTC_CHECK_MAX_AGE_DAYS
+            and abs(ytm - otc_yield) > _OTC_CHECK_MAX_GAP):
+        return False
     return True
 
 
@@ -165,8 +177,11 @@ def build_rows(today: date | None = None) -> list[dict]:
             "otc_turnover": _f(otc and otc.get("turnover")),
             "ytm": ytm,
             "ytm_method": ytm_method,
-            "ytm_reliable": ytm_reliability(ytm, red_date, today,
-                                            r.get("coupon_basis")),
+            "ytm_reliable": ytm_reliability(
+                ytm, red_date, today, r.get("coupon_basis"),
+                otc_yield=_f(otc and (otc.get("wap_yield")
+                                      or otc.get("last_yield"))),
+                otc_trade_date=otc["trade_date"] if otc else None),
             "current_yield": yields.current_yield(price, coupon, face),
             "duration": yields.modified_duration(price, sched, ytm, today)
                         if ytm_method in ("exact", "estimated") else None,
