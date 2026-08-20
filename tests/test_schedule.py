@@ -266,6 +266,21 @@ def test_sane_interest_amounts_not_withheld():
     assert not any("wrong face basis" in w for w in s.warnings)
 
 
+def test_misleading_on_maturity_frequency_still_withheld():
+    # 738REC27TF's frequency free-text ends "…AND ON MATURITY", which the
+    # classifier maps to 'cumulative' — but the redemption is exactly
+    # face, so nothing carries the coupons: still a data gap.
+    flows = [_cf("Interest", date(2013, 12, 1), payable=73.8)]
+    s = schedule.build("X", flows, _terms(
+        coupon_rate=7.38,
+        interest_payment_frequency=(
+            "1ST INTEREST PAYMENT WILL BE ON 01/12/2013 AND THEREAFTER IN "
+            "1ST DECEMBER EACH YEAR AND ON MATURITY"),
+        redemption_date=date(2027, 12, 19)), today=TODAY)
+    assert not s.usable
+    assert any("no future interest flows" in w for w in s.warnings)
+
+
 def test_coupon_bond_without_future_interest_withheld():
     # 738REC27TF / INE020B07GX4: only one long-past interest row; the
     # synthesized redemption alone priced a couponless bond → -5.09% on

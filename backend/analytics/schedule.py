@@ -357,10 +357,15 @@ def build(isin: str, cashflows: list[dict], terms: dict | None,
     # solve on the bare redemption prices a bond that doesn't exist —
     # premium bonds come out with negative YTMs (738REC27TF: -5.09% vs
     # true ~5.2%). Bullet bonds pay their final coupon at maturity, so a
-    # future redemption without any future interest is a data gap.
-    if (coupon and not zero_basis
-            and sched.frequency not in ("cumulative",)
-            and any(f.due_date > today for f in redemptions)
+    # future redemption without any future interest is a data gap. A
+    # cumulative-frequency label only excuses this when the redemption
+    # actually carries the accumulated payout (exceeds face) — free text
+    # like "…AND ON MATURITY" misclassifies plain annual bonds.
+    future_red = sum(f.amount or 0 for f in redemptions if f.due_date > today)
+    genuinely_cumulative = bool(
+        face and future_red > face * (1.0 + _FACE_TOL))
+    if (coupon and not zero_basis and not genuinely_cumulative
+            and future_red > 0
             and not any(f.due_date > today for f in interest)):
         sched.flows_suspect = True
         sched.warnings.append(
