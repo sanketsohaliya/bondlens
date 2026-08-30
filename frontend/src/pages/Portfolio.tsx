@@ -281,7 +281,7 @@ const HOLDINGS_COLS: Array<{ label: string; key: HoldingsSortKey | null; right?:
   { label: "Issuer", key: "issuer" },
   { label: "Rating", key: "rating" },
   { label: "Units", key: "units", right: true },
-  { label: "Avg / LTP", key: "avg_price", right: true },
+  { label: "Cost / LTP", key: "avg_price", right: true },
   { label: "Invested", key: "invested", right: true },
   { label: "Value", key: "value", right: true },
   { label: "P&L", key: "gain", right: true },
@@ -518,20 +518,19 @@ function PositionRow({
           {fmt.pct(p.yield_on_cost)}
         </td>
         <td className={`${TD} text-right tabular-nums`}>
-          {fmt.pct(p.ytm)}
+          <div>{fmt.pct(p.ytm)}</div>
           {spread != null && Math.abs(spread) > 0.05 && (
-            <span
-              className={`ml-1 text-[10px] ${
-                spread > 0 ? "text-emerald-500/80" : "text-red-400/70"
-              }`}
+            <div
+              className={`text-[10px] ${spread > 0 ? "text-emerald-500/80" : "text-red-400/70"}`}
               title={
                 spread > 0
                   ? `Market YTM is ${spread.toFixed(2)}pp above your locked yield — adding today beats your original entry`
                   : `Market yields ${(-spread).toFixed(2)}pp less than you locked — your entry beat today's market`
               }
             >
-              {spread > 0 ? "▲" : "▼"}
-            </span>
+              {spread > 0 ? "+" : "−"}
+              {Math.abs(spread).toFixed(2)}pp
+            </div>
           )}
         </td>
         <td className={TD}>
