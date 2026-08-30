@@ -13,7 +13,7 @@ value fallbacks must not manufacture fake P&L.
 from datetime import date
 from typing import Any
 
-from . import ratings
+from . import ratings, yields
 from .schedule import Flow
 
 
@@ -123,6 +123,36 @@ def receiving_units(lots: list[dict[str, Any]], flow: Flow, *,
     return sum(lot["units"] for lot in lots
                if (lot.get("purchase_date") is not None or not known_only)
                and flow.receivable_by_holder(lot.get("purchase_date")))
+
+
+def yield_on_cost(lots: list[dict[str, Any]], flows: list[Flow],
+                  today: date) -> float | None:
+    """True yield on the user's money (XIRR %): lot purchases out at
+    their real dates and prices, coupons received since in (record-date
+    accurate per lot), all future flows in. None without future flows
+    or when any lot lacks price/date (legacy rows)."""
+    if not lots or not flows:
+        return None
+    if any(lot.get("price") is None or lot.get("purchase_date") is None
+           for lot in lots):
+        return None
+    dated: list[tuple[date, float]] = [
+        (lot["purchase_date"], -float(lot["units"]) * float(lot["price"]))
+        for lot in lots]
+    has_future = False
+    for f in flows:
+        if not f.amount:
+            continue
+        if f.due_date > today:
+            units = receiving_units(lots, f)
+            has_future = True
+        else:
+            units = receiving_units(lots, f, known_only=True)
+        if units:
+            dated.append((f.due_date, f.amount * units))
+    if not has_future:
+        return None  # matured position: nothing left to yield
+    return yields.xirr(dated)
 
 
 def next_payment(lots: list[dict[str, Any]], flows: list[Flow],

@@ -252,6 +252,7 @@ type HoldingsSortKey =
   | "avg_price"
   | "value"
   | "gain"
+  | "yield_on_cost"
   | "ytm"
   | "maturity"
   | "next_payment";
@@ -269,6 +270,7 @@ const HOLDINGS_ACCESSORS: Record<
   avg_price: (p) => p.avg_price,
   value: (p) => p.value,
   gain: (p) => p.gain,
+  yield_on_cost: (p) => p.yield_on_cost,
   ytm: (p) => p.ytm,
   maturity: (p) => p.years_to_maturity,
   next_payment: (p) => p.next_payment?.due_date,
@@ -283,6 +285,7 @@ const HOLDINGS_COLS: Array<{ label: string; key: HoldingsSortKey | null; right?:
   { label: "Invested", key: "invested", right: true },
   { label: "Value", key: "value", right: true },
   { label: "P&L", key: "gain", right: true },
+  { label: "YTM @ Cost", key: "yield_on_cost", right: true },
   { label: "YTM @ LTP", key: "ytm", right: true },
   { label: "Maturity", key: "maturity" },
   { label: "Next payment", key: "next_payment" },
@@ -304,6 +307,7 @@ function HoldingsTable({
     "holdings-col-widths",
     HOLDINGS_COLS.length,
   );
+  const totalValue = positions.reduce((s, p) => s + (p.value ?? 0), 0);
 
   const sorted = useMemo(() => {
     const get = HOLDINGS_ACCESSORS[sort.key];
@@ -365,6 +369,7 @@ function HoldingsTable({
             <PositionRow
               key={p.isin}
               p={p}
+              totalValue={totalValue}
               open={openIsin === p.isin}
               onToggle={() => setOpenIsin(openIsin === p.isin ? null : p.isin)}
               onSelect={(tab?: DrawerTab) => onSelect(p.isin, tab)}
@@ -372,7 +377,7 @@ function HoldingsTable({
           ))}
           {sorted.length === 0 && (
             <tr>
-              <td colSpan={11} className="px-3 py-6 text-center text-zinc-600">
+              <td colSpan={HOLDINGS_COLS.length} className="px-3 py-6 text-center text-zinc-600">
                 No holdings match
               </td>
             </tr>
@@ -385,15 +390,29 @@ function HoldingsTable({
 
 function PositionRow({
   p,
+  totalValue,
   open,
   onToggle,
   onSelect,
 }: {
   p: PortfolioPosition;
+  totalValue: number;
   open: boolean;
   onToggle: () => void;
   onSelect: (tab?: DrawerTab) => void;
 }) {
+  // Holding age from the oldest lot (context for the yield-on-cost XIRR).
+  const oldest = p.lots.reduce<string | null>(
+    (min, l) => (min == null || l.purchase_date < min ? l.purchase_date : min),
+    null,
+  );
+  const heldYears = oldest
+    ? (Date.now() - new Date(oldest).getTime()) / (365.25 * 86_400_000)
+    : null;
+  const weightPct = totalValue > 0 && p.value != null ? (p.value / totalValue) * 100 : null;
+  // Market yield vs the user's locked yield: is adding today better or
+  // worse than the original entry?
+  const spread = p.ytm != null && p.yield_on_cost != null ? p.ytm - p.yield_on_cost : null;
   return (
     <>
       <tr
@@ -449,7 +468,12 @@ function PositionRow({
             }
           />
         </td>
-        <td className={`${TD} text-right tabular-nums`}>{fmt.num(p.units, 2)}</td>
+        <td className={`${TD} text-right tabular-nums`}>
+          <div>{fmt.num(p.units, 2)}</div>
+          {heldYears != null && heldYears >= 1 / 12 && (
+            <div className="text-[10px] text-zinc-500">held {fmt.yearsMonths(heldYears)}</div>
+          )}
+        </td>
         {/* Avg paid price primary, market LTP beneath. */}
         <td className={`${TD} text-right tabular-nums`}>
           <div className="text-zinc-200 font-medium">
@@ -460,8 +484,11 @@ function PositionRow({
           )}
         </td>
         <td className={`${TD} text-right tabular-nums`}>{fmt.inr(p.invested)}</td>
-        <td className={`${TD} text-right tabular-nums font-medium text-zinc-200`}>
-          {fmt.inr(p.value)}
+        <td className={`${TD} text-right tabular-nums`}>
+          <div className="font-medium text-zinc-200">{fmt.inr(p.value)}</div>
+          {weightPct != null && (
+            <div className="text-[10px] text-zinc-500">{weightPct.toFixed(1)}% of portfolio</div>
+          )}
         </td>
         <td className={`${TD} text-right tabular-nums`}>
           {p.gain == null ? (
@@ -476,7 +503,29 @@ function PositionRow({
             </span>
           )}
         </td>
-        <td className={`${TD} text-right tabular-nums`}>{fmt.pct(p.ytm)}</td>
+        {/* The yield actually locked: XIRR over real buy dates/prices,
+            coupons received and future flows. */}
+        <td
+          className={`${TD} text-right tabular-nums`}
+          title="True yield on your money (XIRR): actual buy dates and prices, coupons received, future flows"
+        >
+          {fmt.pct(p.yield_on_cost)}
+        </td>
+        <td className={`${TD} text-right tabular-nums`}>
+          {fmt.pct(p.ytm)}
+          {spread != null && Math.abs(spread) > 0.05 && (
+            <span
+              className="ml-1 text-[10px] text-zinc-400"
+              title={
+                spread > 0
+                  ? `Market YTM is ${spread.toFixed(2)}pp above your locked yield — adding today beats your original entry`
+                  : `Market yields ${(-spread).toFixed(2)}pp less than you locked — your entry beat today's market`
+              }
+            >
+              {spread > 0 ? "▲" : "▼"}
+            </span>
+          )}
+        </td>
         <td className={TD}>
           {p.years_to_maturity != null ? (
             <>

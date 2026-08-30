@@ -285,6 +285,9 @@ class PortfolioPosition(BaseModel):
     face_value: float | None
     ltp: float | None
     ytm: float | None
+    # True yield on the user's money (XIRR over real buy dates/prices,
+    # coupons received, future flows).
+    yield_on_cost: float | None
     units: float
     invested: float | None
     value: float | None

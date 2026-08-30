@@ -200,6 +200,8 @@ def portfolio(user_id: int = Depends(auth.require_user)):
     for p in positions:
         p["next_payment"] = pf.next_payment(p["lots"],
                                             flows_by_isin[p["isin"]], today)
+        p["yield_on_cost"] = pf.yield_on_cost(p["lots"],
+                                              flows_by_isin[p["isin"]], today)
 
     cashflows = pf.monthly_cashflows(
         {p["isin"]: p["lots"] for p in positions}, flows_by_isin, today,

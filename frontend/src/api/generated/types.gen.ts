@@ -1282,6 +1282,10 @@ export type PortfolioPosition = {
      */
     ytm: number | null;
     /**
+     * Yield On Cost
+     */
+    yield_on_cost: number | null;
+    /**
      * Units
      */
     units: number;

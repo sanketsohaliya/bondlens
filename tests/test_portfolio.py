@@ -275,6 +275,50 @@ def test_income_summary_empty():
         "projected_interest": 0, "projected_principal": 0}
 
 
+# --- yield_on_cost ----------------------------------------------------------
+
+def yoc_lot(units=10.0, price=1000.0, purchase_date=date(2025, 1, 15)):
+    return {"units": units, "price": price, "purchase_date": purchase_date}
+
+
+def test_yield_on_cost_at_par_near_coupon():
+    # Bought at par on issue-ish date; 10% annual coupons + face at the
+    # end -> XIRR should land near 10%.
+    flows = [_flow(date(2026, 1, 15), 100.0),
+             _flow(date(2027, 1, 15), 100.0),
+             _flow(date(2027, 1, 15), 1000.0, event="redemption")]
+    y = pf.yield_on_cost([yoc_lot()], flows, TODAY)
+    assert y is not None and 9.5 < y < 10.5
+
+
+def test_yield_on_cost_discount_buy_beats_coupon():
+    flows = [_flow(date(2026, 1, 15), 100.0),
+             _flow(date(2027, 1, 15), 100.0),
+             _flow(date(2027, 1, 15), 1000.0, event="redemption")]
+    y = pf.yield_on_cost([yoc_lot(price=900.0)], flows, TODAY)
+    assert y is not None and y > 13
+
+
+def test_yield_on_cost_excludes_coupons_bought_after_record():
+    # Bought after the 2026 record date: that coupon is not the buyer's.
+    flows = [_flow(date(2026, 2, 1), 100.0, record=date(2026, 1, 10)),
+             _flow(date(2027, 2, 1), 100.0, record=date(2027, 1, 10)),
+             _flow(date(2027, 2, 1), 1000.0, event="redemption")]
+    with_coupon = pf.yield_on_cost(
+        [yoc_lot(purchase_date=date(2026, 1, 5))], flows, TODAY)
+    without = pf.yield_on_cost(
+        [yoc_lot(purchase_date=date(2026, 1, 20))], flows, TODAY)
+    assert with_coupon is not None and without is not None
+    assert with_coupon > without
+
+
+def test_yield_on_cost_none_without_future_flows():
+    flows = [_flow(date(2025, 6, 1), 100.0),
+             _flow(date(2025, 6, 1), 1000.0, event="redemption")]
+    assert pf.yield_on_cost([yoc_lot()], flows, TODAY) is None
+    assert pf.yield_on_cost([yoc_lot()], [], TODAY) is None
+
+
 def test_next_payment_holder_semantics():
     flows = [_flow(date(2026, 2, 1), 50.0, record=date(2026, 1, 10)),
              _flow(date(2026, 8, 1), 50.0, record=date(2026, 7, 10))]
