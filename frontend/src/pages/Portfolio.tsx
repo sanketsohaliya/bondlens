@@ -406,9 +406,17 @@ function PositionRow({
     (min, l) => (min == null || l.purchase_date < min ? l.purchase_date : min),
     null,
   );
-  const heldYears = oldest
-    ? (Date.now() - new Date(oldest).getTime()) / (365.25 * 86_400_000)
+  const heldDays = oldest
+    ? Math.floor((Date.now() - new Date(oldest).getTime()) / 86_400_000)
     : null;
+  const heldLabel =
+    heldDays == null
+      ? null
+      : heldDays < 1
+        ? "held today"
+        : heldDays < 31
+          ? `held ${heldDays}d`
+          : `held ${fmt.yearsMonths(heldDays / 365.25)}`;
   const weightPct = totalValue > 0 && p.value != null ? (p.value / totalValue) * 100 : null;
   // Market yield vs the user's locked yield: is adding today better or
   // worse than the original entry?
@@ -470,9 +478,7 @@ function PositionRow({
         </td>
         <td className={`${TD} text-right tabular-nums`}>
           <div>{fmt.num(p.units, 2)}</div>
-          {heldYears != null && heldYears >= 1 / 12 && (
-            <div className="text-[10px] text-zinc-500">held {fmt.yearsMonths(heldYears)}</div>
-          )}
+          {heldLabel && <div className="text-[10px] text-zinc-500">{heldLabel}</div>}
         </td>
         {/* Avg paid price primary, market LTP beneath. */}
         <td className={`${TD} text-right tabular-nums`}>
@@ -515,7 +521,9 @@ function PositionRow({
           {fmt.pct(p.ytm)}
           {spread != null && Math.abs(spread) > 0.05 && (
             <span
-              className="ml-1 text-[10px] text-zinc-400"
+              className={`ml-1 text-[10px] ${
+                spread > 0 ? "text-emerald-500/80" : "text-red-400/70"
+              }`}
               title={
                 spread > 0
                   ? `Market YTM is ${spread.toFixed(2)}pp above your locked yield — adding today beats your original entry`
