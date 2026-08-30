@@ -59,10 +59,9 @@ export default function App() {
     return () => window.removeEventListener(GOTO_PORTFOLIO_EVENT, go);
   }, []);
 
-  // Orders tab exists only while Kite is connected and there are orders
-  // today. No background polling: placing an order through the ticket
-  // invalidates ["kite-orders"], so the tab pops in event-driven; the
-  // Orders page itself polls while open.
+  // Orders tab exists whenever Kite is connected — even with no orders
+  // it carries the funds snapshot. The page fetches and polls its own
+  // data once opened.
   const { data: kite } = useQuery({
     queryKey: ["kite-status"],
     queryFn: api.kite.status,
@@ -70,17 +69,9 @@ export default function App() {
     refetchOnWindowFocus: false,
   });
   const kiteConnected = kite?.connected ?? false;
-  const kiteOrders = useQuery({
-    queryKey: ["kite-orders"],
-    queryFn: api.kite.orders,
-    enabled: kiteConnected,
-    staleTime: 30_000,
-    refetchOnWindowFocus: false,
-  });
-  // Keep the tab while the user is standing on it, so cancelling the
-  // last order doesn't yank the page away mid-interaction.
-  const showOrdersTab =
-    (kiteConnected && (kiteOrders.data?.orders.length ?? 0) > 0) || page === "orders";
+  // Keep the tab while the user is standing on it, so a connection blip
+  // doesn't yank the page away mid-interaction.
+  const showOrdersTab = kiteConnected || page === "orders";
   useEffect(() => {
     if (page === "orders" && !kiteConnected) setPage("explore");
   }, [page, kiteConnected]);
