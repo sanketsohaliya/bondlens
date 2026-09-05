@@ -41,6 +41,14 @@ class Flow:
     record_date: date | None = None
     amount: float | None = None   # ₹ per unit of face value
     estimated: bool = False          # amount was estimated, not published
+    # Business-day-adjusted date the money actually lands (NSDL's
+    # payment_date; can precede the due date across weekends/holidays).
+    payment_date: date | None = None
+
+    @property
+    def effective_date(self) -> date:
+        """When the money lands: payment date, else the due date."""
+        return self.payment_date or self.due_date
 
     def receivable_by_buyer(self, today: date) -> bool:
         """True if a buyer settling today still receives this flow (record
@@ -436,7 +444,8 @@ def _normalize_rows(cashflows: list[dict]) -> list[Flow]:
         else:
             continue
         flows.append(Flow(event=event, due_date=due,
-                          record_date=r.get("record_date"), amount=amount))
+                          record_date=r.get("record_date"), amount=amount,
+                          payment_date=r.get("payment_date")))
     return flows
 
 

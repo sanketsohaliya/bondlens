@@ -275,6 +275,40 @@ def test_income_summary_empty():
         "projected_interest": 0, "projected_principal": 0}
 
 
+def test_monthly_cashflows_bucket_by_payment_date():
+    # Due Sun 1 Feb but paid Fri 30 Jan (business-day adjustment): the
+    # flow belongs to January's bucket and shows the January date.
+    # TODAY here is 2026-01-15, so it is still projected, not received.
+    flow = schedule.Flow(event="interest", due_date=date(2026, 2, 1),
+                         amount=50.0, payment_date=date(2026, 1, 30))
+    months = pf.monthly_cashflows(
+        {"I": _lots(2, date(2025, 6, 1))}, {"I": [flow]}, TODAY)
+    [m] = months
+    assert m["month"] == "2026-01"
+    assert m["bonds"][0]["dates"] == ["2026-01-30"]
+    assert m["received_interest"] == 0.0
+
+
+def test_received_flips_on_payment_date():
+    # Due Sat 17 Jan but paid Thu 15 Jan: with TODAY = 15 Jan the money
+    # has landed even though the due date is still ahead.
+    flow = schedule.Flow(event="interest", due_date=date(2026, 1, 17),
+                         amount=50.0, payment_date=date(2026, 1, 15))
+    months = pf.monthly_cashflows(
+        {"I": _lots(2, date(2025, 6, 1))}, {"I": [flow]}, TODAY)
+    [m] = months
+    assert m["received_interest"] == 100.0
+
+
+def test_flow_without_payment_date_unchanged():
+    flow = schedule.Flow(event="interest", due_date=date(2026, 2, 1),
+                         amount=50.0)
+    months = pf.monthly_cashflows(
+        {"I": _lots(2, date(2025, 6, 1))}, {"I": [flow]}, TODAY)
+    assert months[0]["month"] == "2026-02"
+    assert months[0]["bonds"][0]["dates"] == ["2026-02-01"]
+
+
 # --- yield_on_cost ----------------------------------------------------------
 
 def yoc_lot(units=10.0, price=1000.0, purchase_date=date(2025, 1, 15)):

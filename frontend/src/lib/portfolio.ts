@@ -40,6 +40,16 @@ export function isPastMonth(month: string, now: Date = new Date()): boolean {
   return month < cur;
 }
 
+/** All of a popover row's dates (ISO yyyy-mm-dd) are in the past — the
+ * money is banked, so the row reads as history. */
+export function allDatesPast(dates: string[] | null | undefined, now: Date = new Date()): boolean {
+  if (!dates?.length) return false;
+  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(
+    now.getDate(),
+  ).padStart(2, "0")}`;
+  return dates.every((d) => d < today);
+}
+
 export interface YearRow {
   year: number;
   total: number;

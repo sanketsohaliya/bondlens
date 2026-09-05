@@ -192,6 +192,11 @@ def monthly_cashflows(lots_by_isin: dict[str, list[dict[str, Any]]],
     it don't inflate the month either. Past flows count only lots with
     a KNOWN purchase date: "held all along" is a fine default for
     projections but would fabricate received income.
+
+    Everything keys off the EFFECTIVE date (business-day-adjusted
+    payment date, falling back to the due date) — the month bucket, the
+    received split and the per-bond dates all match the bank statement,
+    even when the adjustment crosses a month boundary.
     """
     labels = labels_by_isin or {}
     buckets: dict[str, dict[str, Any]] = {}
@@ -202,11 +207,11 @@ def monthly_cashflows(lots_by_isin: dict[str, list[dict[str, Any]]],
         for f in flows:
             if not f.amount:
                 continue
-            past = f.due_date <= today
+            past = f.effective_date <= today
             units = receiving_units(lots, f, known_only=past)
             if not units:
                 continue
-            month = f.due_date.strftime("%Y-%m")
+            month = f.effective_date.strftime("%Y-%m")
             b = buckets.setdefault(
                 month, {"month": month, "interest": 0.0, "principal": 0.0,
                         "received_interest": 0.0, "received_principal": 0.0,
@@ -222,7 +227,7 @@ def monthly_cashflows(lots_by_isin: dict[str, list[dict[str, Any]]],
                        "_dates": set()})
             bond[key] += f.amount * units
             bond["estimated"] = bond["estimated"] or f.estimated
-            bond["_dates"].add(f.due_date.isoformat())
+            bond["_dates"].add(f.effective_date.isoformat())
     out = sorted(buckets.values(), key=lambda b: b["month"])
     for b in out:
         b["interest"] = round(b["interest"], 2)

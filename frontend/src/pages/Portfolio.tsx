@@ -22,7 +22,14 @@ import RatingBadge from "../components/RatingBadge";
 import StatBox from "../components/StatBox";
 import Tip from "../components/Tooltip";
 import { fuzzyMatch } from "../lib/fuzzy";
-import { isPastMonth, monthGrid, usePortfolio, type WeightBy, weights } from "../lib/portfolio";
+import {
+  allDatesPast,
+  isPastMonth,
+  monthGrid,
+  usePortfolio,
+  type WeightBy,
+  weights,
+} from "../lib/portfolio";
 import { useColumnWidths } from "../lib/useColumnWidths";
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -767,15 +774,21 @@ function CashflowChart({
       const prinCol = past ? "#10b98180" : "#10b981";
       const labelCol = past ? "#a1a1aa" : "#e4e4e7";
       const bondLines = (cf.bonds ?? [])
-        .map(
-          (b) =>
-            `<tr><td style="color:${labelCol};padding-right:10px">${b.estimated ? "≈" : ""}${b.label}</td>` +
+        .map((b) => {
+          // Money already banked reads as history mid-month too.
+          const banked = past || allDatesPast(b.dates);
+          const li = banked ? "#38bdf880" : intCol;
+          const lp = banked ? "#10b98180" : prinCol;
+          const ll = banked ? "#71717a" : labelCol;
+          return (
+            `<tr><td style="color:${ll};padding-right:10px">${b.estimated ? "≈" : ""}${b.label}</td>` +
             `<td style="font-family:ui-monospace,monospace;color:#71717a;padding-right:2px">${b.isin}</td>` +
             `<td style="color:#71717a;${num}">${dayMonth(b.dates ?? [])}</td>` +
-            `<td style="color:${intCol};${num}">${b.interest > 0 ? money(b.interest) : "–"}</td>` +
-            `<td style="color:${prinCol};${num}">${b.principal > 0 ? money(b.principal) : "–"}</td>` +
-            `<td style="color:#a1a1aa;${num}">${money(b.interest + b.principal)}</td></tr>`,
-        )
+            `<td style="color:${li};${num}">${b.interest > 0 ? money(b.interest) : "–"}</td>` +
+            `<td style="color:${lp};${num}">${b.principal > 0 ? money(b.principal) : "–"}</td>` +
+            `<td style="color:#a1a1aa;${num}">${money(b.interest + b.principal)}</td></tr>`
+          );
+        })
         .join("");
       el.innerHTML =
         `<div style="color:#71717a;margin-bottom:2px">${d.toLocaleDateString("en-IN", { month: "short", year: "numeric" })}${isPastMonth(cf.month) ? " · received" : ""}${cf.estimated ? " (≈ est.)" : ""}</div>` +
@@ -920,44 +933,54 @@ function MonthPopover({
             <tr className="text-zinc-600">
               <td className="pr-3">Bond</td>
               <td className="pr-2.5">ISIN</td>
-              <td className="pr-3 text-right">Date</td>
+              <td
+                className="pr-3 text-right"
+                title="When the money lands (payment date; scheduled due date when none published)"
+              >
+                Date
+              </td>
               <td className="pr-3 text-right">Interest</td>
               <td className="text-right">Principal</td>
             </tr>
           </thead>
           <tbody>
-            {m.bonds.map((b) => (
-              <tr key={b.isin}>
-                <td className={`pr-3 ${labelCls}`}>
-                  {b.estimated && <span className="text-zinc-500">≈</span>}
-                  {pinned && onSelectBond ? (
-                    <button
-                      type="button"
-                      title="View bond details"
-                      onClick={() => onSelectBond(b.isin)}
-                      className="text-left hover:text-emerald-400 hover:underline underline-offset-2"
-                    >
-                      {b.label}
-                    </button>
-                  ) : (
-                    b.label
-                  )}
-                </td>
-                <td className="pr-2.5 font-mono text-zinc-500">
-                  <span className="inline-flex items-center gap-1">
-                    {b.isin}
-                    {pinned && <CopyBtn text={b.isin} label="ISIN" />}
-                  </span>
-                </td>
-                <td className="pr-3 text-right text-zinc-500">{dayMonth(b.dates ?? [])}</td>
-                <td className={`pr-3 text-right ${intCls}`}>
-                  {b.interest > 0 ? fmt.inr(b.interest) : "–"}
-                </td>
-                <td className={`text-right ${prinCls}`}>
-                  {b.principal > 0 ? fmt.inr(b.principal) : "–"}
-                </td>
-              </tr>
-            ))}
+            {m.bonds.map((b) => {
+              // Money already banked reads as history even when the
+              // month itself is still running.
+              const banked = past || allDatesPast(b.dates);
+              return (
+                <tr key={b.isin} title={banked && !past ? "Already received" : undefined}>
+                  <td className={`pr-3 ${banked ? "text-zinc-500" : labelCls}`}>
+                    {b.estimated && <span className="text-zinc-500">≈</span>}
+                    {pinned && onSelectBond ? (
+                      <button
+                        type="button"
+                        title="View bond details"
+                        onClick={() => onSelectBond(b.isin)}
+                        className="text-left hover:text-emerald-400 hover:underline underline-offset-2"
+                      >
+                        {b.label}
+                      </button>
+                    ) : (
+                      b.label
+                    )}
+                  </td>
+                  <td className="pr-2.5 font-mono text-zinc-500">
+                    <span className="inline-flex items-center gap-1">
+                      {b.isin}
+                      {pinned && <CopyBtn text={b.isin} label="ISIN" />}
+                    </span>
+                  </td>
+                  <td className="pr-3 text-right text-zinc-500">{dayMonth(b.dates ?? [])}</td>
+                  <td className={`pr-3 text-right ${banked ? "text-sky-400/50" : intCls}`}>
+                    {b.interest > 0 ? fmt.inr(b.interest) : "–"}
+                  </td>
+                  <td className={`text-right ${banked ? "text-emerald-400/50" : prinCls}`}>
+                    {b.principal > 0 ? fmt.inr(b.principal) : "–"}
+                  </td>
+                </tr>
+              );
+            })}
             <tr className="border-t border-zinc-800 font-medium">
               <td className="pr-3 text-zinc-500">Total</td>
               <td />
