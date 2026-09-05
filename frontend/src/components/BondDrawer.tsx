@@ -679,7 +679,7 @@ function Overview({
           Next payment:{" "}
           <span className="font-semibold text-emerald-400">{fmt.inr(b.next_payment.amount)}</span>{" "}
           <span className="capitalize">({b.next_payment.event})</span> on{" "}
-          {fmt.date(b.next_payment.due_date)} · total future{" "}
+          {fmt.date(b.next_payment.payment_date ?? b.next_payment.due_date)} · total future{" "}
           <span className="font-semibold">{fmt.inr(b.future_total_per_unit)}</span>/unit
         </div>
       )}

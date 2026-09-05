@@ -81,6 +81,9 @@ class Cashflow(BaseModel):
     event: Literal["interest", "redemption"]
     due_date: date
     record_date: date | None
+    # Business-day-adjusted date the money actually lands (can precede
+    # the due date across weekends/holidays).
+    payment_date: date | None = None
     amount: float | None
     estimated: bool
     future: bool

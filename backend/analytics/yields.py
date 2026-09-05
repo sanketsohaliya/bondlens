@@ -24,8 +24,11 @@ def _plausible(pct: float | None) -> float | None:
 
 
 def _times_amounts(flows: list[Flow], today: date, dc: str) -> list[tuple[float, float]]:
-    return [(daycount.year_frac(today, f.due_date, dc), f.amount)
-            for f in flows if f.amount and f.due_date > today]
+    """Money-timing: discount to when the cash actually lands (the
+    business-day-adjusted payment date when published). A coupon already
+    paid early is not a future flow, even before its due date."""
+    return [(daycount.year_frac(today, f.effective_date, dc), f.amount)
+            for f in flows if f.amount and f.effective_date > today]
 
 
 def _solve(price: float, tv: list[tuple[float, float]], m: int) -> float | None:

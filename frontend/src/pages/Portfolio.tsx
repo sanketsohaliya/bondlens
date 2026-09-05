@@ -280,7 +280,7 @@ const HOLDINGS_ACCESSORS: Record<
   yield_on_cost: (p) => p.yield_on_cost,
   ytm: (p) => p.ytm,
   maturity: (p) => p.years_to_maturity,
-  next_payment: (p) => p.next_payment?.due_date,
+  next_payment: (p) => p.next_payment?.payment_date ?? p.next_payment?.due_date,
 };
 
 const HOLDINGS_COLS: Array<{ label: string; key: HoldingsSortKey | null; right?: boolean }> = [
@@ -559,7 +559,9 @@ function PositionRow({
                 {p.next_payment.estimated && "≈"}
                 {fmt.inr(p.next_payment.amount)}
               </div>
-              <div className="text-[10px] text-zinc-500">{monthYear(p.next_payment.due_date)}</div>
+              <div className="text-[10px] text-zinc-500">
+                {monthYear(p.next_payment.payment_date ?? p.next_payment.due_date)}
+              </div>
             </div>
           ) : (
             <span className="text-zinc-600">–</span>

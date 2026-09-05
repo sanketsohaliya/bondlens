@@ -592,6 +592,10 @@ export type Cashflow = {
      */
     record_date: string | null;
     /**
+     * Payment Date
+     */
+    payment_date?: string | null;
+    /**
      * Amount
      */
     amount: number | null;

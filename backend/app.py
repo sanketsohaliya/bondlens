@@ -374,8 +374,8 @@ def bond_detail(isin: str, price: float | None = Query(None, gt=0)):
             future_total += f.amount
         flows_out.append({
             "event": f.event, "due_date": f.due_date,
-            "record_date": f.record_date, "amount": f.amount,
-            "estimated": f.estimated, "future": fut,
+            "record_date": f.record_date, "payment_date": f.payment_date,
+            "amount": f.amount, "estimated": f.estimated, "future": fut,
         })
     next_payment = next((f for f in flows_out if f["future"]), None)
 

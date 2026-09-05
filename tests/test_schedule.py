@@ -1,5 +1,5 @@
 """Schedule engine tests — one fixture per shape found in the database."""
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 
 from backend.analytics import schedule
@@ -112,6 +112,32 @@ def test_partially_redeemed_face_is_current():
     s = schedule.build("X", flows, _terms(face_value=500, coupon_rate=None),
                        today=TODAY)
     assert s.usable  # future 500 == current face 500
+
+
+# --- money-timing: payment date governs future/receivable ------------------
+
+def test_paid_early_flow_not_receivable_by_buyer():
+    # Due after today but PAID before it (business-day adjustment): the
+    # money is gone — a buyer settling today doesn't receive it, and it
+    # must not appear in future flows or the YTM stream.
+    f = schedule.Flow(event="interest", due_date=TODAY + timedelta(days=2),
+                      amount=50.0, payment_date=TODAY - timedelta(days=1))
+    assert not f.receivable_by_buyer(TODAY)
+    assert f.effective_date == TODAY - timedelta(days=1)
+    upcoming = schedule.Flow(event="interest",
+                             due_date=TODAY + timedelta(days=2), amount=50.0)
+    assert upcoming.receivable_by_buyer(TODAY)
+
+
+def test_future_flows_use_payment_date():
+    flows = [_cf("Interest", date(2027, 1, 1), payable=100),
+             _cf("Full Redemption", date(2030, 1, 1), redeem=1000)]
+    s = schedule.build("X", flows, _terms(), today=TODAY)
+    # Manually mark the 2027 coupon as paid early, before "today".
+    for f in s.flows:
+        if f.event == "interest":
+            f.payment_date = TODAY - timedelta(days=1)
+    assert all(f.event == "redemption" for f in s.future_flows(TODAY))
 
 
 # --- NSDL tranche duplication (INE523L07728 / INE523L07751 regression) -----

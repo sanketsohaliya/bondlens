@@ -52,8 +52,9 @@ class Flow:
 
     def receivable_by_buyer(self, today: date) -> bool:
         """True if a buyer settling today still receives this flow (record
-        date, falling back to due date, hasn't passed)."""
-        if self.due_date <= today:
+        date, falling back to the money-lands date, hasn't passed). A
+        coupon already paid early is gone even before its due date."""
+        if self.effective_date <= today:
             return False
         if self.record_date is not None and self.record_date <= today:
             return False
@@ -61,16 +62,17 @@ class Flow:
 
     def receivable_by_holder(self, purchase_date: date | None) -> bool:
         """True if a lot bought on ``purchase_date`` receives this flow
-        (on the register by the record date, falling back to the due
-        date). Strict inequality: purchase dates are trade dates and
-        exchange bonds settle T+1, so a lot traded ON the record date
-        settles too late — same convention as receivable_by_buyer.
-        Lots without a purchase date count as held all along."""
+        (on the register by the record date, falling back to the
+        money-lands date). Strict inequality: purchase dates are trade
+        dates and exchange bonds settle T+1, so a lot traded ON the
+        record date settles too late — same convention as
+        receivable_by_buyer. Lots without a purchase date count as held
+        all along."""
         if purchase_date is None:
             return True
         if self.record_date is not None:
             return purchase_date < self.record_date
-        return purchase_date < self.due_date
+        return purchase_date < self.effective_date
 
 
 @dataclass(slots=True)

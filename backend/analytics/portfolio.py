@@ -143,13 +143,13 @@ def yield_on_cost(lots: list[dict[str, Any]], flows: list[Flow],
     for f in flows:
         if not f.amount:
             continue
-        if f.due_date > today:
+        if f.effective_date > today:
             units = receiving_units(lots, f)
             has_future = True
         else:
             units = receiving_units(lots, f, known_only=True)
         if units:
-            dated.append((f.due_date, f.amount * units))
+            dated.append((f.effective_date, f.amount * units))
     if not has_future:
         return None  # matured position: nothing left to yield
     return yields.xirr(dated)
@@ -161,13 +161,14 @@ def next_payment(lots: list[dict[str, Any]], flows: list[Flow],
     receiving units. Holder semantics: a passed record date does not
     hide a coupon the holder is still owed."""
     for f in flows:
-        if not f.amount or f.due_date <= today:
+        if not f.amount or f.effective_date <= today:
             continue
         units = receiving_units(lots, f)
         if units:
             return {
                 "event": f.event, "due_date": f.due_date,
                 "record_date": f.record_date,
+                "payment_date": f.payment_date,
                 "amount": round(f.amount * units, 2),
                 "estimated": f.estimated, "future": True,
             }

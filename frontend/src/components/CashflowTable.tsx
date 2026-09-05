@@ -44,7 +44,12 @@ function Section({
         <table className="w-full text-sm">
           <thead>
             <tr className="text-left text-xs text-zinc-500 bg-zinc-900/60 border-b border-zinc-800">
-              <th className="px-3 py-2 font-medium">Due</th>
+              <th
+                className="px-3 py-2 font-medium"
+                title="When the money lands (payment date; scheduled due date when none published)"
+              >
+                Pays
+              </th>
               <th className="px-3 py-2 font-medium">Event</th>
               <th className="px-3 py-2 font-medium">Record</th>
               <th className="px-3 py-2 font-medium text-right">Amount / unit</th>
@@ -53,7 +58,16 @@ function Section({
           <tbody className="divide-y divide-zinc-800/60">
             {flows.map((f, i) => (
               <tr key={i} className={highlight ? "" : "opacity-60"}>
-                <td className="px-3 py-2 whitespace-nowrap">{fmt.date(f.due_date)}</td>
+                <td
+                  className="px-3 py-2 whitespace-nowrap"
+                  title={
+                    f.payment_date && f.payment_date !== f.due_date
+                      ? `Scheduled (due) date: ${fmt.date(f.due_date)}`
+                      : undefined
+                  }
+                >
+                  {fmt.date(f.payment_date ?? f.due_date)}
+                </td>
                 <td className="px-3 py-2">
                   <span
                     className={
