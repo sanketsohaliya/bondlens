@@ -512,6 +512,18 @@ function Row({
                 : undefined
           }
         />
+        {b.secured != null && (
+          <div
+            className={`text-[10px] ${b.secured ? "text-zinc-600" : "text-amber-500/50"}`}
+            title={
+              b.secured
+                ? "Backed by collateral / security"
+                : "No collateral backing — repayment relies on the issuer alone"
+            }
+          >
+            {b.secured ? "secured" : "unsecured"}
+          </div>
+        )}
       </td>
       {/* Payout: structure primary, rate/frequency and remaining flow
           count muted beneath. Verbatim detail in the tooltip; click =
