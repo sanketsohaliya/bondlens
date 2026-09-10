@@ -6,6 +6,7 @@ export default function RatingBadge({
   showAgency = true,
   tone,
   toneTitle,
+  agencySuffix,
 }: {
   rating: string | null;
   showAgency?: boolean;
@@ -14,6 +15,9 @@ export default function RatingBadge({
   tone?: "down" | "up";
   /** Tooltip for the ▲/▼ change arrow (e.g. "Upgraded on … — was …"). */
   toneTitle?: string;
+  /** Appended to the first agency sub-line (e.g. the secured "(S)"/"(U)"
+      marker) — keeps extra facts on the existing line, not a new one. */
+  agencySuffix?: React.ReactNode;
 }) {
   if (!rating) return <span className="text-zinc-600 text-xs">unrated</span>;
   const entries = rating.split(", ");
@@ -21,10 +25,11 @@ export default function RatingBadge({
   const hidden = entries.length - shown.length;
   return (
     <div className="text-sm leading-snug">
-      {shown.map((entry) => {
+      {shown.map((entry, idx) => {
         const i = entry.indexOf(": ");
         const agency = i > 0 ? entry.slice(0, i) : null;
         const value = i > 0 ? entry.slice(i + 2) : entry;
+        const suffix = idx === 0 ? agencySuffix : null;
         return (
           <div key={entry}>
             <div>
@@ -46,8 +51,11 @@ export default function RatingBadge({
                 <span className="ml-1.5 text-[10px] text-zinc-600">+{hidden}</span>
               )}
             </div>
-            {showAgency && agency && (
-              <div className="text-[11px] text-zinc-500 font-normal">{agency}</div>
+            {showAgency && (agency || suffix) && (
+              <div className="text-[11px] text-zinc-500 font-normal">
+                {agency}
+                {suffix}
+              </div>
             )}
           </div>
         );
