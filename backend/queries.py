@@ -233,12 +233,15 @@ def explorer(f: dict, stale_days: int) -> tuple[list[dict], int, float | None]:
         add("a.on_bse")
     if f.get("frequency"):
         add("a.frequency = %(freq)s", freq=f["frequency"].lower())
-    # Payout structure: "maturity" = the whole return arrives at redemption
-    # (zero-coupon / cumulative), "periodic" = a running coupon stream.
-    if f.get("payout") == "maturity":
+    # Payout structure — same vocabulary as the explorer's Payout column.
+    if f.get("payout") == "bullet":
+        add("a.schedule_shape = 'plain'")
+    elif f.get("payout") == "staggered":
+        add("a.schedule_shape = 'staggered'")
+    elif f.get("payout") == "perpetual":
+        add("a.schedule_shape = 'perpetual'")
+    elif f.get("payout") == "maturity":
         add("a.schedule_shape IN ('zero_coupon', 'cumulative')")
-    elif f.get("payout") == "periodic":
-        add("a.schedule_shape IN ('plain', 'staggered')")
     if f.get("min_years") is not None:
         add("a.maturity_date > CURRENT_DATE AND "
             "round((a.maturity_date - CURRENT_DATE) / 365.0, 2) >= %(min_years)s",
@@ -336,9 +339,12 @@ def explorer_filters() -> dict:
         sectors = conn.execute(
             "SELECT DISTINCT sector FROM bond_analytics "
             "WHERE sector IS NOT NULL ORDER BY sector").fetchall()
+        # Most common first — the menu leads with what the universe
+        # actually pays (annual/monthly), not the alphabet.
         freqs = conn.execute(
-            "SELECT DISTINCT frequency FROM bond_analytics "
-            "WHERE frequency IS NOT NULL ORDER BY frequency").fetchall()
+            "SELECT frequency FROM bond_analytics "
+            "WHERE frequency IS NOT NULL "
+            "GROUP BY frequency ORDER BY count(*) DESC").fetchall()
     return {"sectors": [r["sector"] for r in sectors],
             "frequencies": [r["frequency"] for r in freqs]}
 

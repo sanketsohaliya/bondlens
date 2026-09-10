@@ -26,7 +26,16 @@ export function describeFilters(p: ExploreParams): string[] {
   if (p.min_turnover != null) parts.push(`retail traded ≥ ${fmt.inr(p.min_turnover)}`);
   if (p.min_otc_turnover != null) parts.push(`OTC traded ≥ ${fmt.inr(p.min_otc_turnover)}`);
   if (p.frequency) parts.push(`pays ${p.frequency}`);
-  if (p.payout) parts.push(p.payout === "maturity" ? "pays at maturity" : "periodic payout");
+  if (p.payout)
+    parts.push(
+      p.payout === "maturity"
+        ? "pays at maturity"
+        : p.payout === "bullet"
+          ? "bullet repayment"
+          : p.payout === "staggered"
+            ? "staggered redemption"
+            : p.payout,
+    );
   if (p.sector) parts.push(`sector: ${p.sector}`);
   if (p.exchange) parts.push(`on ${p.exchange}`);
   if (p.retail_only) parts.push("trades retail");
@@ -378,8 +387,10 @@ function FilterFields({
               onChange={(e) => set({ payout: e.target.value || undefined })}
             >
               <option value="">Any</option>
-              <option value="maturity">At maturity (zero coupon / cumulative)</option>
-              <option value="periodic">Periodic coupons</option>
+              <option value="bullet">Bullet</option>
+              <option value="staggered">Staggered</option>
+              <option value="maturity">Pays at maturity</option>
+              <option value="perpetual">Perpetual</option>
             </select>
           </label>
         );
