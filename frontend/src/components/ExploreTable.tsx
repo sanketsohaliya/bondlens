@@ -21,8 +21,34 @@ const yearsMonths = (years: number) => {
   return `${y}y ${m}mo`;
 };
 
+const isZeroCoupon = (b: Bond) =>
+  (b.coupon_basis ?? "").toLowerCase().includes("zero") || b.schedule_shape === "zero_coupon";
+
+/** Payout structure sub-line: silent default, loud when it changes the
+ * cashflow profile. */
+const payoutStructure = (b: Bond): string | null => {
+  switch (b.schedule_shape) {
+    case "staggered":
+      return "staggered";
+    case "cumulative":
+    case "zero_coupon":
+      return "pays at maturity";
+    case "perpetual":
+      return "perpetual";
+    case "irregular":
+      return "irregular";
+    case "plain":
+      return "bullet";
+    default:
+      return b.frequency === "cumulative" ? "pays at maturity" : null;
+  }
+};
+
 type SortKey =
-  | keyof Pick<Bond, "ytm" | "turnover" | "years_to_maturity" | "rating_rank" | "days_since_traded">
+  | keyof Pick<
+      Bond,
+      "ytm" | "turnover" | "years_to_maturity" | "rating_rank" | "days_since_traded" | "coupon"
+    >
   | "ask_ytm"; // client-side only — computed from the user's Kite session
 
 type Col = { key: SortKey | null; label: string; right?: boolean };
@@ -33,6 +59,7 @@ const BASE_COLS: Col[] = [
   { key: "ytm", label: "YTM @ LTP" },
   { key: "turnover", label: "Retail turnover" },
   { key: "rating_rank", label: "Rating" },
+  { key: "coupon", label: "Coupon" },
   { key: "years_to_maturity", label: "Maturity", right: true },
   { key: "days_since_traded", label: "Last traded", right: true },
 ];
@@ -486,6 +513,43 @@ function Row({
                 : undefined
           }
         />
+      </td>
+      {/* Coupon: rate + frequency on top, payout structure beneath —
+          silent for the plain-bullet default, loud when it changes the
+          cashflow profile. Verbatim detail in the tooltip. */}
+      <td
+        className="px-3 py-2.5 whitespace-nowrap"
+        title={[b.coupon_basis, b.frequency, b.schedule_shape].filter(Boolean).join(" · ")}
+      >
+        <div className="text-zinc-200">
+          {isZeroCoupon(b) ? (
+            "Zero coupon"
+          ) : b.coupon != null ? (
+            <>
+              {fmt.num(Number(b.coupon))}%
+              {b.coupon_basis?.startsWith("Variable") && (
+                <span
+                  className="ml-1 text-[10px] px-1 rounded bg-amber-500/10 text-amber-500/90"
+                  title="Floating / market-linked coupon — the rate resets"
+                >
+                  float
+                </span>
+              )}
+              {b.frequency && b.frequency !== "cumulative" && (
+                <span className="ml-1 text-[11px] text-zinc-400">{b.frequency}</span>
+              )}
+            </>
+          ) : (
+            <span className="text-zinc-500">–</span>
+          )}
+        </div>
+        {payoutStructure(b) && (
+          <div
+            className={`text-[11px] ${payoutStructure(b) === "staggered" ? "text-amber-500/80" : payoutStructure(b) === "bullet" ? "text-zinc-600" : "text-zinc-500"}`}
+          >
+            {payoutStructure(b)}
+          </div>
+        )}
       </td>
       <td className="px-3 py-2.5 whitespace-nowrap text-right">
         {b.maturity_date != null ? (
