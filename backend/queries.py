@@ -339,14 +339,18 @@ def explorer_filters() -> dict:
         sectors = conn.execute(
             "SELECT DISTINCT sector FROM bond_analytics "
             "WHERE sector IS NOT NULL ORDER BY sector").fetchall()
-        # Most common first — the menu leads with what the universe
-        # actually pays (annual/monthly), not the alphabet.
         freqs = conn.execute(
-            "SELECT frequency FROM bond_analytics "
-            "WHERE frequency IS NOT NULL "
-            "GROUP BY frequency ORDER BY count(*) DESC").fetchall()
+            "SELECT DISTINCT frequency FROM bond_analytics "
+            "WHERE frequency IS NOT NULL").fetchall()
+    # Fixed, judgement-based order: the common payment rhythms first,
+    # then the accumulating/odd shapes.
+    canon = ["monthly", "annual", "quarterly", "semiannual",
+             "cumulative", "irregular"]
+    present = {r["frequency"] for r in freqs}
+    frequencies = ([f for f in canon if f in present]
+                   + sorted(present - set(canon)))
     return {"sectors": [r["sector"] for r in sectors],
-            "frequencies": [r["frequency"] for r in freqs]}
+            "frequencies": frequencies}
 
 
 def symbol_bond_map() -> dict[tuple[str, str], dict]:

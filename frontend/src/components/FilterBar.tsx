@@ -256,7 +256,7 @@ function FilterFields({
     ["segment", "Segment"],
     ["sector", "Sector"],
     ["security", "Security"],
-    ["frequency", "Pays"],
+    ["frequency", "Frequency"],
     ["payout", "Payout"],
     ["exchange", "Exchange"],
     ["ytm_basis", "YTM basis"],
@@ -373,7 +373,7 @@ function FilterFields({
       case "sector":
         return sel("Sector", "sector", filters?.sectors ?? [], onRemove);
       case "frequency":
-        return sel("Pays", "frequency", filters?.frequencies ?? [], onRemove);
+        return sel("Frequency", "frequency", filters?.frequencies ?? [], onRemove);
       case "payout":
         return (
           <label className="flex-1 min-w-0">
