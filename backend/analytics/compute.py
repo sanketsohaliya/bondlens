@@ -159,6 +159,8 @@ def build_rows(today: date | None = None) -> list[dict]:
             "perpetual": perpetual,
             "maturity_date": red_date,
             "schedule_shape": sched.shape,
+            "future_flows": len(sched.future_flows(today)),
+            "total_flows": len(sched.flows),
             "ltp": price,
             "trade_date": retail["trade_date"] if retail else None,
             "exchange": retail["exchange"] if retail else None,

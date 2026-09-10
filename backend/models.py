@@ -53,6 +53,10 @@ class Bond(BaseModel):
     ytm: float | None
     ytm_method: YtmMethod | None
     ytm_reliable: bool | None
+    # Normalized schedule counts ("20/32 left" in the Payout column).
+    # Defaulted so rows predating migration 0017 still validate.
+    future_flows: int | None = None
+    total_flows: int | None = None
     current_yield: float | None
     duration: float | None
     credit_rating: str | None

@@ -24,23 +24,22 @@ const yearsMonths = (years: number) => {
 const isZeroCoupon = (b: Bond) =>
   (b.coupon_basis ?? "").toLowerCase().includes("zero") || b.schedule_shape === "zero_coupon";
 
-/** Payout structure sub-line: silent default, loud when it changes the
- * cashflow profile. */
+/** Payout structure — the column's primary line. */
 const payoutStructure = (b: Bond): string | null => {
   switch (b.schedule_shape) {
     case "staggered":
-      return "staggered";
+      return "Staggered";
     case "cumulative":
     case "zero_coupon":
-      return "pays at maturity";
+      return "Pays at maturity";
     case "perpetual":
-      return "perpetual";
+      return "Perpetual";
     case "irregular":
-      return "irregular";
+      return "Irregular";
     case "plain":
-      return "bullet";
+      return "Bullet";
     default:
-      return b.frequency === "cumulative" ? "pays at maturity" : null;
+      return b.frequency === "cumulative" ? "Pays at maturity" : null;
   }
 };
 
@@ -59,7 +58,7 @@ const BASE_COLS: Col[] = [
   { key: "ytm", label: "YTM @ LTP" },
   { key: "turnover", label: "Retail turnover" },
   { key: "rating_rank", label: "Rating" },
-  { key: "coupon", label: "Coupon" },
+  { key: "coupon", label: "Payout" },
   { key: "years_to_maturity", label: "Maturity", right: true },
   { key: "days_since_traded", label: "Last traded", right: true },
 ];
@@ -514,9 +513,9 @@ function Row({
           }
         />
       </td>
-      {/* Coupon: rate + frequency on top, payout structure beneath —
-          silent for the plain-bullet default, loud when it changes the
-          cashflow profile. Verbatim detail in the tooltip. */}
+      {/* Payout: structure primary, rate/frequency and remaining flow
+          count muted beneath. Verbatim detail in the tooltip; click =
+          the actual payment schedule. */}
       <td
         className="group/coupon px-3 py-2.5 whitespace-nowrap cursor-pointer"
         title={[b.coupon_basis, b.frequency, b.schedule_shape].filter(Boolean).join(" · ")}
@@ -526,6 +525,9 @@ function Row({
         }}
       >
         <div className="text-zinc-200 group-hover/coupon:underline decoration-zinc-600 underline-offset-2">
+          {payoutStructure(b) ?? <span className="text-zinc-500">–</span>}
+        </div>
+        <div className="text-[11px] text-zinc-500">
           {isZeroCoupon(b) ? (
             "Zero coupon"
           ) : b.coupon != null ? (
@@ -539,21 +541,16 @@ function Row({
                   float
                 </span>
               )}
-              {b.frequency && b.frequency !== "cumulative" && (
-                <span className="ml-1 text-[11px] text-zinc-400">{b.frequency}</span>
-              )}
+              {b.frequency && b.frequency !== "cumulative" && ` ${b.frequency}`}
             </>
-          ) : (
-            <span className="text-zinc-500">–</span>
+          ) : null}
+          {b.future_flows != null && b.total_flows != null && b.total_flows > 0 && (
+            <span title={`${b.future_flows} future of ${b.total_flows} total cashflows`}>
+              {(isZeroCoupon(b) || b.coupon != null) && " · "}
+              {b.future_flows}/{b.total_flows} left
+            </span>
           )}
         </div>
-        {payoutStructure(b) && (
-          <div
-            className={`text-[11px] ${payoutStructure(b) === "staggered" ? "text-amber-500/50" : payoutStructure(b) === "bullet" ? "text-zinc-600" : "text-zinc-500"}`}
-          >
-            {payoutStructure(b)}
-          </div>
-        )}
       </td>
       <td className="px-3 py-2.5 whitespace-nowrap text-right">
         {b.maturity_date != null ? (

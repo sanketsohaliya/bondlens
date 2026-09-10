@@ -219,6 +219,14 @@ export type Bond = {
      */
     ytm_reliable: boolean | null;
     /**
+     * Future Flows
+     */
+    future_flows?: number | null;
+    /**
+     * Total Flows
+     */
+    total_flows?: number | null;
+    /**
      * Current Yield
      */
     current_yield: number | null;
