@@ -35,7 +35,6 @@ describe("describeFilters", () => {
         payout: "maturity",
         exchange: "NSE",
         fresh_only: true,
-        exact_only: true,
         below_par: true,
       }),
     ).toEqual([
@@ -47,7 +46,6 @@ describe("describeFilters", () => {
       "pays at maturity",
       "on NSE",
       "fresh prices",
-      "exact YTM only",
       "below face value",
     ]);
   });

@@ -44,7 +44,6 @@ export function describeFilters(p: ExploreParams): string[] {
   if (p.traded_within != null)
     parts.push(`traded within ${p.traded_within} session${p.traded_within === 1 ? "" : "s"}`);
   if (p.unsecured_only) parts.push("unsecured only");
-  if (p.exact_only) parts.push("exact YTM only");
   if (p.below_par) parts.push("below face value");
   if (p.downgraded_only) parts.push("downgraded recently");
   if (p.secured_only) parts.push("secured only");
@@ -259,7 +258,6 @@ function FilterFields({
     ["frequency", "Frequency"],
     ["payout", "Payout"],
     ["exchange", "Exchange"],
-    ["ytm_basis", "YTM basis"],
   ] as const;
   type ExtraId = (typeof EXTRAS)[number][0];
 
@@ -274,7 +272,6 @@ function FilterFields({
     min_otc_turnover: params.min_otc_turnover != null,
     segment: !!params.retail_only || !!params.otc_only,
     security: !!params.secured_only || !!params.unsecured_only,
-    ytm_basis: !!params.exact_only,
   };
   const [added, setAdded] = useState<ExtraId[]>([]);
   const [addOpen, setAddOpen] = useState(false);
@@ -318,7 +315,6 @@ function FilterFields({
     min_otc_turnover: { min_otc_turnover: undefined },
     segment: { retail_only: undefined, otc_only: undefined },
     security: { secured_only: undefined, unsecured_only: undefined },
-    ytm_basis: { exact_only: undefined },
   };
 
   // Extras carry their remove × in the label row, same as the defaults.
@@ -427,23 +423,6 @@ function FilterFields({
           </label>
         );
       }
-      case "ytm_basis":
-        return (
-          <label className="flex-1 min-w-0">
-            <span className={`flex items-center justify-between ${lbl(!!params.exact_only)}`}>
-              YTM basis
-              {removeX(onRemove)}
-            </span>
-            <select
-              className={box(!!params.exact_only)}
-              value={params.exact_only ? "exact" : ""}
-              onChange={(e) => set({ exact_only: e.target.value === "exact" || undefined })}
-            >
-              <option value="">Any</option>
-              <option value="exact">Exact only</option>
-            </select>
-          </label>
-        );
     }
   };
 
