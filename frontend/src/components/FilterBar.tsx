@@ -18,8 +18,8 @@ export const DEFAULT_FILTERS: ExploreParams = {
 export function describeFilters(p: ExploreParams): string[] {
   const parts: string[] = [];
   if (p.min_rating) parts.push(`rating ≥ ${p.min_rating}`);
-  if (p.min_ytm != null) parts.push(`YTM ≥ ${p.min_ytm}%`);
-  if (p.max_ytm != null) parts.push(`YTM ≤ ${p.max_ytm}%`);
+  if (p.min_ytm != null) parts.push(`LTP YTM ≥ ${p.min_ytm}%`);
+  if (p.max_ytm != null) parts.push(`LTP YTM ≤ ${p.max_ytm}%`);
   if (p.min_years != null) parts.push(`maturity ≥ ${p.min_years}y`);
   if (p.max_years != null) parts.push(`maturity ≤ ${p.max_years}y`);
   if (p.max_ltp != null) parts.push(`price ≤ ₹${p.max_ltp.toLocaleString("en-IN")}`);
@@ -240,7 +240,7 @@ function FilterFields({
   const EXTRAS = [
     // Range-completers first (max ends of the default mins), then
     // liquidity, issuer attributes, coupon mechanics, technical.
-    ["max_ytm", "Max YTM %"],
+    ["max_ytm", "Max LTP YTM %"],
     ["max_years", "Max maturity"],
     ["max_ltp", "Ticket size"],
     ["min_otc_turnover", "OTC turnover"],
@@ -275,7 +275,7 @@ function FilterFields({
   // its value); the + Filter menu brings it back. Layout preference, so
   // it persists — and survives Clear, which resets values, not layout.
   const DEFAULT_FIELDS = [
-    ["min_ytm", "Min YTM %"],
+    ["min_ytm", "Min LTP YTM %"],
     ["min_rating", "Min rating"],
     ["min_years", "Min mat (y)"],
     ["min_turnover", "Retail trd ₹"],
@@ -360,7 +360,7 @@ function FilterFields({
         );
       }
       case "max_ytm":
-        return num("Max YTM %", "max_ytm", onRemove);
+        return num("Max LTP YTM %", "max_ytm", onRemove);
       case "sector":
         return sel("Sector", "sector", filters?.sectors ?? [], onRemove);
       case "frequency":

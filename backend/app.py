@@ -280,7 +280,10 @@ def bonds(
         None, description="Page ordering: ytm, ltp, turnover, rating_rank, "
                           "years_to_maturity or days_since_traded"),
     sort_dir: str = Query("desc", alias="dir", pattern="^(asc|desc)$"),
-    limit: int = Query(500, le=5000),
+    # Effectively unbounded for the ~6.6k universe: the explorer fetches
+    # everything and truncates AFTER ordering, client-side — a page cut
+    # before ordering hides whatever the cut order pushed past the edge.
+    limit: int = Query(500, le=100_000),
     offset: int = Query(0, ge=0),
 ):
     floor = None

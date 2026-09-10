@@ -17,7 +17,7 @@ describe("describeFilters", () => {
   it("summarizes the default filter set", () => {
     expect(describeFilters(DEFAULT_FILTERS)).toEqual([
       "rating ≥ BBB-",
-      "YTM ≥ 5%",
+      "LTP YTM ≥ 5%",
       "maturity ≥ 0.5y",
       "retail traded ≥ ₹10,000",
       "traded within 5 sessions",
@@ -39,7 +39,7 @@ describe("describeFilters", () => {
         below_par: true,
       }),
     ).toEqual([
-      "YTM ≤ 12%",
+      "LTP YTM ≤ 12%",
       "maturity ≥ 2y",
       "maturity ≤ 5y",
       "price ≤ ₹1,500",

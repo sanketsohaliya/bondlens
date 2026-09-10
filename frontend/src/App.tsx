@@ -87,18 +87,13 @@ export default function App() {
     : listMode
       ? { isins: listIsins.join(",") }
       : params;
-  // The sort travels to the API so the 1000-row page is cut in the same
-  // order the table displays — otherwise sorting only rearranges whatever
-  // the default turnover ordering happened to include. ask_ytm is
-  // client-side only (computed from the user's Kite session); ytm is by
-  // far its best page-cut proxy, since the table blends the two anyway.
-  const sortParams = {
-    sort: sort.key === "ask_ytm" ? "ytm" : sort.key,
-    dir: sort.dir === 1 ? ("asc" as const) : ("desc" as const),
-  };
+  // The FULL filtered universe travels to the client (a server page cut
+  // ordered before the user's sort hides whatever falls past the edge).
+  // Sorting happens entirely client-side, so sort changes never refetch;
+  // the table truncates the RENDER after ordering, not the data.
   const bonds = useQuery({
-    queryKey: ["bonds", effectiveParams, sortParams],
-    queryFn: () => api.bonds({ ...effectiveParams, ...sortParams, limit: 1000 }),
+    queryKey: ["bonds", effectiveParams],
+    queryFn: () => api.bonds({ ...effectiveParams, limit: 100_000 }),
     enabled: !listMode || listIsins.length > 0,
   });
 

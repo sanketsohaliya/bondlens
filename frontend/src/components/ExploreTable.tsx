@@ -111,7 +111,17 @@ export default function ExploreTable({
     refetchOnWindowFocus: false,
   });
   const kiteConnected = kite?.connected ?? false;
-  const isins = useMemo(() => bonds.map((b) => b.isin), [bonds]);
+  // Kite quote calls are the one genuinely bounded resource (500
+  // instruments per call, rate-limited): spend the 1,000-ISIN budget on
+  // the bonds with the best yield evidence instead of arbitrary order.
+  const isins = useMemo(
+    () =>
+      [...bonds]
+        .sort((a, b) => (b.ytm ?? b.otc_yield ?? -1) - (a.ytm ?? a.otc_yield ?? -1))
+        .slice(0, 1000)
+        .map((b) => b.isin),
+    [bonds],
+  );
   const askYtm = useQuery({
     queryKey: ["ask-ytm", isins.join(",")],
     queryFn: () => api.kite.askYtm(isins),
@@ -173,6 +183,13 @@ export default function ExploreTable({
   // The arrow sits on the column that actually orders the rows.
   const shownSortKey = effectiveKey;
 
+  // Sorting always sees the whole universe; only the RENDER is
+  // incremental (thousands of DOM rows would jank the browser).
+  const [shownCount, setShownCount] = useState(1000);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reset on a new bond set is the point
+  useEffect(() => setShownCount(1000), [bonds]);
+  const visibleRows = sorted.slice(0, shownCount);
+
   if (error) {
     return <div className="p-8 text-center text-red-400 text-sm">{error}</div>;
   }
@@ -230,7 +247,7 @@ export default function ExploreTable({
           </tr>
         </thead>
         <tbody>
-          {sorted.map((b) => (
+          {visibleRows.map((b) => (
             <Row
               key={b.isin}
               bond={b}
@@ -240,6 +257,15 @@ export default function ExploreTable({
           ))}
         </tbody>
       </table>
+      {sorted.length > shownCount && (
+        <button
+          type="button"
+          onClick={() => setShownCount((n) => n + 1000)}
+          className="w-full py-3 text-center text-xs font-medium text-emerald-400 hover:text-emerald-300 hover:bg-zinc-900/50"
+        >
+          Show 1,000 more ({(sorted.length - shownCount).toLocaleString("en-IN")} remaining)
+        </button>
+      )}
       {sorted.length === 0 && (
         <div className="p-8 text-center text-zinc-500 text-sm">No bonds match the filters.</div>
       )}
