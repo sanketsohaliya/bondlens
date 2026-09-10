@@ -118,7 +118,7 @@ export default function ExploreTable({
   bonds: Bond[];
   loading: boolean;
   error: string | null;
-  onSelect: (isin: string, tab?: "ratings" | "chart" | "order book") => void;
+  onSelect: (isin: string, tab?: "cashflows" | "ratings" | "chart" | "order book") => void;
   initialSort?: SortState;
   onSortChange?: (s: SortState) => void;
 }) {
@@ -306,7 +306,7 @@ function Row({
   ask,
 }: {
   bond: Bond;
-  onSelect: (isin: string, tab?: "ratings" | "chart" | "order book") => void;
+  onSelect: (isin: string, tab?: "cashflows" | "ratings" | "chart" | "order book") => void;
   /** undefined = Kite not connected (no column); null = no live ask. */
   ask?: AskYtm | null;
 }) {
@@ -518,10 +518,14 @@ function Row({
           silent for the plain-bullet default, loud when it changes the
           cashflow profile. Verbatim detail in the tooltip. */}
       <td
-        className="px-3 py-2.5 whitespace-nowrap"
+        className="group/coupon px-3 py-2.5 whitespace-nowrap cursor-pointer"
         title={[b.coupon_basis, b.frequency, b.schedule_shape].filter(Boolean).join(" · ")}
+        onClick={(e) => {
+          e.stopPropagation();
+          onSelect(b.isin, "cashflows");
+        }}
       >
-        <div className="text-zinc-200">
+        <div className="text-zinc-200 group-hover/coupon:underline decoration-zinc-600 underline-offset-2">
           {isZeroCoupon(b) ? (
             "Zero coupon"
           ) : b.coupon != null ? (
@@ -545,7 +549,7 @@ function Row({
         </div>
         {payoutStructure(b) && (
           <div
-            className={`text-[11px] ${payoutStructure(b) === "staggered" ? "text-amber-500/80" : payoutStructure(b) === "bullet" ? "text-zinc-600" : "text-zinc-500"}`}
+            className={`text-[11px] ${payoutStructure(b) === "staggered" ? "text-amber-500/50" : payoutStructure(b) === "bullet" ? "text-zinc-600" : "text-zinc-500"}`}
           >
             {payoutStructure(b)}
           </div>
