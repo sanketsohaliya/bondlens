@@ -469,3 +469,69 @@ def test_frequency_inferred_from_flows():
     s = schedule.build("X", flows, _terms(interest_payment_frequency=None),
                        today=TODAY)
     assert s.frequency == "monthly" and s.periods_per_year == 12
+
+
+def test_missing_coupon_periods_block_pricing_without_inventing_flows():
+    from backend.analytics import yields
+
+    flows = [_cf("Interest", date(2027, 1, 1), payable=100),
+             _cf("Full Redemption", date(2030, 1, 1), redeem=1000)]
+    s = schedule.build("X", flows, _terms(), today=TODAY)
+    assert s.pricing_issues(TODAY)
+    assert yields.exact_ytm(1000, s, TODAY) is None
+    assert len(s.flows) == 2
+
+
+def test_final_coupon_gap_is_not_hidden_by_principal_repayment():
+    s = schedule.build("X", [_cf("Interest", date(2027, 1, 1), payable=100),
+                             _cf("Redemption", date(2028, 1, 1), redeem=1000)],
+                       _terms(redemption_date=date(2028, 1, 1)), today=TODAY)
+    assert s.pricing_issues(TODAY)
+
+
+def test_combined_interest_and_principal_payments_are_not_missing_coupons():
+    flows = [_cf("Interest", date(2027, 1, 1), payable=100),
+             _cf("Redemption", date(2028, 1, 1), payable=600),
+             _cf("Redemption", date(2029, 1, 1), payable=550)]
+    s = schedule.build("X", flows, _terms(redemption_date=date(2029, 1, 1)), today=TODAY)
+    assert not s.pricing_issues(TODAY)
+    assert sum(f.amount or 0 for f in s.flows) == 1250
+
+
+def test_monthly_coupons_clustered_on_consecutive_days_require_review():
+    flows = [_cf("Interest", date(2027, 1, d), payable=8.5) for d in range(1, 10)]
+    flows.append(_cf("Redemption", date(2027, 9, 1), redeem=1000))
+    s = schedule.build("X", flows, _terms(interest_payment_frequency="Monthly",
+                                          redemption_date=date(2027, 9, 1)), today=TODAY)
+    assert s.pricing_issues(TODAY)
+
+
+def test_conflicting_payment_dates_are_not_resolved_by_row_order():
+    one = {**_cf("Interest", date(2027, 1, 1), payable=100), "payment_date": date(2027, 1, 1)}
+    two = {**one, "payment_date": date(2027, 1, 4)}
+    flows = [one, two, _cf("Redemption", date(2027, 1, 1), redeem=1000)]
+    for rows in (flows, flows[::-1]):
+        s = schedule.build("X", rows, _terms(redemption_date=date(2027, 1, 1)), today=TODAY)
+        assert any("conflicting" in reason.lower() for reason in s.pricing_issues(TODAY))
+
+
+def test_split_cumulative_payment_preserves_its_payment_date():
+    payment = date(2027, 1, 4)
+    flows = [{**_cf("Redemption", date(2027, 1, 1), redeem=1600), "payment_date": payment}]
+    s = schedule.build("X", flows, _terms(coupon_rate=None,
+                                          redemption_date=date(2027, 1, 1)), today=TODAY)
+    assert all(f.payment_date == payment for f in s.flows)
+
+
+def test_yield_validation_is_scoped_to_the_call_date():
+    flows = [_cf("Interest", date(2027, 1, 1), payable=100),
+             _cf("Interest", date(2028, 1, 1)),
+             _cf("Redemption", date(2029, 1, 1), redeem=1000)]
+    s = schedule.build("X", flows, _terms(coupon_rate=None,
+                                          redemption_date=date(2029, 1, 1)), today=TODAY)
+    assert s.pricing_issues(TODAY)
+    assert not s.pricing_issues(TODAY, until=date(2027, 1, 1))
+
+
+def test_hyphenated_half_yearly_frequency():
+    assert schedule.classify_frequency("Half-yearly") == ("semiannual", 2)

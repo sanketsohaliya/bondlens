@@ -5,6 +5,7 @@ import type { BondDetail } from "../api/types";
 import { buildBondPrompt } from "../lib/aiPrompt";
 import { replaceNumberWords } from "../lib/numberWords";
 import { usePortfolio } from "../lib/portfolio";
+import { firstFutureCall, isYieldToCall, yieldLabel } from "../lib/yieldDisplay";
 import CashflowTable from "./CashflowTable";
 import CopyBtn from "./CopyBtn";
 import { HoldMark, WatchStar } from "./ExploreTable";
@@ -407,14 +408,17 @@ const PERIODS: Record<string, [number, string]> = {
 
 /** Per-bond explanation of exactly how the shown YTM figure is solved. */
 function ytmTip(b: BondDetail): string | null {
-  if (b.ytm == null || b.ltp == null) return null;
+  if (b.ytm == null || b.ltp == null)
+    return (
+      b.schedule_warnings.join("; ") || "Insufficient price or cashflow data to calculate a yield."
+    );
   const [m, mName] = PERIODS[b.frequency ?? ""] ?? [1, "annual"];
   const future = b.cashflows.filter((f) => f.future && f.amount);
   const total = future.reduce((s, f) => s + (f.amount ?? 0), 0);
   const last = future.length ? fmt.date(future[future.length - 1].due_date) : null;
-  if (b.schedule_shape === "perpetual" && b.call_dates.length > 0) {
+  if (isYieldToCall(b)) {
     return (
-      `Perpetual — yield to earliest call (${fmt.date(b.call_dates[0])}). ` +
+      `Perpetual — conditional yield to earliest modeled call (${fmt.date(firstFutureCall(b))}). ` +
       `Solves r so that coupons up to the call plus face ${fmt.inr(b.face_value)} at the call, ` +
       `each discounted by (1 + r/${m})^(${m}×t), sum to today's price ${fmt.inr(b.ltp)}. ` +
       `t = years until each payment. r = ${fmt.pct(b.ytm)}.`
@@ -517,9 +521,7 @@ function Overview({
         }
       >
         <Stat
-          label={`YTM ${b.ytm_exact != null ? "(exact)" : "(approx)"}${
-            b.ytm_reliable === false ? " ⚠" : ""
-          }`}
+          label={`${yieldLabel(b)}${b.ytm_reliable === false ? " ⚠" : ""}`}
           value={fmt.pct(b.ytm)}
           accent
           tip={

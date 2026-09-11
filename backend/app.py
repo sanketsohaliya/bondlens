@@ -191,18 +191,22 @@ def portfolio(user_id: int = Depends(auth.require_user)):
 
     core_by_isin: dict[str, dict] = {}
     flows_by_isin: dict[str, list[schedule.Flow]] = {}
+    schedules_by_isin: dict[str, schedule.Schedule] = {}
     for isin in isins:  # a portfolio holds few ISINs; per-ISIN reads are fine
         core_by_isin[isin] = queries.analytics_row(isin, STALE_AFTER_DAYS) or {}
         sched = schedule.build(isin, queries.bond_cashflows(isin),
                                queries.bond_terms(isin), today=today)
         flows_by_isin[isin] = sched.flows
+        schedules_by_isin[isin] = sched
 
     positions = pf.build_positions(lots, core_by_isin)
     for p in positions:
         p["next_payment"] = pf.next_payment(p["lots"],
                                             flows_by_isin[p["isin"]], today)
-        p["yield_on_cost"] = pf.yield_on_cost(p["lots"],
-                                              flows_by_isin[p["isin"]], today)
+        sched = schedules_by_isin[p["isin"]]
+        p["yield_on_cost"] = (pf.yield_on_cost(p["lots"], sched.flows, today)
+                              if sched.usable and not sched.perpetual
+                              and not sched.pricing_issues(today) else None)
 
     cashflows = pf.monthly_cashflows(
         {p["isin"]: p["lots"] for p in positions}, flows_by_isin, today,
@@ -359,16 +363,27 @@ def bond_detail(isin: str, price: float | None = Query(None, gt=0)):
         # A maturity-based YTM against a perpetual (9999 sentinel) is
         # spurious — yield-to-call is the meaningful figure.
         exact = approx = None
-        best = ytw = (yields.yield_to_call(ltp, sched, call_dates, today)
-                      if ltp else None)
+        best = (yields.yield_to_call(ltp, sched, call_dates, today)
+                if ltp else None)
+        ytw = None
     else:
         exact = yields.exact_ytm(ltp, sched, today) if ltp else None
-        approx = yields.approx_ytm(ltp, coupon, face, red_date,
-                                   sched.periods_per_year or 1,
-                                   today) if ltp else None
+        approx = yields.fallback_ytm(ltp, sched, terms, today) if ltp else None
         best = exact if exact is not None else approx
         ytw = (yields.yield_to_worst(ltp, sched, call_dates, today)
                if ltp and call_dates else None)
+    future_calls = [d for d in call_dates if d > today]
+    pricing_issues = sched.pricing_issues(today, until=future_calls[0] if perpetual and future_calls else None)
+    pricing_notes = list(pricing_issues)
+    if sched.day_count == "act/act":
+        pricing_notes.append("Actual/Actual is modeled using calendar-year ISDA fractions; verify the issue's quotation convention")
+    if yields.call_terms_unresolved(terms):
+        ytw = None
+        pricing_notes.append("Call terms are unresolved or recurring; only explicit dates can be priced, and full yield-to-worst is unavailable")
+    if future_calls and ltp and ((perpetual and best is None) or (not perpetual and ytw is None)):
+        pricing_notes.append("Call yield unavailable: verify coupon coverage, principal balance, call price/premium, and call-date payments")
+    elif future_calls and ltp:
+        pricing_notes.append("Call scenarios assume redemption of outstanding face value; verify the contractual call price")
     accrued = yields.accrued_interest(sched, today)
 
     flows_out = []
@@ -409,8 +424,8 @@ def bond_detail(isin: str, price: float | None = Query(None, gt=0)):
         "face_value": face,
         "frequency": sched.frequency,
         "schedule_shape": sched.shape,
-        "schedule_usable": sched.usable,
-        "schedule_warnings": sched.warnings,
+        "schedule_usable": sched.usable and not pricing_issues,
+        "schedule_warnings": list(dict.fromkeys(sched.warnings + pricing_notes)),
         "amounts_estimated": sched.amounts_estimated,
         "issue_date": terms.get("allotment_date") if terms else None,
         "maturity_date": red_date,

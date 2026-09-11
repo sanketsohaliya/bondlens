@@ -1,6 +1,8 @@
 """Regression tests for the explorer data-quality fixes:
 secured mapping, perpetual YTC, YTM reliability flag, rating dedupe."""
-from datetime import date
+from datetime import date, timedelta
+
+import pytest
 
 from backend import queries
 from backend.analytics import compute, ratings, yields
@@ -166,3 +168,107 @@ def test_tech_delay_does_not_brand_default(monkeypatch):
     assert rows["INETECH00001"]["in_default"] is False
     assert rows["INEDFLT00002"]["in_default"] is True
     assert rows["INEDFLT00002"]["tech_delay"] is False
+
+
+@pytest.fixture
+def pricing_case(monkeypatch):
+    from backend import app as api_module
+    from backend import db
+
+    isin = "INE000TEST01"
+
+    class FixedDate(date):
+        @classmethod
+        def today(cls):
+            return TODAY
+
+    monkeypatch.setattr(api_module, "date", FixedDate)
+    monkeypatch.setattr(api_module.kite, "kite_url", lambda *args, **kwargs: None)
+    monkeypatch.setattr(queries, "current_ratings", lambda: {})
+    monkeypatch.setattr(queries, "rating_history", lambda *args: {})
+    monkeypatch.setattr(queries, "ratings_for_isins", lambda *args: [])
+    monkeypatch.setattr(queries, "defaulted_isins", lambda: set())
+    monkeypatch.setattr(queries, "tech_delay_isins", lambda: set())
+    monkeypatch.setattr(queries, "bond_row", lambda _: {"isin": isin, "issuer_name": None})
+    monkeypatch.setattr(queries, "bond_trustee", lambda _: None)
+    monkeypatch.setattr(queries, "bond_extras", lambda _: {"defaults": [], "technical_defaults": []})
+    monkeypatch.setattr(db, "get_portfolio_lots", lambda _: [{
+        "id": 1, "isin": isin, "units": 1, "price": 1000,
+        "purchase_date": TODAY - timedelta(days=1), "platform": None}])
+
+    def run(flows, overrides=None):
+        terms = {"coupon_rate": 10, "face_value": 1000,
+                 "redemption_date": TODAY + timedelta(days=365),
+                 "interest_payment_frequency": "Annual", "day_count_convention": "Actual/365",
+                 **(overrides or {})}
+        core = {isin: {"isin": isin, "on_nse": True, "on_bse": False,
+                       **terms, "retail_trade": {"close": 1000, "trade_date": TODAY, "exchange": "NSE"}}}
+        monkeypatch.setattr(queries, "explorer_core", lambda: core)
+        monkeypatch.setattr(queries, "all_terms", lambda: {isin: terms})
+        monkeypatch.setattr(queries, "all_cashflows", lambda: {isin: flows})
+        monkeypatch.setattr(queries, "cashflows_for", lambda _: {isin: flows})
+        monkeypatch.setattr(queries, "bond_terms", lambda _: terms)
+        monkeypatch.setattr(queries, "bond_cashflows", lambda _: flows)
+        row = compute.build_rows(TODAY)[0]
+        monkeypatch.setattr(queries, "analytics_row", lambda *args: row)
+        detail = api_module.bond_detail(isin, price=None)
+        book = {"nse": {"asks": [{"price": 1000}]}, "bse": None, "ytm_at_ask": []}
+        api_module._annotate_ytm(book, isin)
+        portfolio = api_module.portfolio(user_id=1)
+        return row, detail, book, portfolio
+
+    return run
+
+
+@pytest.mark.parametrize("problem", ["missing_amount", "missing_periods", "unsupported_daycount"])
+def test_invalid_schedules_cannot_reappear_as_fallback_or_portfolio_yields(pricing_case, problem):
+    first = TODAY + timedelta(days=365)
+    end = first if problem != "missing_periods" else TODAY + timedelta(days=1095)
+    flows = [{"event": "Interest", "due_date": first, "amount_payable": None if problem == "missing_amount" else 100},
+             {"event": "Redemption", "due_date": end, "amount_redeem": 1000}]
+    terms: dict = {"redemption_date": end}
+    if problem == "unsupported_daycount":
+        terms["day_count_convention"] = "Actual/Actual (ICMA)"
+    row, detail, book, portfolio = pricing_case(flows, terms)
+    assert row["ytm"] is None and row["ytm_method"] is None
+    assert detail["ytm"] is None and detail["ytm_approx"] is None
+    assert detail["schedule_warnings"]
+    assert row["duration"] is None and detail["duration"] is None
+    assert all(entry["ytm"] is None for entry in book["ytm_at_ask"])
+    assert portfolio["positions"][0]["yield_on_cost"] is None
+
+
+def test_call_premium_is_not_silently_priced_as_par(pricing_case):
+    end = TODAY + timedelta(days=365)
+    flows = [{"event": "Interest", "due_date": end, "amount_payable": 100},
+             {"event": "Redemption", "due_date": end, "amount_redeem": 1000}]
+    row, detail, _, _ = pricing_case(flows, {
+        "perpetual": True, "redemption_date": date(9999, 12, 31),
+        "call_indicator": "Yes", "call_specified_dates": end.strftime("%d %B, %Y"),
+        "redemption_premium_details": "2% premium"})
+    assert row["ytm"] is None and detail["ytm"] is None
+    assert detail["schedule_warnings"]
+
+
+def test_unresolved_call_terms_remain_visible_without_claiming_ytw(pricing_case):
+    end = TODAY + timedelta(days=365)
+    flows = [{"event": "Interest", "due_date": end, "amount_payable": 100},
+             {"event": "Redemption", "due_date": end, "amount_redeem": 1000}]
+    row, detail, _, _ = pricing_case(flows, {
+        "call_indicator": "Yes", "call_specified_dates": "Any time after five years from allotment"})
+    assert row["ytm"] == detail["ytm"] == 10.0
+    assert detail["yield_to_worst"] is None
+    assert any("call" in w.lower() and "unresolved" in w.lower() for w in detail["schedule_warnings"])
+
+
+def test_perpetual_ytc_is_not_presented_as_maturity_ytm_or_full_ytw(pricing_case):
+    end = TODAY + timedelta(days=365)
+    flows = [{"event": "Interest", "due_date": end, "amount_payable": 100},
+             {"event": "Redemption", "due_date": end, "amount_redeem": 1000}]
+    row, detail, book, portfolio = pricing_case(flows, {
+        "perpetual": True, "redemption_date": date(9999, 12, 31),
+        "call_indicator": "Yes", "call_specified_dates": end.strftime("%d %B, %Y")})
+    assert row["ytm"] == detail["ytm"] == 10.0 and row["ytm_method"] == "ytc"
+    assert detail["ytm_exact"] is None and detail["yield_to_worst"] is None
+    assert all(entry["ytm"] is None for entry in book["ytm_at_ask"])
+    assert portfolio["positions"][0]["yield_on_cost"] is None

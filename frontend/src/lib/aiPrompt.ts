@@ -1,5 +1,6 @@
 import { fmt } from "../api/client";
 import type { BondDetail, OrderBook, RatingEvent } from "../api/types";
+import { firstFutureCall, isYieldToCall } from "./yieldDisplay";
 
 /* Builds a self-contained prompt for an external AI (ChatGPT/Gemini/Claude)
    from the drawer's already-loaded BondDetail (plus the cached order-book
@@ -85,6 +86,8 @@ function couponLine(b: BondDetail, t: Record<string, unknown>): string | null {
 
 function ytmLine(b: BondDetail): string | null {
   if (b.ytm == null) return null;
+  if (isYieldToCall(b))
+    return `YTC: ${fmt.pct(b.ytm)} (conditional on call ${fmt.date(firstFutureCall(b))}; not maturity yield or full yield-to-worst)`;
   const method =
     b.ytm_exact != null
       ? b.amounts_estimated

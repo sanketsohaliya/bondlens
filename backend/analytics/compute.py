@@ -168,9 +168,7 @@ def build_rows(today: date | None = None) -> list[dict]:
                 ytm, ytm_method = exact, (
                     "estimated" if sched.amounts_estimated else "exact")
             else:
-                approx = yields.approx_ytm(
-                    price, coupon, face, red_date,
-                    sched.periods_per_year or 1, today)
+                approx = yields.fallback_ytm(price, sched, terms_map.get(isin), today)
                 if approx is not None:
                     ytm, ytm_method = approx, "approx"
 

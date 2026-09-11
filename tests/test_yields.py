@@ -1,4 +1,5 @@
 """Yield/accrued/duration math tests with hand-computed cases."""
+from copy import deepcopy
 from datetime import date
 
 import pytest
@@ -230,3 +231,150 @@ def test_xirr_simple():
 
 def test_xirr_no_sign_change():
     assert yields.xirr([(date(2025, 1, 1), 100), (date(2026, 1, 1), 100)]) is None
+
+
+def test_actual_actual_isda_is_additive_and_monotonic_across_leap_day():
+    start = date(2026, 1, 1)
+    boundary = date(2028, 1, 1)
+    ends = [date(2028, 2, 28), date(2028, 2, 29), date(2028, 3, 1)]
+    fractions = [daycount.year_frac(start, end) for end in ends]
+    assert fractions == sorted(fractions)
+    for end, fraction in zip(ends, fractions, strict=True):
+        assert fraction == pytest.approx(2 + (end - boundary).days / 366, abs=1e-12)
+        assert fraction == pytest.approx(
+            daycount.year_frac(start, boundary) + daycount.year_frac(boundary, end), abs=1e-12)
+    assert daycount.year_frac(date(2028, 3, 1), date(2028, 4, 1)) == pytest.approx(31 / 366)
+    assert daycount.year_frac(date(9999, 1, 1), date(9999, 12, 31)) == pytest.approx(364 / 365)
+
+
+def test_european_30_360_is_not_bond_basis():
+    start, end = date(2026, 1, 29), date(2026, 1, 31)
+    assert daycount.year_frac(start, end, daycount.normalize("30E/360")) == pytest.approx(1 / 360)
+    assert daycount.year_frac(start, end, daycount.normalize("30/360")) == pytest.approx(2 / 360)
+    assert daycount.normalize("Actual/Actual (ISDA)") == daycount.ACT_ACT
+
+
+def test_unsupported_day_count_does_not_silently_become_actual_actual():
+    convention = daycount.normalize("Actual/Actual (ICMA)")
+    assert convention != daycount.ACT_ACT
+    with pytest.raises(ValueError):
+        daycount.year_frac(TODAY, date(2027, 7, 12), convention)
+
+
+def test_exact_yield_does_not_skip_an_unknown_future_coupon():
+    flows = [Flow("interest", date(2027, 7, 12), amount=None),
+             Flow("redemption", date(2027, 7, 12), amount=1000)]
+    assert yields.exact_ytm(1000, _sched(flows), TODAY) is None
+
+
+def test_missing_excluded_coupon_does_not_poison_buyers_yield():
+    flows = [Flow("interest", date(2026, 7, 20), record_date=TODAY, amount=None),
+             Flow("interest", date(2027, 7, 12), amount=100),
+             Flow("redemption", date(2027, 7, 12), amount=1000)]
+    assert yields.exact_ytm(1000, _sched(flows, dc=daycount.ACT_365), TODAY) == 10.0
+
+
+def test_perpetual_cannot_be_priced_to_the_end_of_its_published_window():
+    s = _sched([Flow("interest", date(2027 + i, 7, 12), amount=100)
+                for i in range(10)], shape="perpetual")
+    assert yields.exact_ytm(1000, s, TODAY) is None
+
+
+def test_call_yields_include_interim_principal_without_mutating_schedule():
+    start = date(2025, 1, 1)
+    flows = [Flow("interest", date(2026, 1, 1), amount=100),
+             Flow("redemption", date(2026, 1, 1), amount=500),
+             Flow("interest", date(2027, 1, 1), amount=50),
+             Flow("interest", date(2028, 1, 1), amount=50),
+             Flow("redemption", date(2028, 1, 1), amount=500)]
+    s = _sched(flows, dc=daycount.ACT_365, shape="staggered")
+    call = [date(2027, 1, 1)]
+    before = deepcopy(s.flows)
+    assert yields.yield_to_call(1000, s, call, start) == 10.0
+    assert yields.yield_to_worst(1000, s, call, start) == 10.0
+    assert s.flows == before
+
+
+def test_call_does_not_subtract_historical_principal_from_current_face_twice():
+    start = date(2025, 1, 1)
+    flows = [Flow("redemption", date(2024, 1, 1), amount=500),
+             Flow("interest", date(2026, 1, 1), amount=50),
+             Flow("redemption", date(2027, 1, 1), amount=500)]
+    s = _sched(flows, face=500, dc=daycount.ACT_365, shape="staggered")
+    assert yields.yield_to_call(500, s, [date(2026, 1, 1)], start) == 10.0
+
+
+def test_call_on_partial_redemption_date_redeems_principal_once():
+    start = date(2025, 1, 1)
+    flows = [Flow("interest", date(2026, 1, 1), amount=100),
+             Flow("redemption", date(2026, 1, 1), amount=500),
+             Flow("interest", date(2027, 1, 1), amount=50),
+             Flow("redemption", date(2027, 1, 1), amount=500)]
+    s = _sched(flows, dc=daycount.ACT_365, shape="staggered")
+    assert yields.yield_to_call(1000, s, [date(2026, 1, 1)], start) == 10.0
+
+
+def test_call_respects_record_date_exclusion_of_interim_principal():
+    start = date(2025, 1, 1)
+    flows = [Flow("interest", date(2026, 1, 1), amount=100),
+             Flow("redemption", date(2026, 1, 1), record_date=date(2024, 12, 31), amount=500),
+             Flow("interest", date(2027, 1, 1), amount=50),
+             Flow("redemption", date(2028, 1, 1), amount=500)]
+    s = _sched(flows, dc=daycount.ACT_365, shape="staggered")
+    price = 100 / 1.1 + 550 / 1.1 ** 2
+    assert yields.yield_to_call(price, s, [date(2027, 1, 1)], start) == 10.0
+
+
+def test_unknown_call_cashflow_cannot_silently_fall_back_to_maturity_yield():
+    flows = [Flow("interest", date(2027, 7, 12), amount=100),
+             Flow("interest", date(2028, 7, 12), amount=100),
+             Flow("redemption", date(2028, 7, 12), amount=1000)]
+    s = _sched(flows)
+    assert yields.exact_ytm(1000, s, TODAY) is not None
+    assert yields.yield_to_worst(1000, s, [date(2027, 1, 12)], TODAY) is None
+
+
+@pytest.mark.parametrize("text", ["Wednesday, 8 September, 2027", "8th September 2027", "2027-09-08", "08-September-2027"])
+def test_parse_explicit_call_date_formats(text):
+    assert yields.parse_call_dates({"call_indicator": "Yes", "call_specified_dates": text}) == [date(2027, 9, 8)]
+
+
+def test_notice_deadline_is_not_a_call_payment_date():
+    assert yields.parse_call_dates({"call_indicator": "Yes", "call_deadline": "08-09-2027"}) == []
+
+
+def test_approximation_does_not_treat_unknown_coupon_as_zero():
+    assert yields.approx_ytm(900, None, 1000, date(2027, 7, 12), today=TODAY) is None
+    assert yields.approx_ytm(900, 0, 1000, date(2027, 7, 12), today=TODAY) == pytest.approx(11.11)
+
+
+def test_call_preserves_published_full_redemption_payment_date():
+    due, paid = date(2027, 7, 12), date(2027, 7, 15)
+    flows = [Flow("interest", due, amount=100, payment_date=paid),
+             Flow("redemption", due, amount=1000, payment_date=paid)]
+    s = _sched(flows, dc=daycount.ACT_365)
+    assert yields.yield_to_call(1000, s, [due], TODAY) == 9.91
+
+
+def test_call_with_ambiguous_principal_basis_is_unavailable():
+    flows = [Flow("interest", date(2027, 7, 12), amount=100),
+             Flow("redemption", date(2028, 7, 12), amount=500)]
+    assert yields.yield_to_call(1000, _sched(flows), [date(2027, 7, 12)], TODAY) is None
+
+
+def test_first_invalid_call_is_not_silently_replaced_by_a_later_call():
+    flows = [Flow("interest", date(2027, 7, 12), amount=None),
+             Flow("interest", date(2028, 7, 12), amount=100),
+             Flow("redemption", date(2028, 7, 12), amount=1000)]
+    assert yields.yield_to_call(1000, _sched(flows), [date(2027, 7, 12), date(2028, 7, 12)], TODAY) is None
+
+
+def test_empty_perpetual_schedule_cannot_invent_a_principal_only_call_yield():
+    s = _sched([], shape="perpetual")
+    assert yields.yield_to_call(1000, s, [date(2027, 7, 12)], TODAY) is None
+
+
+def test_repayment_before_call_with_no_principal_remaining_requires_review():
+    flows = [Flow("interest", date(2027, 7, 11), amount=100),
+             Flow("redemption", date(2027, 7, 11), amount=1000)]
+    assert yields.yield_to_call(1000, _sched(flows), [date(2027, 7, 12)], TODAY) is None

@@ -22,6 +22,7 @@ is flagged so downstream YTMs can be labeled exact vs estimated.
 """
 import calendar
 import itertools
+import math
 from dataclasses import dataclass, field
 from datetime import date
 
@@ -90,11 +91,16 @@ class Schedule:
     amounts_estimated: bool = False  # any flow amount was estimated
     redemption_matches_face: bool = False
     warnings: list[str] = field(default_factory=list)
+    coupon_rate: float | None = None
+    perpetual: bool = False
+    maturity_date: date | None = None
+    call_price_unsupported: bool = False
+    input_issues: list[tuple[date | None, str]] = field(default_factory=list)
 
     @property
     def usable(self) -> bool:
-        """Good enough for exact YTM: dated flows whose principal
-        reconciles with face value (perpetuals never redeem by design)."""
+        """Principal-reconciled schedule; pricing separately validates
+        coupon completeness and dates (perpetuals need a call scenario)."""
         if not self.flows:
             return False
         return self.redemption_matches_face or self.shape == "perpetual"
@@ -103,6 +109,49 @@ class Schedule:
         today = today or date.today()
         return [f for f in self.flows
                 if f.amount and f.receivable_by_buyer(today)]
+
+    def pricing_issues(self, today: date, until: date | None = None) -> list[str]:
+        issues = [message for due, message in self.input_issues
+                  if due is None or (due >= today and (until is None or due <= until))]
+        if self.day_count not in daycount.SUPPORTED:
+            issues.append("Unsupported day-count convention; yield withheld")
+        relevant = [f for f in self.flows if (until is None or f.due_date <= until)
+                    and f.receivable_by_buyer(today)]
+        if any(f.amount is None or not math.isfinite(f.amount) or f.amount < 0 for f in relevant):
+            issues.append("Missing or invalid future cashflow amounts; yield withheld")
+        if any(f.due_date.year >= 2500 or f.effective_date.year >= 2500
+               or (f.record_date is not None and f.record_date > f.effective_date)
+               for f in relevant):
+            issues.append("Invalid cashflow dates; yield withheld")
+        dates = sorted({f.due_date for f in self.flows if f.event == "interest"
+                        and f.amount is not None and f.due_date.year < 2500
+                        and (until is None or f.due_date <= until)})
+        redemptions = [f for f in self.flows if f.event == "redemption" and f.amount
+                       and f.due_date.year < 2500]
+        combined = (self.face_value is not None and len(redemptions) > 1
+                    and sum(f.amount or 0 for f in redemptions) > self.face_value * (1 + _FACE_TOL)
+                    and not any(f.due_date < today for f in redemptions))
+        if combined:
+            dates = sorted(set(dates) | {f.due_date for f in redemptions
+                                        if until is None or f.due_date <= until})
+        end = until or max((f.due_date for f in redemptions), default=self.maturity_date)
+        periodic = (self.periods_per_year in (1, 2, 4, 12)
+                    and (self.coupon_rate or (dates and self.shape not in ("zero_coupon", "cumulative")))
+                    and self.frequency != "cumulative")
+        if periodic and self.flows and end is not None and today < end and end.year < 2500:
+            period = 365.25 / (self.periods_per_year or 1)
+            future = [d for d in dates if today < d <= end]
+            if not future or (future[0] - today).days > 1.5 * period:
+                issues.append("Missing upcoming coupon dates; yield withheld")
+            if any(b > today and (b - max(a, today)).days > 1.5 * period
+                   for a, b in itertools.pairwise(dates)):
+                issues.append("Gap in periodic coupon schedule; yield withheld")
+            if not dates or (end - dates[-1]).days > max(7, period / 2):
+                issues.append("Coupon schedule ends before redemption; yield withheld")
+            if any(b > today and (b - a).days < period / 2
+                   for a, b in itertools.pairwise(dates[1:-1])):
+                issues.append("Periodic coupon dates are clustered; yield withheld")
+        return list(dict.fromkeys(issues))
 
 
 _FREQ_MAP = [
@@ -127,7 +176,7 @@ _FREQ_MAP = [
 
 def classify_frequency(text: str | None) -> tuple[str | None, int | None]:
     """Map NSDL's frequency free-text to (name, periods_per_year)."""
-    t = (text or "").strip().lower()
+    t = (text or "").strip().lower().replace("-", " ")
     if not t:
         return None, None
     for needle, name, ppy in _FREQ_MAP:
@@ -165,10 +214,25 @@ def build(isin: str, cashflows: list[dict], terms: dict | None,
     today = today or date.today()
     face = _num(terms.get("face_value"))
     coupon = _num(terms.get("coupon_rate"))
-    perpetual = bool(terms.get("perpetual"))
+    maturity = terms.get("redemption_date")
+    perpetual = bool(terms.get("perpetual")) or bool(maturity and maturity.year >= 2500)
     dc = daycount.normalize(terms.get("day_count_convention"))
     sched = Schedule(isin=isin, shape="empty", face_value=face, day_count=dc,
-                     allotment_date=terms.get("allotment_date"))
+                     allotment_date=terms.get("allotment_date"), coupon_rate=coupon,
+                     perpetual=perpetual, maturity_date=None if perpetual else maturity)
+    premium = str(terms.get("redemption_premium_details") or "").strip().lower()
+    call_text = str(terms.get("call_specified_dates") or "").lower()
+    sched.call_price_unsupported = (
+        premium not in ("", "-", "na", "n.a.", "not applicable", "nil", "none", "0", "0%")
+        or any(word in call_text for word in ("premium", "make whole", "make-whole")))
+    for row in cashflows:
+        due = row.get("due_date")
+        if due is None:
+            sched.input_issues.append((None, "Undated cashflow obligations; yield withheld"))
+        for key in ("amount_payable", "amount_redeem"):
+            value = row.get(key)
+            if value is not None and (_num(value) is None or float(value) < 0):
+                sched.input_issues.append((due, "Invalid source cashflow amount; yield withheld"))
 
     freq_name, ppy = classify_frequency(terms.get("interest_payment_frequency"))
     sched.frequency, sched.periods_per_year = freq_name, ppy
@@ -181,11 +245,15 @@ def build(isin: str, cashflows: list[dict], terms: dict | None,
     # Genuine staggered schedules survive: real partial redemptions
     # differ in date or amount.
     seen: set[tuple] = set()
+    payment_dates: dict[tuple, date | None] = {}
     unique: list[Flow] = []
     for f in flows:
         key = (f.event, f.due_date, f.record_date, f.amount)
+        if key in seen and payment_dates[key] != f.payment_date:
+            sched.input_issues.append((f.due_date, "Conflicting payment dates for duplicated cashflows; yield withheld"))
         if key not in seen:
             seen.add(key)
+            payment_dates[key] = f.payment_date
             unique.append(f)
     if len(unique) < len(flows):
         sched.warnings.append(
@@ -294,7 +362,7 @@ def build(isin: str, cashflows: list[dict], terms: dict | None,
         else:
             flows.append(Flow(event="interest", due_date=r.due_date,
                               record_date=r.record_date, amount=excess,
-                              estimated=r.estimated))
+                              estimated=r.estimated, payment_date=r.payment_date))
             r.amount = face
             interest = [f for f in flows if f.event == "interest"]
             sched.warnings.append(
@@ -330,7 +398,7 @@ def build(isin: str, cashflows: list[dict], terms: dict | None,
                 f"recomputed as coupon × face / periods = {expected:,.2f}")
 
     # --- estimate missing interest amounts --------------------------------
-    if face and coupon:
+    if face and coupon and dc in daycount.SUPPORTED:
         _estimate_missing(interest, redemptions, face, coupon, dc)
     if any(f.estimated for f in flows):
         sched.amounts_estimated = True
@@ -484,4 +552,4 @@ def _num(v) -> float | None:
         f = float(v)
     except (TypeError, ValueError):
         return None
-    return f if f == f else None  # NaN guard
+    return f if math.isfinite(f) else None  # NaN guard

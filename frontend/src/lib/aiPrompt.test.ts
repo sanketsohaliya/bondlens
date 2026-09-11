@@ -122,6 +122,21 @@ describe("buildBondPrompt", () => {
     expect(p).toContain("=== END DATA ===");
   });
 
+  it("identifies conditional call yields without calling them maturity yields", () => {
+    const p = buildBondPrompt(
+      mk({
+        as_of: "2026-09-11",
+        maturity_date: null,
+        ytm_exact: null,
+        ytm_approx: null,
+        ytm: 10,
+        call_dates: ["2025-12-14", "2026-12-14"],
+      }),
+    );
+    expect(p).toContain("YTC: 10.00% (conditional on call 14 Dec 2026");
+    expect(p).not.toContain("YTM: 10.00%");
+  });
+
   it("anchors the data with today's date", () => {
     const p = buildBondPrompt(mk(), { today: new Date("2026-08-10") });
     expect(p).toContain("Today: 10 Aug 2026");

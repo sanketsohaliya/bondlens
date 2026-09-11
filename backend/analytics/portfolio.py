@@ -10,6 +10,7 @@ Valuation fallbacks (documented in the API):
 Gain is only reported when every lot in the position has a price — face
 value fallbacks must not manufacture fake P&L.
 """
+import math
 from datetime import date
 from typing import Any
 
@@ -141,15 +142,14 @@ def yield_on_cost(lots: list[dict[str, Any]], flows: list[Flow],
         for lot in lots]
     has_future = False
     for f in flows:
-        if not f.amount:
+        units = receiving_units(lots, f, known_only=True)
+        if not units:
             continue
-        if f.effective_date > today:
-            units = receiving_units(lots, f)
+        if f.amount is None or not math.isfinite(f.amount) or f.amount < 0:
+            return None
+        if f.effective_date > today and f.amount:
             has_future = True
-        else:
-            units = receiving_units(lots, f, known_only=True)
-        if units:
-            dated.append((f.effective_date, f.amount * units))
+        dated.append((f.effective_date, f.amount * units))
     if not has_future:
         return None  # matured position: nothing left to yield
     return yields.xirr(dated)

@@ -4,6 +4,7 @@ All prices are dirty ₹ per unit (the retail trading convention) unless
 stated otherwise. Yields are % annualized, compounded at the bond's actual
 payment frequency (falls back to annual when the frequency is unknown).
 """
+import math
 import re
 from datetime import date, datetime
 
@@ -34,7 +35,8 @@ def _times_amounts(flows: list[Flow], today: date, dc: str) -> list[tuple[float,
 def _solve(price: float, tv: list[tuple[float, float]], m: int) -> float | None:
     """Bisection solve for the annual rate (compounded m times/yr) that
     prices the flows at ``price``. None when no root is bracketed."""
-    if not price or not tv:
+    if (not math.isfinite(price) or price <= 0 or not tv or m <= 0
+            or any(not math.isfinite(t) or not math.isfinite(a) or t < 0 or a < 0 for t, a in tv)):
         return None
 
     def pv(rate: float) -> float:
@@ -69,7 +71,8 @@ def exact_ytm(price: float, sched: Schedule,
     """YTM (%) from the dirty price against the buyer-receivable flows,
     compounded at the bond's payment frequency."""
     today = today or date.today()
-    if not sched.usable:
+    if (not sched.usable or sched.perpetual or sched.shape == "perpetual"
+            or sched.pricing_issues(today)):
         return None
     m = sched.periods_per_year or 1
     tv = _times_amounts(sched.future_flows(today), today, sched.day_count)
@@ -82,26 +85,23 @@ def yield_to_worst(price: float, sched: Schedule, call_dates: list[date],
     """Lowest yield across maturity and each call scenario.
 
     A call scenario truncates the schedule at the call date and redeems
-    the outstanding face there (standard market convention; call premia
-    are rare in NSDL data and ignored).
+    the outstanding face there under a par-call assumption. Unsupported
+    premiums or unresolved scenario cashflows withhold yield-to-worst.
     """
     today = today or date.today()
     ytm = exact_ytm(price, sched, today)
     if ytm is None or not call_dates or not sched.face_value:
         return ytm
-    m = sched.periods_per_year or 1
     worst = ytm
-    for cd in call_dates:
+    for cd in sorted(set(call_dates)):
         if cd <= today:
             continue
-        flows = [f for f in sched.future_flows(today) if f.due_date <= cd
-                 and f.event == "interest"]
-        flows.append(Flow(event="redemption", due_date=cd,
-                          amount=_outstanding_at(sched, cd)))
-        tv = _times_amounts(flows, today, sched.day_count)
-        y = _solve(price, tv, m)
-        if y is not None:
-            worst = min(worst, round(y, 2))
+        if sched.maturity_date is not None and cd > sched.maturity_date:
+            continue
+        y = yield_to_call(price, sched, [cd], today)
+        if y is None:
+            return None
+        worst = min(worst, y)
     return worst
 
 
@@ -113,21 +113,34 @@ def yield_to_call(price: float | None, sched: Schedule,
     deliberately NOT considered — this is for perpetuals, where a
     maturity-based YTM is meaningless."""
     today = today or date.today()
-    if not price or not sched.face_value:
+    if not price or not sched.face_value or not sched.flows or sched.call_price_unsupported:
         return None
-    m = sched.periods_per_year or 1
-    for cd in sorted(call_dates):
-        if cd <= today:
-            continue
-        flows = [f for f in sched.future_flows(today)
-                 if f.due_date <= cd and f.event == "interest"]
-        flows.append(Flow(event="redemption", due_date=cd,
-                          amount=_outstanding_at(sched, cd)))
-        tv = _times_amounts(flows, today, sched.day_count)
-        y = _solve(price, tv, m)
-        if y is not None:
-            return round(y, 2)
-    return None
+    cd = next((d for d in sorted(set(call_dates)) if today < d and d.year < 2500), None)
+    if cd is None or sched.pricing_issues(today, until=cd):
+        return None
+    if sched.maturity_date is not None and cd > sched.maturity_date:
+        return None
+    coupons = [f for f in sched.flows if f.event == "interest"]
+    if coupons and not any(f.due_date == cd for f in coupons):
+        return None
+    outstanding = _outstanding_at(sched, cd, today)
+    if outstanding is None or outstanding <= 0:
+        return None
+    same_date_redemptions = [f for f in sched.flows if f.event == "redemption" and f.due_date == cd]
+    if any(not f.receivable_by_buyer(today) for f in same_date_redemptions):
+        return None
+    flows = [f for f in sched.future_flows(today) if f.due_date < cd
+             or (f.due_date == cd and f.event == "interest")]
+    payment_date = None
+    if math.isclose(sum(f.amount or 0 for f in same_date_redemptions), outstanding, rel_tol=1e-6, abs_tol=0.01):
+        payment_dates = {f.payment_date for f in same_date_redemptions}
+        if len(payment_dates) != 1:
+            return None
+        payment_date = next(iter(payment_dates))
+    flows.append(Flow(event="redemption", due_date=cd, amount=outstanding, payment_date=payment_date))
+    tv = _times_amounts(flows, today, sched.day_count)
+    y = _solve(price, tv, sched.periods_per_year or 1)
+    return round(y, 2) if y is not None else None
 
 
 def implied_coupon(sched: Schedule,
@@ -148,7 +161,7 @@ def implied_coupon(sched: Schedule,
     """
     if sched.shape not in ("cumulative", "zero_coupon") or not sched.usable:
         return None
-    if sched.allotment_date is None or not sched.face_value:
+    if sched.allotment_date is None or not sched.face_value or sched.day_count not in daycount.SUPPORTED:
         return None
     dated = [(f.due_date, f.amount) for f in sched.flows
              if f.amount and f.due_date]
@@ -170,19 +183,23 @@ def implied_coupon(sched: Schedule,
 
 def parse_call_dates(terms: dict | None) -> list[date]:
     """Extract usable call dates from bond_terms' free-text fields."""
-    if not terms or (terms.get("call_indicator") or "").lower() != "yes":
+    if not terms or (terms.get("call_indicator") or "").strip().lower() != "yes":
         return []
-    text = str(terms.get("call_specified_dates")
-               or terms.get("call_deadline") or "")
+    text = str(terms.get("call_specified_dates") or "")
     dates = []
-    for m in re.finditer(r"(\d{1,2})[-/](\d{1,2}|\w{3})[-/](\d{4})", text):
+    for match in re.finditer(r"\b\d{4}-\d{2}-\d{2}\b", text):
+        try:
+            dates.append(date.fromisoformat(match.group()))
+        except ValueError:
+            continue
+    for m in re.finditer(r"\b(\d{1,2})[-/](\d{1,2}|[A-Za-z]{3,9})[-/](\d{4})\b", text):
         d, mth, y = m.groups()
         try:
             if mth.isdigit():
                 dates.append(date(int(y), int(mth), int(d)))
             else:
                 dates.append(datetime.strptime(
-                    f"{d}-{mth}-{y}", "%d-%b-%Y").date())
+                    f"{d}-{mth[:3]}-{y}", "%d-%b-%Y").date())
         except ValueError:
             continue
     # Prose style dominates the feed: 'NOVEMBER 24, 2026' / 'DECEMBER 17 2024'.
@@ -193,15 +210,36 @@ def parse_call_dates(terms: dict | None) -> list[date]:
                 f"{d}-{mon[:3]}-{y}", "%d-%b-%Y").date())
         except ValueError:
             continue
-    return sorted(set(dates))
+    for m in re.finditer(r"\b(\d{1,2})(?:st|nd|rd|th)?\s+([A-Za-z]{3,9}),?\s+(\d{4})\b", text, re.I):
+        d, mon, y = m.groups()
+        try:
+            dates.append(datetime.strptime(f"{d}-{mon[:3]}-{y}", "%d-%b-%Y").date())
+        except ValueError:
+            continue
+    return sorted(d for d in set(dates) if d.year < 2500)
 
 
-def _outstanding_at(sched: Schedule, on: date) -> float:
-    """Face value still outstanding just before ``on`` (staggered bonds)."""
-    face = sched.face_value or 0.0
-    redeemed = sum(f.amount or 0.0 for f in sched.flows
-                   if f.event == "redemption" and f.due_date < on)
-    return max(0.0, face - redeemed)
+def _outstanding_at(sched: Schedule, on: date, today: date | None = None) -> float | None:
+    """Face outstanding before the call, reconciling original/current face."""
+    today = today or date.today()
+    face = sched.face_value
+    if face is None or not math.isfinite(face) or face <= 0:
+        return None
+    reds = [f for f in sched.flows if f.event == "redemption" and f.due_date.year < 2500]
+    if any(f.amount is None or not math.isfinite(f.amount) or f.amount < 0 for f in reds):
+        return None
+    total = sum(f.amount or 0 for f in reds)
+    future = sum(f.amount or 0 for f in reds if f.due_date > today)
+    if math.isclose(total, face, rel_tol=1e-6, abs_tol=0.01):
+        base = face
+    elif math.isclose(future, face, rel_tol=1e-6, abs_tol=0.01):
+        base = total
+    elif not reds or (len(reds) == 1 and reds[0].due_date >= on and (reds[0].amount or 0) >= face):
+        base = face
+    else:
+        return None
+    redeemed = sum(f.amount or 0 for f in reds if f.due_date < on)
+    return max(0.0, base - redeemed)
 
 
 def accrued_interest(sched: Schedule,
@@ -219,6 +257,8 @@ def accrued_interest(sched: Schedule,
     days between settlement and the payment date).
     """
     today = today or date.today()
+    if sched.day_count not in daycount.SUPPORTED:
+        return None
     interest = sorted((f for f in sched.flows
                        if f.event == "interest" and f.amount),
                       key=lambda f: f.due_date)
@@ -271,6 +311,8 @@ def modified_duration(price: float | None, sched: Schedule,
     if not price or ytm_pct is None or not sched.usable:
         return None
     today = today or date.today()
+    if sched.perpetual or sched.shape == "perpetual" or sched.pricing_issues(today):
+        return None
     m = sched.periods_per_year or 1
     y = ytm_pct / 100.0
     if y / m <= -1:
@@ -291,7 +333,8 @@ def approx_ytm(price: float, coupon_pct: float | None, face_value: float | None,
     """Fallback YTM from headline terms when no usable schedule exists:
     synthesizes level coupons from today to maturity."""
     today = today or date.today()
-    if not price or not face_value or maturity is None or maturity <= today:
+    if (not price or not face_value or coupon_pct is None
+            or maturity is None or maturity <= today or maturity.year >= 2500):
         return None
     m = periods_per_year or 1
     years = (maturity - today).days / 365.0
@@ -308,6 +351,26 @@ def approx_ytm(price: float, coupon_pct: float | None, face_value: float | None,
     tv[0] = (years, tv[0][1] + face_value)  # redemption rides the last flow
     y = _solve(price, tv, m)
     return round(y, 2) if y is not None else None
+
+
+def fallback_ytm(price: float, sched: Schedule, terms: dict | None,
+                 today: date) -> float | None:
+    terms = terms or {}
+    if (sched.pricing_issues(today) or sched.perpetual or sched.shape == "perpetual"
+            or (sched.flows and sched.shape not in ("plain", "zero_coupon"))
+            or str(terms.get("coupon_basis") or "").lower().startswith("variable")
+            or "float" in str(terms.get("coupon_type") or "").lower()):
+        return None
+    return approx_ytm(price, sched.coupon_rate, sched.face_value, sched.maturity_date,
+                      sched.periods_per_year or 1, today)
+
+
+def call_terms_unresolved(terms: dict | None) -> bool:
+    if not terms or str(terms.get("call_indicator") or "").strip().lower() != "yes":
+        return False
+    text = str(terms.get("call_specified_dates") or "")
+    return not parse_call_dates(terms) or bool(re.search(
+        r"thereafter|therafter|anniversary|any\s*time|on\s+or\s+after", text, re.I))
 
 
 def current_yield(price: float | None, coupon_pct: float | None,
