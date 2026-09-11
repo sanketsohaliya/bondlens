@@ -1,4 +1,6 @@
+from contextlib import AbstractContextManager
 from datetime import date
+from typing import Any
 
 import pytest
 
@@ -527,6 +529,518 @@ def test_scope_contraction_does_not_send_stale_duplicate_root():
     assert not store.unfinished(source)
 
 
+def history_collector(start: date | None = date(2026, 8, 1), store: Any = None,
+                      client: Any = None, sources: list[str] | None = None):
+    from backend.corporate_action_sources import SOURCES, Response
+    from backend.corporate_actions import Collector, Scope
+
+    store = store or MemoryStore()
+    client = client or Feed(Response(200, b"[]"))
+    scope = Scope({ISIN}, {"977935": {ISIN}})
+    collector = Collector(store, client, lambda: scope, sleep=lambda _: None)
+    for source in sources or [SOURCES[0]]:
+        store.targets[source] = enroll({}, scope.mappings(source), TODAY, start)
+    return collector, store, client, scope
+
+
+def test_default_recent_leaves_history_network_for_worker():
+    from backend.corporate_action_sources import SOURCES
+
+    collector, store, client, _ = history_collector()
+    result = collector.capture([SOURCES[0]], today=TODAY)
+    assert result["ok"]
+    assert set(result["sources"][SOURCES[0]]) == {"recent"}
+    assert [(r.date_from, r.date_to) for r in client.requests] == [(date(2026, 9, 4), TODAY)]
+    assert store.targets[SOURCES[0]][ISIN]["pending"]
+
+
+def test_history_status_is_read_only_and_reports_excluded_targets():
+    from copy import deepcopy
+
+    from backend.corporate_action_sources import SOURCES
+
+    collector, store, client, _ = history_collector(start=date(2026, 9, 1))
+    source = SOURCES[0]
+    target = store.targets[source][ISIN]
+    target["pending"] = [{"from": "2026-09-01", "to": "2026-09-03"},
+                         {"from": "2026-09-07", "to": "2026-09-09"}]
+    store.targets[source][OTHER] = {**deepcopy(target), "blocked_reason": "no_verified_scrip", "state": "blocked"}
+    store.targets[source]["paused"] = {**deepcopy(target), "active": False, "state": "paused"}
+    before = deepcopy(store.__dict__)
+    status = collector.history_status([source])[source]
+    assert status["eligible_targets"] == 1
+    assert status["remaining_days"] == 6
+    assert status["pending_index"] == status["pending_requests"] == 0
+    assert status["blocked_targets"] == 1
+    assert status["blocked_reasons"] == {"no_verified_scrip": 1}
+    assert status["paused_targets"] == 1
+    assert store.__dict__ == before
+    assert not client.requests
+
+
+def test_history_drain_completes_all_batches_once_without_resetting_goals():
+    from copy import deepcopy
+
+    from backend.corporate_action_sources import SOURCES
+
+    collector, store, client, _ = history_collector()
+    source = SOURCES[0]
+    before = deepcopy(store.targets[source][ISIN])
+    events = []
+    result = collector.drain_history([source], batch_requests=1, window_days=7,
+                                     pause_seconds=0, today=TODAY, on_progress=events.append)
+    assert result["ok"] and result["state"] == "complete"
+    assert len(client.requests) == 6
+    assert len(events) == 6
+    assert all(event["source"] == source and event["requests"] <= 1 for event in events)
+    target = store.targets[source][ISIN]
+    assert target["pending"] == []
+    for key in ("history_from", "history_to", "generation", "last_active_date"):
+        assert target[key] == before[key]
+    assert all(run["mode"] == "backfill" and not run["spec"]["configure_history"] for run in store.runs)
+    count = len(store.runs)
+    assert collector.drain_history([source], today=TODAY)["state"] == "complete"
+    assert len(client.requests) == 6
+    assert len(store.runs) == count
+
+
+def test_history_worker_new_enrollment_only_captures_missing_bond_history():
+    from backend.corporate_action_sources import SOURCES
+
+    collector, store, client, scope = history_collector(start=date(2026, 9, 1))
+    source = SOURCES[0]
+    assert collector.drain_history([source], today=TODAY)["ok"]
+    scope.isins.add(OTHER)
+    store.targets[source] = enroll(store.targets[source], scope.mappings(source), TODAY, date(2026, 9, 1))
+    assert collector.drain_history([source], today=TODAY)["ok"]
+    assert len(client.requests) == 2
+    completed = [f for f in store.fetch_log if f["status"] == "empty"]
+    assert set(completed[-1]["spec"]["scope"]) == {OTHER}
+    assert store.targets[source][ISIN]["generation"] == 1
+
+
+def test_history_worker_excludes_paused_and_blocked_without_claiming_complete():
+    from backend.corporate_action_sources import SOURCES
+
+    collector, store, client, scope = history_collector(start=date(2026, 9, 1))
+    source = SOURCES[0]
+    scope.isins.add(OTHER)
+    store.targets[source] = enroll(store.targets[source], scope.mappings(source), TODAY, date(2026, 9, 1))
+    store.targets[source][ISIN].update(active=False, state="paused")
+    store.targets[source][OTHER].update(blocked_reason="history_start_unconfigured", state="blocked", history_from=None)
+    result = collector.drain_history([source], today=TODAY)
+    assert not result["ok"] and result["state"] == "blocked"
+    assert result["sources"][source]["paused_targets"] == 1
+    assert result["sources"][source]["blocked_targets"] == 1
+    assert not client.requests and not store.runs
+
+
+def test_history_worker_preserves_excluded_goals_while_draining_eligible_target():
+    from copy import deepcopy
+
+    from backend.corporate_action_sources import SOURCES
+
+    collector, store, client, scope = history_collector(start=date(2026, 9, 9))
+    source = SOURCES[0]
+    scope.isins.update({OTHER, "blocked"})
+    store.targets[source] = enroll(store.targets[source], scope.mappings(source), TODAY, date(2026, 9, 9))
+    store.targets[source][OTHER].update(active=False, state="paused")
+    store.targets[source]["blocked"].update(blocked_reason="no_verified_scrip", state="blocked")
+    excluded = {i: deepcopy(store.targets[source][i]) for i in (OTHER, "blocked")}
+    result = collector.drain_history([source], today=TODAY)
+    assert result["state"] == "blocked"
+    assert result["sources"][source]["remaining_days"] == 0
+    assert store.targets[source][ISIN]["pending"] == []
+    assert all(store.targets[source][i] == target for i, target in excluded.items())
+    assert len(client.requests) == 1
+    assert all(set(f["spec"]["scope"]) == {ISIN} for f in store.fetch_log)
+
+
+def test_history_worker_unconfigured_source_is_not_complete():
+    from backend.corporate_action_sources import SOURCES
+
+    collector, store, client, _ = history_collector(start=None)
+    assert collector.drain_history([SOURCES[0]], today=TODAY)["state"] == "blocked"
+    store.targets.clear()
+    assert collector.drain_history([SOURCES[0]], today=TODAY)["state"] == "blocked"
+    assert not client.requests
+
+
+def test_history_worker_locks_are_per_source_and_released_between_batches():
+    from contextlib import contextmanager
+
+    from backend.corporate_action_sources import SOURCES
+
+    class LockStore(MemoryStore):
+        held = set()
+
+        @contextmanager
+        def lock(self, source):
+            if source == "history_worker:" + SOURCES[0]:
+                yield False
+                return
+            assert source not in self.held
+            self.held.add(source)
+            try:
+                yield True
+            finally:
+                self.held.remove(source)
+
+    collector, store, client, _ = history_collector(store=LockStore(), sources=list(SOURCES))
+    pauses = []
+
+    def sleep(seconds):
+        if seconds == 2:
+            assert SOURCES[1] not in store.held
+            assert "history_worker:" + SOURCES[1] in store.held
+            pauses.append(seconds)
+
+    collector.sleep = sleep
+    result = collector.drain_history(list(SOURCES), batch_requests=1, pause_seconds=2, today=TODAY)
+    assert result["state"] == "already_running"
+    assert result["sources"][SOURCES[0]]["state"] == "already_running"
+    assert result["sources"][SOURCES[1]]["state"] == "complete"
+    assert client.requests and all(r.source == SOURCES[1] for r in client.requests)
+    assert pauses and not store.held
+
+
+def test_duplicate_history_worker_skips_source_without_reading_or_running_it():
+    from contextlib import nullcontext
+
+    from backend.corporate_action_sources import SOURCES
+
+    class OwnedStore(MemoryStore):
+        def lock(self, source):
+            assert source == "history_worker:" + SOURCES[0]
+            return nullcontext(False)
+
+        def load_targets(self, source):
+            raise AssertionError("another worker owns this source")
+
+    collector, _, client, _ = history_collector(store=OwnedStore())
+    result = collector.drain_history([SOURCES[0]], today=TODAY)
+    assert result["state"] == "already_running" and result["ok"]
+    assert not client.requests
+
+
+def test_history_worker_continues_healthy_source_after_fatal_failure():
+    from backend.corporate_action_sources import SOURCES, Response
+
+    class MixedFeed(Feed):
+        def get(self, request):
+            self.requests.append(request)
+            return Response(403, b"private response") if request.source == SOURCES[0] else Response(200, b"[]")
+
+    collector, store, client, _ = history_collector(client=MixedFeed(None), sources=list(SOURCES))
+    events = []
+    result = collector.drain_history(list(SOURCES), batch_requests=1, today=TODAY, on_progress=events.append)
+    assert not result["ok"] and result["state"] == "blocked"
+    assert result["sources"][SOURCES[0]]["state"] == "blocked"
+    assert result["sources"][SOURCES[0]]["errors"]
+    assert result["sources"][SOURCES[1]]["state"] == "complete"
+    assert sum(r.source == SOURCES[0] for r in client.requests) == 1
+    assert not store.targets[SOURCES[1]][ISIN]["pending"]
+    assert "private response" not in str(events)
+
+
+def test_history_worker_split_queue_growth_counts_as_progress():
+    from backend.corporate_action_sources import SOURCES, Response
+
+    class SplitFeed(Feed):
+        def get(self, request):
+            self.requests.append(request)
+            return Response(200, b"[]" if request.date_from == request.date_to else b'{"data": [], "total": 1}')
+
+    collector, store, client, _ = history_collector(start=date(2026, 9, 1), client=SplitFeed(None))
+    result = collector.drain_history([SOURCES[0]], batch_requests=1, today=TODAY)
+    assert result["state"] == "complete"
+    assert len(client.requests) == 17
+    assert len({(r.date_from, r.date_to) for r in client.requests}) == 17
+    assert not store.unfinished(SOURCES[0], "history")
+
+
+@pytest.mark.parametrize("body", [b"not json", b'{"data": [], "total": 1}'])
+def test_history_worker_invalid_or_unsplittable_response_stops_bounded(body):
+    from backend.corporate_action_sources import SOURCES, Response
+
+    collector, store, client, _ = history_collector(start=date(2026, 9, 9), client=Feed(Response(200, body)))
+    result = collector.drain_history([SOURCES[0]], batch_requests=1, today=TODAY)
+    assert result["state"] == "blocked" and not result["ok"]
+    assert len(client.requests) == 1
+    assert result["sources"][SOURCES[0]]["remaining_days"] == 1
+    assert result["sources"][SOURCES[0]]["pending_requests"]
+
+
+def test_history_worker_stable_no_progress_stops_after_three_cycles(monkeypatch):
+    from datetime import UTC, datetime
+
+    from backend.corporate_action_sources import SOURCES
+
+    collector, store, client, _ = history_collector()
+    calls = []
+
+    def stalled(source, *args):
+        calls.append(source)
+        store.targets[source][ISIN]["last_progress_at"] = datetime.now(UTC)
+        return {"ok": True, "requests": 0, "errors": []}
+
+    monkeypatch.setattr(collector, "_phase", stalled)
+    result = collector.drain_history([SOURCES[0]], today=TODAY)
+    assert result["state"] == "blocked"
+    assert result["sources"][SOURCES[0]]["errors"] == ["no_progress"]
+    assert len(calls) == 3 and not client.requests
+
+
+def test_history_worker_recovers_retained_index_without_network():
+    from backend.corporate_action_sources import SOURCES
+    from backend.corporate_actions import Collector
+
+    class FailingStore(MemoryStore):
+        failing = True
+
+        def index_fetch(self, fetch_id, extractor):
+            if self.failing:
+                self.fetch_log[fetch_id - 1]["index_status"] = "failed"
+                raise RuntimeError("index unavailable")
+            return super().index_fetch(fetch_id, extractor)
+
+    collector, store, client, _ = history_collector(start=date(2026, 9, 9), store=FailingStore())
+    source = SOURCES[0]
+    result = collector.drain_history([source], batch_requests=1, today=TODAY)
+    assert result["state"] == "blocked"
+    assert result["sources"][source]["pending_index"] == 1
+    assert len(client.requests) == 1
+    store.targets[source][ISIN]["pending"] = []
+    assert Collector.history_status(collector, [source])[source]["pending_index"] == 1
+    store.failing = False
+    assert collector.drain_history([source], today=TODAY)["state"] == "complete"
+    assert len(client.requests) == 1
+
+
+def test_history_worker_repairs_unapplied_coverage_and_unresolved_receipts():
+    from backend.corporate_action_sources import SOURCES, Request
+
+    collector, store, client, _ = history_collector(start=date(2026, 9, 9))
+    source = SOURCES[0]
+    assert collector.drain_history([source], today=TODAY)["ok"]
+    completed = next(f for f in store.fetch_log if f["status"] == "empty")
+    completed.pop("coverage_applied_at")
+    store.targets[source][ISIN]["pending"] = []
+    assert collector.history_status([source])[source]["pending_coverage"] == 1
+    assert collector.drain_history([source], today=TODAY)["state"] == "complete"
+    assert len(client.requests) == 1
+    request = Request(source, date(2026, 9, 8), date(2026, 9, 8))
+    spec = collector._request_spec(request, collector._scope_tokens(store.targets[source], {ISIN}), "history")
+    collector._queue(len(store.runs), request, spec)
+    assert collector.history_status([source])[source]["pending_requests"] == 1
+    assert collector.drain_history([source], today=TODAY)["state"] == "complete"
+    assert len(client.requests) == 2
+    assert not store.unfinished(source, "history")
+
+
+def test_history_worker_recovers_many_equivalent_retained_receipts_without_stalling():
+    from backend.corporate_action_sources import SOURCES, Request
+
+    collector, store, client, _ = history_collector(start=date(2026, 9, 9))
+    source = SOURCES[0]
+    store.targets[source][ISIN].update(pending=[], state="complete")
+    run_id = store.start_run(source, "backfill", {})
+    request = Request(source, date(2026, 9, 9), date(2026, 9, 9))
+    spec = collector._request_spec(request, collector._scope_tokens(store.targets[source], {ISIN}), "history")
+    for _ in range(80):
+        fetch_id = store.start_fetch(run_id, source, request.date_from, request.date_to, spec)
+        store.save_response(fetch_id, {"fetch_status": "empty"}, [])
+    result = collector.drain_history([source], today=TODAY)
+    assert result["state"] == "complete"
+    assert result["sources"][source]["batches"] == 4
+    assert not store.pending_fetches(source) and not client.requests
+
+
+def test_history_worker_yields_fair_rounds_and_retries_on_later_invocation():
+    from backend.corporate_action_sources import SOURCES, Response
+
+    collector, store, client, _ = history_collector(client=Feed(Response(403, b"blocked")), sources=list(SOURCES))
+    assert collector.drain_history(list(SOURCES), batch_requests=1, today=TODAY)["state"] == "blocked"
+    assert collector.stopped == set(SOURCES)
+    client.requests.clear()
+    client.response = Response(200, b"[]")
+    assert collector.drain_history(list(SOURCES), batch_requests=1, today=TODAY)["state"] == "complete"
+    assert [r.source for r in client.requests] == list(SOURCES) * 3
+    assert not collector.stopped
+
+
+def test_explicit_positive_recent_history_budget_preserves_legacy_behavior():
+    from backend.corporate_action_sources import SOURCES
+
+    collector, _, client, _ = history_collector()
+    result = collector.capture([SOURCES[0]], today=TODAY, history_budget=1)
+    assert set(result["sources"][SOURCES[0]]) == {"recent", "queued_history"}
+    assert len(client.requests) == 2
+    assert client.requests[-1].date_to < date(2026, 9, 4)
+
+
+def test_history_worker_pending_recent_requests_are_never_sent():
+    from backend.corporate_action_sources import SOURCES, Response
+
+    collector, store, client, _ = history_collector()
+    source = SOURCES[0]
+    client.response = Response(403, b"blocked")
+    assert not collector.capture([source], today=TODAY)["ok"]
+    assert store.unfinished(source, "recent")
+    client.response = Response(200, b"[]")
+    client.requests.clear()
+    assert collector.drain_history([source], today=TODAY)["state"] == "complete"
+    assert all(r.date_to < TODAY for r in client.requests)
+    assert store.unfinished(source, "recent")
+
+
+def test_history_worker_source_lock_contention_retries_bounded():
+    from contextlib import contextmanager
+
+    from backend.corporate_action_sources import SOURCES
+
+    class BusyStore(MemoryStore):
+        attempts = 0
+        busy = 2
+        entered = False
+
+        @contextmanager
+        def lock(self, source):
+            if source.startswith("history_worker:"):
+                yield True
+                return
+            self.attempts += 1
+            self.entered = True
+            try:
+                yield self.attempts > self.busy
+            finally:
+                self.entered = False
+
+    collector, store, client, _ = history_collector(start=date(2026, 9, 9), store=BusyStore())
+    waits = []
+
+    def sleep(seconds):
+        if seconds == 2:
+            assert not store.entered
+            waits.append(seconds)
+
+    collector.sleep = sleep
+    assert collector.drain_history([SOURCES[0]], today=TODAY)["state"] == "complete"
+    assert store.attempts == 3 and len(waits) == 2
+    store.attempts = 0
+    store.busy = 100
+    store.targets[SOURCES[0]][ISIN]["pending"] = [{"from": "2026-09-08", "to": "2026-09-08"}]
+    result = collector.drain_history([SOURCES[0]], today=TODAY, source_lock_attempts=3)
+    assert result["state"] == "blocked"
+    assert result["sources"][SOURCES[0]]["errors"] == ["source_locked"]
+    assert store.attempts == 3 and len(client.requests) == 1
+
+
+def test_history_worker_waits_through_a_normal_recent_capture_batch():
+    from contextlib import nullcontext
+
+    from backend.corporate_action_sources import SOURCES
+
+    class BusyStore(MemoryStore):
+        attempts = 0
+
+        def lock(self, source):
+            if source.startswith("history_worker:"):
+                return nullcontext(True)
+            self.attempts += 1
+            return nullcontext(self.attempts > 4)
+
+    collector, store, client, _ = history_collector(start=date(2026, 9, 9), store=BusyStore())
+    result = collector.drain_history([SOURCES[0]], today=TODAY)
+    assert result["state"] == "complete"
+    assert store.attempts == 5 and len(client.requests) == 1
+
+
+def test_history_worker_pauses_targets_that_leave_the_current_universe():
+    from backend.corporate_action_sources import SOURCES
+
+    collector, store, client, scope = history_collector(start=date(2026, 9, 1))
+    source = SOURCES[0]
+    scope.isins.add(OTHER)
+    store.targets[source] = enroll(store.targets[source], scope.mappings(source), TODAY, date(2026, 9, 1))
+    scope.isins.remove(OTHER)
+    result = collector.drain_history([source], today=TODAY)
+    assert store.targets[source][OTHER]["state"] == "paused"
+    assert store.targets[source][ISIN]["state"] == "complete"
+    assert "no_progress" not in result["errors"].get(source, [])
+    assert client.requests
+
+
+def test_completed_source_releases_worker_lock_while_other_source_continues():
+    from contextlib import contextmanager
+
+    from backend.corporate_action_sources import SOURCES
+
+    class TrackedStore(MemoryStore):
+        held = set()
+
+        @contextmanager
+        def lock(self, source):
+            self.held.add(source)
+            try:
+                yield True
+            finally:
+                self.held.remove(source)
+
+    collector, store, _, _ = history_collector(start=date(2026, 9, 1), store=TrackedStore(), sources=list(SOURCES))
+    store.targets[SOURCES[0]][ISIN]["pending"] = [{"from": "2026-09-09", "to": "2026-09-09"}]
+    observations = []
+
+    def progress(event):
+        if event["source"] == SOURCES[1] and event["state"] == "pending":
+            observations.append(True)
+            assert "history_worker:" + SOURCES[0] not in store.held
+
+    result = collector.drain_history(list(SOURCES), batch_requests=1, window_days=1, today=TODAY, on_progress=progress)
+    assert result["state"] == "complete" and observations
+    assert not store.held
+
+
+def test_recent_capture_waits_for_source_lock_without_holding_it(monkeypatch):
+    from contextlib import contextmanager
+
+    from backend import corporate_actions
+    from backend.corporate_action_sources import SOURCES
+
+    class BusyStore(MemoryStore):
+        attempts = 0
+        entered = False
+        busy = 2
+
+        @contextmanager
+        def lock(self, source):
+            self.attempts += 1
+            self.entered = True
+            try:
+                yield self.attempts > self.busy
+            finally:
+                self.entered = False
+
+    collector, store, client, _ = history_collector(store=BusyStore())
+    clock = [0]
+    monkeypatch.setattr(corporate_actions, "monotonic", lambda: clock[0])
+
+    def sleep(seconds):
+        if seconds == 1:
+            assert not store.entered
+            clock[0] += seconds
+
+    collector.sleep = sleep
+    assert collector.capture([SOURCES[0]], today=TODAY, lock_wait_seconds=5)["ok"]
+    assert store.attempts == 3 and len(client.requests) == 1
+    store.attempts = 0
+    store.busy = 100
+    result = collector.capture([SOURCES[0]], today=TODAY, lock_wait_seconds=2)
+    assert not result["ok"]
+    assert result["sources"][SOURCES[0]]["recent"]["errors"] == ["source_locked"]
+    assert store.attempts == 3 and len(client.requests) == 1
+
+
 class Feed:
     def __init__(self, response):
         self.response = response
@@ -632,6 +1146,6 @@ class MemoryStore:
                        and f["status"] not in {"success", "empty"}
                        and not self.completed(source, f["spec"]["request_key"])], key=lambda f: f["id"])
 
-    def lock(self, source):
+    def lock(self, source) -> AbstractContextManager[bool]:
         from contextlib import nullcontext
         return nullcontext(True)

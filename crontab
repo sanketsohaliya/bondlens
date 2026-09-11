@@ -34,4 +34,4 @@
 #    Idempotent via the kite_fills (user_id, order_id) primary key.
 */10 9-16 * * 1-5 cd /app && python scripts/sweep_kite_fills.py
 
-20 8,19 * * * cd /app && python scripts/harvest_corporate_actions.py capture --mode recent
+20 8,19 * * * cd /app && python scripts/harvest_corporate_actions.py capture --mode recent --dispatch-history

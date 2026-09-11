@@ -2,9 +2,11 @@ import hashlib
 import json
 from collections import Counter, defaultdict
 from collections.abc import Callable, Iterator
+from contextlib import ExitStack
 from copy import deepcopy
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta
+from time import monotonic
 from time import sleep as time_sleep
 from typing import Any
 
@@ -216,6 +218,153 @@ class Collector:
         self.sleep = sleep
         self.stopped: set[str] = set()
 
+    def _history_state(self, source: str) -> tuple[dict, str]:
+        targets = self.store.load_targets(source)
+        paused = {i: t for i, t in targets.items() if not t["active"] or t.get("state") == "paused"}
+        blocked = {i: t for i, t in targets.items() if i not in paused and (
+            t.get("blocked_reason") or t.get("state") == "blocked" or t.get("history_from") is None
+        )}
+        eligible = {i: t for i, t in targets.items() if i not in paused and i not in blocked}
+        reasons = Counter(t.get("blocked_reason") or (
+            "history_start_unconfigured" if t.get("history_from") is None else "blocked"
+        ) for t in blocked.values())
+        pending_index = self.store.pending_fetches(source=source)
+        pending_coverage = self.store.coverage_fetches(source)
+        requests = self.store.unfinished(source, "history")
+        eligible_requests = [f for f in requests if set(f["spec"].get("scope", {})) & eligible.keys()]
+        configured = any(t.get("history_from") is not None for t in targets.values()) or self.store.history_start(source) is not None
+        summary = {
+            "configured": configured, "eligible_targets": len(eligible),
+            "pending_targets": sum(bool(t["pending"]) for t in eligible.values()),
+            "remaining_days": sum((date.fromisoformat(w["to"]) - date.fromisoformat(w["from"])).days + 1
+                                  for t in eligible.values() for w in merge_windows(t["pending"])),
+            "pending_index": len(pending_index), "pending_coverage": len(pending_coverage),
+            "pending_requests": len(requests), "eligible_pending_requests": len(eligible_requests),
+            "blocked_requests": len(requests) - len(eligible_requests),
+            "request_states": dict(Counter(f["status"] for f in eligible_requests)),
+            "failed_index": sum(f.get("index_status") == "failed" for f in pending_index),
+            "blocked_targets": len(blocked), "blocked_reasons": dict(reasons),
+            "paused_targets": len(paused),
+            "paused_pending_targets": sum(bool(t["pending"]) for t in paused.values()),
+        }
+        pending = any(summary[k] for k in ("remaining_days", "pending_index", "pending_coverage", "eligible_pending_requests"))
+        excluded = not configured or any(summary[k] for k in ("blocked_targets", "paused_pending_targets", "blocked_requests"))
+        summary["state"] = "pending" if pending else "blocked" if excluded else "complete"
+
+        def receipts(fetches: list[dict]) -> list[str]:
+            return sorted({fingerprint([f["window_from"], f["window_to"], f["spec"].get("scope"),
+                                        f["spec"].get("kind"), f["status"], f.get("index_status")])
+                           for f in fetches})
+
+        state = fingerprint([
+            {i: {k: t.get(k) for k in ("active", "state", "blocked_reason", "history_from", "history_to",
+                                      "pending", "mapping_hash", "generation")} for i, t in targets.items()},
+            receipts(requests), receipts(pending_index), receipts(pending_coverage),
+            len(pending_index), len(pending_coverage),
+        ])
+        return summary, state
+
+    def history_status(self, sources: list[str]) -> dict:
+        if not sources or any(source not in SOURCES for source in sources):
+            raise ValueError("invalid_source")
+        return {source: self._history_state(source)[0] for source in dict.fromkeys(sources)}
+
+    def drain_history(self, sources: list[str], batch_requests: int = 10, window_days: int = 14,
+                      pause_seconds: float = 2, today: date | None = None,
+                      on_progress: Callable[[dict], None] | None = None,
+                      source_lock_attempts: int = 60) -> dict:
+        from zoneinfo import ZoneInfo
+
+        if not sources or any(source not in SOURCES for source in sources):
+            raise ValueError("invalid_source")
+        if batch_requests < 1 or window_days < 1 or pause_seconds < 0 or source_lock_attempts < 1:
+            raise ValueError("invalid_history_budget")
+        today = today or datetime.now(ZoneInfo("Asia/Kolkata")).date()
+        self.stopped.clear()
+        results: dict[str, Any] = {"sources": {}}
+        active = []
+        idle: Counter[str] = Counter()
+        stalled: Counter[str] = Counter()
+        with ExitStack() as workers:
+            source_workers: dict[str, ExitStack] = {}
+            for source in dict.fromkeys(sources):
+                source_workers[source] = workers.enter_context(ExitStack())
+                result = {"state": "blocked", "ok": False, "errors": [], "batches": 0, "requests": 0}
+                results["sources"][source] = result
+                try:
+                    acquired = source_workers[source].enter_context(self.store.lock("history_worker:" + source))
+                    if not acquired:
+                        result.update(state="already_running", ok=True)
+                        continue
+                    result.update(self.history_status([source])[source])
+                    if result["state"] == "pending":
+                        active.append(source)
+                    else:
+                        result["ok"] = result["state"] == "complete"
+                        if not result["configured"]:
+                            result["errors"].append("history_start_unconfigured")
+                except Exception as exc:
+                    result.update(state="blocked", errors=[type(exc).__name__])
+                finally:
+                    if source not in active:
+                        source_workers[source].close()
+            while active:
+                for source in list(active):
+                    result = results["sources"][source]
+                    batch: dict[str, Any] = {"requests": 0, "errors": []}
+                    try:
+                        _, before = self._history_state(source)
+                        with self.store.lock(source) as acquired:
+                            if acquired:
+                                batch = self._phase(source, "backfill", today, None, None,
+                                                    batch_requests, window_days, None, False)
+                        if not acquired:
+                            idle[source] += 1
+                            if idle[source] >= source_lock_attempts:
+                                result.update(state="blocked", ok=False, errors=["source_locked"])
+                                active.remove(source)
+                            continue
+                        idle[source] = 0
+                        result["batches"] += 1
+                        result["requests"] += batch.get("requests", 0)
+                        status, after = self._history_state(source)
+                        result.update(status)
+                        errors = list(batch.get("errors", []))
+                        errors.extend("history_" + state for state in ("failed", "invalid", "incomplete")
+                                      if status["request_states"].get(state))
+                        if status["failed_index"] or (status["pending_index"] and not batch.get("ok", False)):
+                            errors.append("index_failed")
+                        if source in self.stopped:
+                            errors.append("source_stopped")
+                        stalled[source] = stalled[source] + 1 if before == after else 0
+                        if status["state"] == "pending" and stalled[source] >= 3:
+                            errors.append("no_progress")
+                        if errors:
+                            result.update(state="blocked", errors=list(dict.fromkeys(errors)))
+                        result["ok"] = result["state"] == "complete"
+                        if result["state"] != "pending":
+                            active.remove(source)
+                    except Exception as exc:
+                        result.update(state="blocked", ok=False, errors=[type(exc).__name__])
+                        active.remove(source)
+                    finally:
+                        if source not in active:
+                            source_workers[source].close()
+                        if on_progress is not None:
+                            on_progress({**deepcopy(result), "source": source,
+                                         "requests": batch.get("requests", 0), "total_requests": result["requests"]})
+                if active:
+                    self.sleep(max(1, pause_seconds) if any(idle[s] for s in active) else pause_seconds)
+        states = {result["state"] for result in results["sources"].values()}
+        results.update(
+            ok="blocked" not in states,
+            state="blocked" if "blocked" in states else "already_running" if "already_running" in states else "complete",
+            blocked_sources=sum(result["state"] == "blocked" for result in results["sources"].values()),
+            blocked_targets=sum(result.get("blocked_targets", 0) for result in results["sources"].values()),
+            errors={source: result["errors"] for source, result in results["sources"].items() if result["errors"]},
+        )
+        return results
+
     def _persist(self, source: str, targets: dict[str, dict]) -> None:
         self.store.save_targets(source, targets)
 
@@ -417,6 +566,8 @@ class Collector:
                 self.store.resolve_request(source, old_key)
                 continue
             active = {i for i in spec.get("scope", {}) if i in targets and targets[i]["active"]
+                      and (kind != "history" or (not targets[i].get("blocked_reason")
+                                                and targets[i].get("state") not in {"paused", "blocked"}))
                       and (source != SOURCES[1] or not targets[i]["mapping"].get("blocked_reason"))}
             if not active:
                 self.store.resolve_request(source, old_key)
@@ -454,12 +605,20 @@ class Collector:
         configured = self.store.history_start(source)
         configure_history = kind == "backfill" and start is not None and only is None
         history_start = min(start, configured) if configure_history and configured else start if configure_history else configured
-        targets = enroll(existing, current, today, history_start)
-        if kind == "backfill" and only is not None:
+        resume_history = kind == "backfill" and start is None and end is None
+        targets = deepcopy(existing) if resume_history else enroll(existing, current, today, history_start)
+        if resume_history:
+            for isin, target in targets.items():
+                if isin not in current:
+                    target.update(active=False, state="paused")
+        if kind == "backfill" and only is not None and not resume_history:
             subset = enroll({i: t for i, t in existing.items() if i in only},
                             {i: m for i, m in current.items() if i in only}, today, start)
             targets.update(subset)
         selected = set(current) if only is None else set(current) & only
+        if resume_history:
+            selected &= {i for i, t in targets.items() if t["active"] and not t.get("blocked_reason")
+                         and t.get("history_from") is not None and t.get("state") not in {"paused", "blocked"}}
         if source == SOURCES[1]:
             selected = {isin for isin in selected if not current[isin].get("blocked_reason")}
         for isin, target in targets.items():
@@ -550,14 +709,14 @@ class Collector:
 
     def capture(self, sources: list[str], mode: str = "recent", date_from: date | None = None,
                 date_to: date | None = None, today: date | None = None, only: set[str] | None = None,
-                request_budget: int = 100, history_budget: int = 10, window_days: int = 14,
-                dry_run: bool = False) -> dict:
+                request_budget: int = 100, history_budget: int = 0, window_days: int = 14,
+                dry_run: bool = False, lock_wait_seconds: float = 0) -> dict:
         from zoneinfo import ZoneInfo
 
         today = today or datetime.now(ZoneInfo("Asia/Kolkata")).date()
         if not sources or any(s not in SOURCES for s in sources) or mode not in {"recent", "backfill", "refetch"}:
             raise ValueError("invalid_source_or_mode")
-        if window_days < 1 or request_budget < 1 or history_budget < 0:
+        if window_days < 1 or request_budget < 1 or history_budget < 0 or lock_wait_seconds < 0:
             raise ValueError("invalid_request_budget")
         if mode != "recent" and (date_from is None or date_to is None or date_from > date_to):
             raise ValueError("explicit_valid_range_required")
@@ -574,9 +733,17 @@ class Collector:
                     if dry_run:
                         result = self._phase(source, kind, today, date_from, date_to, budget, window_days, only, True)
                     else:
-                        with self.store.lock(source) as acquired:
-                            result = (self._phase(source, kind, today, date_from, date_to, budget, window_days, only, False)
-                                      if acquired else {"ok": False, "errors": ["source_locked"]})
+                        deadline = monotonic() + lock_wait_seconds
+                        result = {"ok": False, "errors": ["source_locked"]}
+                        while True:
+                            with self.store.lock(source) as acquired:
+                                if acquired:
+                                    result = self._phase(source, kind, today, date_from, date_to, budget, window_days, only, False)
+                            if acquired:
+                                break
+                            if monotonic() >= deadline:
+                                break
+                            self.sleep(1)
                 except Exception as exc:
                     result = {"ok": False, "errors": [type(exc).__name__]}
                 results["sources"].setdefault(source, {})[phase] = result
