@@ -8,7 +8,7 @@ from urllib.parse import urlsplit
 
 from .analytics.schedule import Flow
 
-VERSION = "1"
+VERSION = "2"
 SOURCES = {"nse_debt_announcements": "NSE", "bse_corporate_actions": "BSE"}
 NATURES = {
     "interest payment": (["interest"], None),
@@ -139,6 +139,7 @@ def _notice(isin: str, row: dict) -> dict | None:
         "published_at": timestamp(row.get("announced_at")), "first_captured_at": timestamp(row.get("first_seen_at")),
         "last_captured_at": timestamp(row.get("last_seen_at") or row.get("first_seen_at")),
         "links": [], "status": "unmatched", "reasons": [], "flow_keys": [], "unmatched_events": [],
+        "corroborated_by": None,
     }
     sid = row.get("source_record_id")
     if sid is not None:
@@ -303,6 +304,33 @@ def build_evidence(isin: str, flows: list[Flow], records: list[dict], *, as_of: 
                 notice["reasons"].append("partially_matched_notice")
             else:
                 notice["status"] = "matched"
+    # Second pass: a BSE notice carries only a record date, so when that date
+    # disagrees with NSDL it has nothing exact to anchor on. If an NSE notice
+    # already matched a row (on due date) and states the same record date the
+    # BSE notice does, the two exchanges corroborate each other and the BSE
+    # notice joins that row. No nearest-date guessing is involved.
+    for notice in notices:
+        if notice["source"] != "BSE" or notice["status"] != "unmatched" or partial:
+            continue
+        if notice["record_date"] is None or notice["flow_keys"]:
+            continue
+        for event in list(notice["unmatched_events"]):
+            rows = [key for key, by_source in matches.items()
+                    if by_source["NSE"] and keys[key][0].event == event
+                    and any(n["record_date"] == notice["record_date"] for n in by_source["NSE"])]
+            if len(rows) != 1:
+                continue
+            key = rows[0]
+            notice["flow_keys"].append(key)
+            notice["unmatched_events"].remove(event)
+            notice["corroborated_by"] = "NSE"
+            matches[key]["BSE"].append(notice)
+        if notice["flow_keys"]:
+            notice["reasons"] = [r for r in notice["reasons"] if r != "multiple_nsdl_candidates"]
+            if notice["unmatched_events"]:
+                notice["reasons"].append("partially_matched_notice")
+            else:
+                notice["status"] = "matched"
     visible = set()
     checked = {key for key, group in keys.items() if any(start <= f.effective_date <= end for f in group)}
     for notice in notices:
@@ -344,7 +372,10 @@ def build_evidence(isin: str, flows: list[Flow], records: list[dict], *, as_of: 
             fields = [_field("due_date", flow.due_date, attached), _field("record_date", flow.record_date, attached),
                       {"field": "payment_date", "state": "not_supplied", "nsdl_date": flow.payment_date, "exchange_dates": []},
                       {"field": "amount", "state": "not_supplied", "nsdl_date": None, "exchange_dates": []}]
-            row["sources"].append({"source": source, "anchor": "due_date" if source == "NSE" else "record_date", "notice_ids": sorted({n["id"] for n in attached}),
+            anchor = ("due_date" if source == "NSE"
+                      else "nse_record_date" if all(n["corroborated_by"] == "NSE" for n in attached)
+                      else "record_date")
+            row["sources"].append({"source": source, "anchor": anchor, "notice_ids": sorted({n["id"] for n in attached}),
                                    "state": "conflicting" if any(f["state"] == "conflicting" for f in fields)
                                    or any("competing_versions" in n["reasons"] for n in attached) else "matched",
                                    "fields": fields})

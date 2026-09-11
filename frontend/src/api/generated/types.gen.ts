@@ -916,6 +916,10 @@ export type ExchangeNotice = {
      * Unmatched Events
      */
     unmatched_events: Array<'interest' | 'redemption'>;
+    /**
+     * Corroborated By
+     */
+    corroborated_by?: 'NSE' | null;
 };
 
 /**
@@ -985,7 +989,7 @@ export type FlowSourceEvidence = {
     /**
      * Anchor
      */
-    anchor: 'due_date' | 'record_date';
+    anchor: 'due_date' | 'record_date' | 'nse_record_date';
     /**
      * State
      */

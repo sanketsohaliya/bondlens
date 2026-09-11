@@ -65,6 +65,14 @@ export function NoticeCard({
         {n.status !== "matched" && (
           <span className="text-[10px] text-zinc-500">{NOTICE_STATES[n.status]}</span>
         )}
+        {n.corroborated_by && (
+          <span
+            className="text-[10px] text-zinc-500"
+            title="BSE supplies only a record date. This notice was tied to the row because an NSE notice on the same row states the same record date."
+          >
+            · attached via {n.corroborated_by} record date
+          </span>
+        )}
       </div>
       {facts.quote && (
         <p className="italic text-zinc-400 whitespace-pre-wrap break-words">“{facts.quote}”</p>
@@ -174,19 +182,19 @@ export default function CashflowEvidencePanel({
           }
         >
           {v.text}
-          {v.link && (
-            <>
+          {v.links.map((l) => (
+            <span key={l.href}>
               {" · "}
               <a
-                href={v.link}
+                href={l.href}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-zinc-400 underline decoration-zinc-700 underline-offset-2 hover:text-zinc-100"
               >
-                source ↗
+                {l.label} ↗
               </a>
-            </>
-          )}
+            </span>
+          ))}
         </p>
       ))}
       {shown.length > 0 && (

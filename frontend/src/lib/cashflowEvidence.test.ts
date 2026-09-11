@@ -236,6 +236,31 @@ describe("cashflow calendar and evidence", () => {
     expect(noticeFacts({ ...base, category: "", nature: "Interest" }).header).toBe("Interest");
   });
 
+  it("picks the exchange's announced date in a stable order", async () => {
+    const { noticeAnnouncedDate } = await import("./cashflowEvidence");
+    const n = {
+      ex_date: "2026-09-16",
+      record_date: "2026-09-17",
+      due_date: "2026-09-30",
+      published_at: "2026-09-01T10:00:00Z",
+    } as Parameters<typeof noticeAnnouncedDate>[0];
+    expect(noticeAnnouncedDate(n)).toBe("2026-09-16");
+    expect(noticeAnnouncedDate({ ...n, ex_date: null })).toBe("2026-09-17");
+    expect(noticeAnnouncedDate({ ...n, ex_date: null, record_date: null })).toBe("2026-09-30");
+    expect(noticeAnnouncedDate({ ...n, ex_date: null, record_date: null, due_date: null })).toBe(
+      "2026-09-01",
+    );
+    expect(
+      noticeAnnouncedDate({
+        ...n,
+        ex_date: null,
+        record_date: null,
+        due_date: null,
+        published_at: null,
+      }),
+    ).toBeNull();
+  });
+
   it("writes one-line verdicts that name dates and never amounts", async () => {
     const { verdictFor } = await import("./cashflowEvidence");
     const f = (
@@ -289,7 +314,7 @@ describe("cashflow calendar and evidence", () => {
     expect(agree).toHaveLength(1);
     expect(agree[0].text).toBe("BSE confirms record date 14 Sept 2026");
     expect(agree[0].tone).toBe("ok");
-    expect(agree[0].link).toBe("https://www.bseindia.com/x");
+    expect(agree[0].links).toEqual([{ label: "source", href: "https://www.bseindia.com/x" }]);
     expect(agree[0].text).not.toMatch(/₹|amount/i);
 
     const both = verdictFor(
@@ -307,7 +332,7 @@ describe("cashflow calendar and evidence", () => {
       [],
     );
     expect(both[0].text).toBe("NSE confirms due 27 Sept 2026 and record date 12 Sept 2026");
-    expect(both[0].link).toBeNull();
+    expect(both[0].links).toEqual([]);
 
     const differs = verdictFor(
       [
@@ -348,6 +373,66 @@ describe("cashflow calendar and evidence", () => {
     );
     expect(empty[0].text).toBe("BSE notice matched, but supplied no comparable dates");
     expect(empty[0].tone).toBe("muted");
+
+    // Sammaan 915SCL27: both exchanges disagree with NSDL identically → one line, two links.
+    const combined = verdictFor(
+      [
+        {
+          ...base,
+          source: "NSE",
+          anchor: "due_date",
+          notice_ids: ["n-nse"],
+          fields: [
+            f("due_date", "agree", "2026-09-28", ["2026-09-28"]),
+            f("record_date", "different", "2026-09-13", ["2026-09-11"]),
+          ],
+        },
+        {
+          ...base,
+          source: "BSE",
+          anchor: "nse_record_date",
+          notice_ids: ["n-bse"],
+          fields: [
+            f("due_date", "not_supplied", "2026-09-28"),
+            f("record_date", "different", "2026-09-13", ["2026-09-11"]),
+          ],
+        },
+      ],
+      [
+        { ...notice("n-nse", ["https://nsearchives.nseindia.com/a.pdf"]), source: "NSE" },
+        notice("n-bse", ["https://www.bseindia.com/b"]),
+      ],
+    );
+    expect(combined).toHaveLength(1);
+    expect(combined[0].text).toBe(
+      "NSE and BSE both say record date 11 Sept 2026 — NSDL has 13 Sept 2026",
+    );
+    expect(combined[0].tone).toBe("attention");
+    expect(combined[0].links).toEqual([
+      { label: "NSE", href: "https://nsearchives.nseindia.com/a.pdf" },
+      { label: "BSE", href: "https://www.bseindia.com/b" },
+    ]);
+
+    // Different dates → not combined; two separate lines.
+    const split = verdictFor(
+      [
+        {
+          ...base,
+          source: "NSE",
+          anchor: "due_date",
+          fields: [f("record_date", "different", "2026-09-13", ["2026-09-11"])],
+        },
+        {
+          ...base,
+          source: "BSE",
+          fields: [f("record_date", "different", "2026-09-13", ["2026-09-12"])],
+        },
+      ],
+      [],
+    );
+    expect(split).toHaveLength(2);
+    expect(split[0].text).toMatch(/^NSE says/);
+    expect(split[1].text).toMatch(/^BSE says/);
   });
 
   it("does not tie date evidence to the current displayed monetary amount", () => {

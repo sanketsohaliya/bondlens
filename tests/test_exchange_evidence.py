@@ -73,6 +73,53 @@ def test_bse_exact_record_date_is_only_limited_record_date_evidence():
     assert view["notices"][0]["ex_date"] == date(2026, 9, 12)
 
 
+def test_bse_record_date_corroborated_by_matched_nse_joins_the_same_row():
+    # Sammaan 915SCL27: NSDL says record 13 Sep; NSE and BSE both say 11 Sep.
+    flow = Flow("interest", date(2026, 9, 28), record_date=date(2026, 9, 13), amount=96)
+    view = build_evidence(ISIN, [flow], [nse(text(record="11-Sep-2026", due="28-Sep-2026")), bse(record="11 Sep 2026")], as_of=TODAY)
+    sources = {s["source"]: s for s in view["flows"][0]["sources"]}
+    assert set(sources) == {"NSE", "BSE"}
+    assert sources["BSE"]["anchor"] == "nse_record_date"
+    assert sources["NSE"]["anchor"] == "due_date"
+    for s in sources.values():
+        assert {f["field"]: f["state"] for f in s["fields"]}["record_date"] == "different"
+    bse_notice = next(n for n in view["notices"] if n["source"] == "BSE")
+    assert bse_notice["status"] == "matched"
+    assert bse_notice["corroborated_by"] == "NSE"
+    assert view["unmatched_notice_ids"] == []
+    assert view["summary"]["unmatched_notices"] == 0
+    assert view["summary"]["differences"] == 1
+
+
+def test_bse_alone_disagreeing_with_nsdl_is_not_attached():
+    flow = Flow("interest", date(2026, 9, 28), record_date=date(2026, 9, 13), amount=96)
+    view = build_evidence(ISIN, [flow], [bse(record="11 Sep 2026")], as_of=TODAY)
+    assert view["flows"][0]["sources"] == []
+    assert view["notices"][0]["status"] == "unmatched"
+    assert view["notices"][0]["corroborated_by"] is None
+
+
+def test_corroboration_is_ambiguous_when_two_nse_rows_share_the_record_date():
+    flows = [Flow("interest", date(2026, 9, 28), record_date=date(2026, 9, 13), amount=96),
+             Flow("interest", date(2026, 10, 28), record_date=date(2026, 10, 13), amount=96)]
+    records = [nse(text(record="11-Sep-2026", due="28-Sep-2026"), record_id=1, seq="a"),
+               nse(text(record="11-Sep-2026", due="28-Oct-2026"), record_id=2, seq="b"),
+               bse(record="11 Sep 2026")]
+    view = build_evidence(ISIN, flows, records, as_of=TODAY)
+    assert all(s["source"] == "NSE" for r in view["flows"] for s in r["sources"])
+    assert next(n for n in view["notices"] if n["source"] == "BSE")["status"] == "unmatched"
+
+
+def test_exact_bse_match_is_not_moved_by_a_corroborating_nse_elsewhere():
+    flows = [Flow("interest", date(2026, 9, 28), record_date=date(2026, 9, 12), amount=96),
+             Flow("interest", date(2026, 10, 28), record_date=date(2026, 10, 13), amount=96)]
+    records = [nse(text(record="12-Sep-2026", due="28-Oct-2026")), bse(record="12 Sep 2026")]
+    view = build_evidence(ISIN, flows, records, as_of=TODAY)
+    by_due = {str(r["due_date"]): {s["source"]: s["anchor"] for s in r["sources"]} for r in view["flows"]}
+    assert by_due["2026-09-28"] == {"BSE": "record_date"}
+    assert by_due["2026-10-28"] == {"NSE": "due_date"}
+
+
 def test_monedo_nearby_record_date_is_unmatched_not_an_invented_payment():
     flow = Flow("interest", date(2026, 10, 1), record_date=date(2026, 9, 15), amount=118.36)
     view = build_evidence(ISIN, [flow], [bse(record="16 Sep 2026")], as_of=TODAY)

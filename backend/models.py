@@ -113,7 +113,7 @@ class EvidenceFieldComparison(BaseModel):
 
 class FlowSourceEvidence(BaseModel):
     source: Literal["NSE", "BSE"]
-    anchor: Literal["due_date", "record_date"]
+    anchor: Literal["due_date", "record_date", "nse_record_date"]
     state: Literal["matched", "conflicting"]
     notice_ids: list[str]
     fields: list[EvidenceFieldComparison]
@@ -155,6 +155,7 @@ class ExchangeNotice(BaseModel):
     reasons: list[str]
     flow_keys: list[str]
     unmatched_events: list[Literal["interest", "redemption"]]
+    corroborated_by: Literal["NSE"] | None = None
 
 
 class EvidenceSummary(BaseModel):

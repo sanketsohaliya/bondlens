@@ -121,18 +121,76 @@ const FIELD_NAMES: Record<EvidenceFieldComparison["field"], string> = {
   amount: "amount",
 };
 
-export type Verdict = { text: string; tone: "ok" | "attention" | "muted"; link: string | null };
+export type VerdictLink = { label: string; href: string };
+export type Verdict = { text: string; tone: "ok" | "attention" | "muted"; links: VerdictLink[] };
 
 const exDates = (f: EvidenceFieldComparison) => (f.exchange_dates ?? []).map(calendarDate);
 
+function sourceLink(s: FlowSourceEvidence, notices: ExchangeNotice[]): string | null {
+  return (
+    notices
+      .filter((n) => s.notice_ids.includes(n.id))
+      .flatMap((n) => n.links)
+      .find(validLink) ?? null
+  );
+}
+
+/** Signature of a source's disagreements: which fields differ and to what. Two
+ * sources with the same signature are saying the same thing against NSDL. */
+function differenceSignature(s: FlowSourceEvidence): string | null {
+  if (s.state === "conflicting" || s.fields.some((f) => f.state === "conflicting")) return null;
+  const differing = s.fields.filter((f) => f.field !== "amount" && f.state === "different");
+  if (!differing.length) return null;
+  return differing
+    .map((f) => `${f.field}=${[...(f.exchange_dates ?? [])].sort().join("/")}>${f.nsdl_date}`)
+    .sort()
+    .join("|");
+}
+
 export function verdictFor(sources: FlowSourceEvidence[], notices: ExchangeNotice[]): Verdict[] {
-  return sources.map((s) => {
+  const out: Verdict[] = [];
+  const consumed = new Set<number>();
+  const bySignature = new Map<string, number[]>();
+  sources.forEach((s, i) => {
+    const sig = differenceSignature(s);
+    if (sig) bySignature.set(sig, [...(bySignature.get(sig) ?? []), i]);
+  });
+  for (const idxs of bySignature.values()) {
+    if (idxs.length < 2) continue;
+    const group = idxs.map((i) => sources[i]);
+    const names = SOURCE_ORDER.filter((n) => group.some((s) => s.source === n));
+    const differing = group[0].fields.filter(
+      (f) => f.field !== "amount" && f.state === "different",
+    );
+    const clauses = differing.map(
+      (f) =>
+        `${FIELD_NAMES[f.field]} ${exDates(f).join(" / ")} — NSDL has ${calendarDate(f.nsdl_date)}`,
+    );
+    const links: VerdictLink[] = [];
+    for (const name of names) {
+      const s = group.find((x) => x.source === name);
+      const href = s && sourceLink(s, notices);
+      if (href) links.push({ label: name, href });
+    }
+    out.push({
+      text: `${names.join(" and ")} both say ${clauses.join("; ")}`,
+      tone: "attention",
+      links,
+    });
+    for (const i of idxs) consumed.add(i);
+  }
+  sources.forEach((s, i) => {
+    if (consumed.has(i)) return;
+    out.push(singleVerdict(s, notices));
+  });
+  return out;
+}
+
+function singleVerdict(s: FlowSourceEvidence, notices: ExchangeNotice[]): Verdict {
+  {
     const dated = s.fields.filter((f) => f.field !== "amount");
-    const link =
-      notices
-        .filter((n) => s.notice_ids.includes(n.id))
-        .flatMap((n) => n.links)
-        .find(validLink) ?? null;
+    const href = sourceLink(s, notices);
+    const links: VerdictLink[] = href ? [{ label: "source", href }] : [];
     const conflicting = dated.filter((f) => f.state === "conflicting");
     if (s.state === "conflicting" || conflicting.length) {
       const detail = conflicting
@@ -141,7 +199,7 @@ export function verdictFor(sources: FlowSourceEvidence[], notices: ExchangeNotic
       return {
         text: `${s.source} filings disagree with each other${detail ? ` on ${detail}` : ""} — no version treated as authoritative`,
         tone: "attention",
-        link,
+        links,
       };
     }
     const differing = dated.filter((f) => f.state === "different");
@@ -150,19 +208,19 @@ export function verdictFor(sources: FlowSourceEvidence[], notices: ExchangeNotic
         (f) =>
           `${FIELD_NAMES[f.field]} ${exDates(f).join(" / ")} — NSDL has ${calendarDate(f.nsdl_date)}`,
       );
-      return { text: `${s.source} says ${clauses.join("; ")}`, tone: "attention", link };
+      return { text: `${s.source} says ${clauses.join("; ")}`, tone: "attention", links };
     }
     const agreeing = dated.filter((f) => f.state === "agree");
     if (agreeing.length) {
       const parts = agreeing.map((f) => `${FIELD_NAMES[f.field]} ${calendarDate(f.nsdl_date)}`);
-      return { text: `${s.source} confirms ${parts.join(" and ")}`, tone: "ok", link };
+      return { text: `${s.source} confirms ${parts.join(" and ")}`, tone: "ok", links };
     }
     return {
       text: `${s.source} notice matched, but supplied no comparable dates`,
       tone: "muted",
-      link,
+      links,
     };
-  });
+  }
 }
 
 export function calendarDateTime(value: string | null | undefined): string | null {
@@ -213,6 +271,19 @@ export function noticeFacts(n: ExchangeNotice): NoticeFacts {
   const captured = calendarDateTime(n.first_captured_at);
   const time = filed ? `Filed ${filed}` : captured ? `Captured ${captured}` : null;
   return { header, quote, dates, time };
+}
+
+/** The date an orphan notice is "about", for the Announced column: the
+ * exchange's ex-date, else record date, else due date, else the IST calendar
+ * day it was filed. */
+export function noticeAnnouncedDate(
+  n: Pick<ExchangeNotice, "ex_date" | "record_date" | "due_date" | "published_at">,
+): string | null {
+  const dated = n.ex_date ?? n.record_date ?? n.due_date;
+  if (dated) return dated;
+  if (!n.published_at) return null;
+  const parsed = new Date(n.published_at);
+  return Number.isFinite(parsed.getTime()) ? calendarAsOf(undefined, parsed) : null;
 }
 
 export function rowAttention(row: FlowEvidence | undefined): "none" | "info" | "attention" {
