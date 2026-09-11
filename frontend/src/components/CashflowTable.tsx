@@ -99,7 +99,7 @@ export function CashflowSchedule({
     const selection = `${b.isin}:${asOf}:${key}:${occurrence}`;
     const open = expanded === selection;
     const effective = flow.payment_date ?? flow.due_date;
-    const excluded = dimSection ? null : excludedReason(flow, asOf);
+    const excluded = dimSection && !flow.optional ? null : excludedReason(flow, asOf);
     const chip = sourceChip(row);
     const dateTitle =
       flow.payment_date && flow.payment_date !== flow.due_date
@@ -138,7 +138,7 @@ export function CashflowSchedule({
                 className="ml-1.5 rounded border border-zinc-800 px-1 text-[10px] text-zinc-500"
                 title={excluded}
               >
-                excluded
+                {flow.optional ? "optional" : "excluded"}
               </span>
             )}
           </td>
@@ -349,8 +349,10 @@ export function CashflowSchedule({
       </div>
 
       {flowSection(
-        `Future (${fmt.inr(b.future_total_per_unit)}/unit)`,
-        "Total a buyer today would receive. Dimmed rows are excluded (record date passed).",
+        b.future_total_per_unit == null
+          ? "Future (total unavailable)"
+          : `Future (${fmt.inr(b.future_total_per_unit)}/unit)`,
+        "Scheduled buyer-eligible payments. A total is withheld for incomplete or open-ended schedules; optional and record-date-excluded rows are dimmed.",
         upcoming,
         false,
         0,
@@ -402,11 +404,13 @@ function AmountProvenance({ flow }: { flow: Cashflow }) {
   return (
     <details className="mt-0.5 text-[11px] text-zinc-400 whitespace-normal">
       <summary className={`cursor-pointer ${flow.estimated ? "text-amber-500" : "text-zinc-500"}`}>
-        {flow.estimated
-          ? flow.amount == null
-            ? "estimate unavailable"
-            : "estimated"
-          : "normalized"}
+        {flow.optional
+          ? "optional scenario"
+          : flow.estimated
+            ? flow.amount == null
+              ? "estimate unavailable"
+              : "estimated"
+            : "normalized"}
       </summary>
       <div className="mt-1 max-w-72 space-y-2 text-left">
         {adjustments.map((adjustment, index) => (

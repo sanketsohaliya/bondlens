@@ -378,3 +378,30 @@ def test_repayment_before_call_with_no_principal_remaining_requires_review():
     flows = [Flow("interest", date(2027, 7, 11), amount=100),
              Flow("redemption", date(2027, 7, 11), amount=1000)]
     assert yields.yield_to_call(1000, _sched(flows), [date(2027, 7, 12)], TODAY) is None
+
+
+@pytest.mark.parametrize("m,maturity", [(1, date(2026, 10, 12)), (2, date(2026, 8, 12)), (12, date(2026, 7, 20))])
+def test_approximation_withholds_uncertain_near_term_coupon(m, maturity):
+    assert yields.approx_ytm(1000, 10, 1000, maturity, m, TODAY) is None
+
+
+def test_approximation_does_not_silently_drop_an_early_coupon_before_later_maturity():
+    assert yields.approx_ytm(1000, 10, 1000, date(2028, 10, 12), 1, TODAY) is None
+
+
+def test_zero_coupon_approximation_remains_available_near_maturity():
+    maturity = date(2026, 10, 12)
+    expected = ((1000 / 990) ** (365 / (maturity - TODAY).days) - 1) * 100
+    assert yields.approx_ytm(990, 0, 1000, maturity, 1, TODAY) == pytest.approx(expected, abs=0.005)
+
+
+@pytest.mark.parametrize("rate,m,expected", [(10, 12, 10.4713067), (10.2, 12, ((2017 / 2000) ** 12 - 1) * 100),
+                                             (10, 1, 10), (-10, 2, -9.75)])
+def test_effective_annual_conversion(rate, m, expected):
+    assert yields.effective_annual(rate, m) == pytest.approx(expected, abs=1e-6)
+
+
+@pytest.mark.parametrize("rate,m", [(None, 12), (float("nan"), 12), (float("inf"), 12),
+                                  (10, None), (10, 0), (-1200, 12)])
+def test_effective_conversion_rejects_unknown_or_invalid_inputs(rate, m):
+    assert yields.effective_annual(rate, m) is None

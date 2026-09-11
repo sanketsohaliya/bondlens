@@ -102,7 +102,7 @@ def payout_summary(isin: str, cashflows: list[dict], terms: dict | None, today: 
         invalid_source = any(v is not None and (not math.isfinite(float(v)) or float(v) < 0)
                              for r in cashflows for key in ("amount_payable", "amount_redeem") if (v := r.get(key)) is not None)
         incomplete = (not sched.usable or invalid_source or any(r.get("due_date") is None for r in cashflows)
-                      or any(due is None or due >= today for due, _ in sched.input_issues)
+                      or bool(sched.pricing_issues(today, check_convention=False))
                       or any(f.due_date.year >= 2500 or f.effective_date.year >= 2500
                              or (f.record_date is not None and f.record_date.year >= 2500)
                              or f.amount is None or not math.isfinite(f.amount) or f.amount < 0 for f in eligible))

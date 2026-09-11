@@ -101,6 +101,7 @@ class Cashflow(BaseModel):
     amount: float | None
     estimated: bool
     future: bool
+    optional: bool = False
     adjustments: list[CashflowAdjustment] = Field(default_factory=list)
 
 
@@ -284,7 +285,7 @@ class BondDetail(BaseModel):
     rating_timeline: dict[str, list[RatingEvent]]
     # Cashflows
     cashflows: list[Cashflow]
-    future_total_per_unit: float
+    future_total_per_unit: float | None
     next_payment: Cashflow | None
     # Related records (ragged NSDL shapes stay untyped)
     listings: list[dict[str, Any]]
@@ -388,9 +389,11 @@ class PortfolioPosition(BaseModel):
     face_value: float | None
     ltp: float | None
     ytm: float | None
-    # True yield on the user's money (XIRR over real buy dates/prices,
-    # coupons received, future flows).
+    # Projected effective-annual XIRR over dated purchases and scheduled
+    # receipts; not proof of payments received or a locked return.
     yield_on_cost: float | None
+    ytm_effective: float | None = None
+    yield_on_cost_notes: list[str] = Field(default_factory=list)
     units: float
     invested: float | None
     value: float | None

@@ -207,6 +207,12 @@ def portfolio(user_id: int = Depends(auth.require_user)):
         p["yield_on_cost"] = (pf.yield_on_cost(p["lots"], sched.flows, today)
                               if sched.usable and not sched.perpetual
                               and not sched.pricing_issues(today) else None)
+        p["ytm_effective"] = (yields.effective_annual(p["ytm"], sched.periods_per_year or 1)
+                              if sched.usable and not sched.pricing_issues(today)
+                              and core_by_isin[p["isin"]].get("frequency") == sched.frequency else None)
+        p["yield_on_cost_notes"] = ["Projected XIRR uses scheduled cashflows, not verified bank receipts"]
+        if any(f.optional for f in sched.flows):
+            p["yield_on_cost_notes"].append("Optional full-redemption payouts are excluded from the hold-to-maturity projection")
 
     cashflows = pf.monthly_cashflows(
         {p["isin"]: p["lots"] for p in positions}, flows_by_isin, today,
@@ -396,7 +402,7 @@ def bond_detail(isin: str, price: float | None = Query(None, gt=0)):
             "event": f.event, "due_date": f.due_date,
             "record_date": f.record_date, "payment_date": f.payment_date,
             "amount": f.amount, "estimated": f.estimated, "future": fut,
-            "adjustments": f.adjustments,
+            "optional": f.optional, "adjustments": f.adjustments,
         })
     next_payment = next((f for f in flows_out if f["future"]), None)
 
@@ -454,7 +460,8 @@ def bond_detail(isin: str, price: float | None = Query(None, gt=0)):
         "tech_delay": bool(extras["technical_defaults"]),
         "rating_timeline": ratings.timeline(hist),
         "cashflows": flows_out,
-        "future_total_per_unit": round(future_total, 2),
+        "future_total_per_unit": (round(future_total, 2) if sched.usable and not perpetual
+                                  and not sched.pricing_issues(today, check_convention=False) else None),
         "next_payment": next_payment,
         **extras,
         "issuer_bonds": queries.issuer_siblings(isin, row["issuer_name"])

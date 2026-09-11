@@ -233,6 +233,8 @@ def test_invalid_schedules_cannot_reappear_as_fallback_or_portfolio_yields(prici
     assert row["ytm"] is None and row["ytm_method"] is None
     assert detail["ytm"] is None and detail["ytm_approx"] is None
     assert detail["schedule_warnings"]
+    if problem != "unsupported_daycount":
+        assert row["payout_total_snapshot"] is None and detail["future_total_per_unit"] is None
     assert row["duration"] is None and detail["duration"] is None
     assert all(entry["ytm"] is None for entry in book["ytm_at_ask"])
     assert portfolio["positions"][0]["yield_on_cost"] is None
@@ -299,3 +301,29 @@ def test_historical_estimates_do_not_label_current_yield_as_estimated(pricing_ca
     assert detail["amounts_estimated"] is True
     assert detail["yield_amounts_estimated"] is False
     assert detail["cashflows"][0]["adjustments"][0]["kind"] == "coupon_estimated"
+
+
+def test_portfolio_exposes_effective_annual_market_yield(pricing_case):
+    from backend.analytics.schedule import _months_back
+
+    end = TODAY + timedelta(days=365)
+    flows = [{"event": "Interest", "due_date": _months_back(end, n), "amount_payable": 8.5}
+             for n in reversed(range(12))]
+    flows.append({"event": "Redemption", "due_date": end, "amount_redeem": 1000})
+    row, _, _, portfolio = pricing_case(flows, {"interest_payment_frequency": "Monthly", "coupon_rate": 10.2})
+    position = portfolio["positions"][0]
+    assert row["ytm"] is not None
+    assert position["ytm_effective"] == pytest.approx(((1 + row["ytm"] / 100 / 12) ** 12 - 1) * 100, abs=1e-9)
+    assert position["yield_on_cost_notes"]
+
+
+def test_optional_cashflows_are_disclosed_and_excluded_in_api(pricing_case):
+    old, maturity = TODAY - timedelta(days=365), TODAY + timedelta(days=365)
+    flows = [{"event": "Interest", "due_date": old, "amount_payable": 100},
+             {"event": "Full Redemption", "due_date": old, "amount_payable": 1000},
+             {"event": "Interest", "due_date": maturity, "amount_payable": 200},
+             {"event": "Full Redemption", "due_date": maturity, "amount_payable": 1000}]
+    _, detail, _, portfolio = pricing_case(flows, {"interest_payment_frequency": "Cumulative"})
+    assert sum(f["optional"] for f in detail["cashflows"]) == 2
+    assert all(not f["future"] for f in detail["cashflows"] if f["optional"])
+    assert any("optional" in note.lower() for note in portfolio["positions"][0]["yield_on_cost_notes"])

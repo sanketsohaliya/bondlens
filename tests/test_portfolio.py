@@ -369,6 +369,36 @@ def test_next_payment_holder_semantics():
     assert pf.next_payment(_lots(2), [], TODAY) is None
 
 
+def test_buyback_options_do_not_inflate_cost_yield_or_income():
+    raw = []
+    for year, interest in [(2018, 3995), (2021, 6569), (2023, 8682), (2026, 12596)]:
+        raw.extend([{"event": "Interest", "due_date": date(year, 12, 12), "amount_payable": interest},
+                    {"event": "Full Redemption", "due_date": date(year, 12, 12), "amount_payable": 5000}])
+    terms = {"face_value": 5000, "coupon_rate": 8.75, "redemption_date": date(2026, 12, 12),
+             "redemption_type": "Partial Redemption By Quantity", "interest_payment_frequency": "Cumulative"}
+    as_of = date(2026, 9, 11)
+    s = schedule.build("A", raw, terms, as_of)
+    lots = [yoc_lot(units=1, price=5000, purchase_date=date(2011, 12, 12))]
+    assert pf.yield_on_cost(lots, s.flows, as_of) == 8.74
+    months = pf.monthly_cashflows({"A": lots}, {"A": s.flows}, as_of)
+    assert [m["month"] for m in months] == ["2026-12"]
+    assert pf.income_summary(months) == {"received_interest": 0, "received_principal": 0,
+                                       "projected_interest": 12596, "projected_principal": 5000}
+    next_payment = pf.next_payment(lots, s.flows, date(2016, 1, 1))
+    assert next_payment is not None and next_payment["due_date"] == date(2026, 12, 12)
+
+
+def test_regular_coupons_remain_when_optional_principal_is_excluded():
+    start, call, maturity = date(2025, 1, 1), date(2026, 1, 1), date(2027, 1, 1)
+    raw = [{"event": "Interest", "due_date": d, "amount_payable": 100} for d in (call, maturity)]
+    raw += [{"event": "Full Redemption", "due_date": d, "amount_payable": 1000} for d in (call, maturity)]
+    s = schedule.build("A", raw, {"face_value": 1000, "coupon_rate": 10, "redemption_date": maturity,
+                                   "redemption_type": "Full Redemption", "interest_payment_frequency": "Annual",
+                                   "call_indicator": "Yes", "call_specified_dates": "01-01-2026"}, start)
+    assert sum(f.optional for f in s.flows) == 1
+    assert pf.yield_on_cost([yoc_lot(units=1, price=1000, purchase_date=start)], s.flows, date(2026, 2, 1)) == 10
+
+
 # --- API routes -------------------------------------------------------------
 
 class FakeStore:

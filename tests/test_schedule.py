@@ -701,3 +701,130 @@ def test_ambiguous_missing_principal_is_not_assumed_to_be_par(premium, last_coup
     s = schedule.build("X", rows, _terms(redemption_date=end, redemption_premium_details=premium), today=start)
     assert [f.amount for f in s.flows if f.event == "redemption"] == ([None] if placeholder else [])
     assert yields.exact_ytm(1100, s, start) is None
+
+
+@pytest.mark.parametrize("premium,redeem_field", [("5% final premium", True), (None, True), (None, False)])
+def test_redemption_excess_does_not_cover_missing_coupons(premium, redeem_field):
+    from backend.analytics import compute, yields
+
+    start = date(2025, 1, 1)
+    terms = _terms(redemption_date=date(2028, 1, 1), day_count_convention="Actual/365",
+                   redemption_type="Partial Redemption By Face Value", redemption_premium_details=premium)
+    rows = [_cf("Interest", date(2026, 1, 1), payable=100),
+            _cf("Partial Redemption", date(2027, 1, 1), **({"redeem": 500} if redeem_field else {"payable": 500})),
+            _cf("Full Redemption", date(2028, 1, 1), **({"redeem": 550} if redeem_field else {"payable": 550}))]
+    s = schedule.build("X", rows, terms, today=start)
+    assert s.pricing_issues(start)
+    assert yields.exact_ytm(1000, s, start) is None
+    assert yields.fallback_ytm(1000, s, terms, start) is None
+    assert compute.payout_summary("X", rows, terms, start)["payout_total_snapshot"] is None
+    complete = schedule.build("X", rows + [_cf("Interest", date(2027, 1, 1), payable=100),
+                                           _cf("Interest", date(2028, 1, 1), payable=50)], terms, today=start)
+    assert yields.exact_ytm(1000, complete, start) == 11.74
+
+
+def test_verified_combined_installments_preserve_cash_and_reconcile_components():
+    from backend.analytics import yields
+
+    start = date(2025, 1, 1)
+    rows = [_cf("Interest", date(2026, 1, 1), payable=100),
+            _cf("Redemption", date(2027, 1, 1), payable=600),
+            _cf("Redemption", date(2028, 1, 1), payable=550)]
+    before = deepcopy(rows)
+    terms = _terms(redemption_date=date(2028, 1, 1), day_count_convention="Actual/365",
+                   redemption_type="Partial Redemption By Face Value", redemption_premium_details="No")
+    s = schedule.build("X", rows, terms, today=start)
+    assert not s.pricing_issues(start)
+    assert sum(f.amount or 0 for f in s.flows if f.event == "redemption") == 1000
+    assert sum(f.amount or 0 for f in s.flows if f.event == "interest") == 250
+    assert yields.exact_ytm(1000, s, start) == 10
+    assert s.amounts_estimated
+    assert rows == before
+
+
+def test_coupon_labelled_redemption_is_reclassified_only_when_principal_reconciles():
+    from backend.analytics import yields
+
+    rows = [_cf("Interest", date(2026, 1, 1), payable=100),
+            _cf("Redemption", date(2027, 1, 1), payable=100),
+            _cf("Interest", date(2028, 1, 1), payable=100),
+            _cf("Redemption", date(2029, 1, 1), payable=1100)]
+    s = schedule.build("X", rows, _terms(redemption_date=date(2029, 1, 1),
+                                          day_count_convention="Actual/Actual"), today=date(2025, 1, 1))
+    assert len([f for f in s.flows if f.event == "redemption"]) == 1
+    assert sum(f.amount or 0 for f in s.flows) == 1400
+    assert yields.exact_ytm(1000, s, date(2025, 1, 1)) == 10
+
+
+def test_combined_installments_preserve_source_precision():
+    rows = [_cf("Interest", date(2026, 1, 1), payable=100),
+            _cf("Redemption", date(2027, 1, 1), payable=600.004),
+            _cf("Redemption", date(2028, 1, 1), payable=550.002)]
+    s = schedule.build("X", rows, _terms(redemption_date=date(2028, 1, 1),
+                                          day_count_convention="Actual/365"), today=date(2025, 1, 1))
+    assert sum(f.amount or 0 for f in s.flows) == pytest.approx(1250.006, abs=1e-10)
+
+
+def test_explicit_premium_cannot_be_reclassified_as_installment_coupons():
+    from backend.analytics import yields
+
+    rows = [_cf("Interest", date(2026, 1, 1), payable=100),
+            _cf("Redemption", date(2027, 1, 1), payable=600),
+            _cf("Redemption", date(2028, 1, 1), payable=550)]
+    s = schedule.build("X", rows, _terms(redemption_date=date(2028, 1, 1),
+                                          redemption_premium_details="Premium payable with installments"),
+                       today=date(2025, 1, 1))
+    assert yields.exact_ytm(1000, s, date(2025, 1, 1)) is None
+
+
+@pytest.mark.parametrize("event", ["Interest", "Full Redemption"])
+def test_terminal_premium_is_not_evidence_of_a_coupon(event):
+    from backend.analytics import yields
+
+    start, end = date(2025, 1, 1), date(2026, 1, 1)
+    rows = [_cf("Interest", start, payable=100), _cf(event, end, payable=1100)]
+    s = schedule.build("X", rows, _terms(redemption_date=end,
+                                          redemption_premium_details="10% premium"), today=start)
+    assert yields.exact_ytm(1000, s, start) is None
+
+
+def test_declared_premium_matching_coupon_is_not_dropped_as_duplicate():
+    from backend.analytics import yields
+
+    start, end = date(2025, 1, 1), date(2026, 1, 1)
+    rows = [_cf("Interest", end, payable=100), _cf("Full Redemption", end, payable=1100)]
+    s = schedule.build("X", rows, _terms(redemption_date=end, day_count_convention="Actual/365",
+                                          redemption_premium_details="10% premium"), today=start)
+    assert sum(f.amount or 0 for f in s.flows) == 1200
+    assert yields.exact_ytm(1000, s, start) == 20
+
+
+def test_cumulative_buyback_options_are_not_mandatory_cashflows():
+    from backend.analytics import yields
+
+    rows = []
+    for year, amount in [(2018, 3995), (2021, 6569), (2023, 8682), (2026, 12596)]:
+        rows.extend([_cf("Interest", date(year, 12, 12), payable=amount),
+                     _cf("Full Redemption", date(year, 12, 12), payable=5000)])
+    s = schedule.build("X", rows, _terms(face_value=5000, coupon_rate=8.75,
+                                          allotment_date=date(2011, 12, 12), redemption_date=date(2026, 12, 12),
+                                          redemption_type="Partial Redemption By Quantity",
+                                          interest_payment_frequency="cumulative along with redemption/buyback"),
+                       today=date(2016, 1, 1))
+    assert len(s.flows) == 8
+    assert sum(f.optional for f in s.flows) == 6
+    assert sum(f.amount or 0 for f in s.future_flows(date(2016, 1, 1))) == 17596
+    assert s.principal_at(date(2026, 12, 12), date(2026, 9, 11)) == 5000
+    assert yields.exact_ytm(16840, s, date(2026, 9, 11)) == 19.03
+    before = deepcopy(s.flows)
+    assert yields.yield_to_call(5000, s, [date(2018, 12, 12)], date(2011, 12, 12)) == pytest.approx(8.75, abs=0.01)
+    assert s.flows == before
+
+
+def test_partial_face_repayments_are_not_optional_exits():
+    rows = [_cf("Partial Redemption", date(2025, 1, 1), redeem=500),
+            _cf("Interest", date(2027, 1, 1), payable=50),
+            _cf("Partial Redemption", date(2027, 1, 1), redeem=500)]
+    s = schedule.build("X", rows, _terms(face_value=500, redemption_date=date(2027, 1, 1),
+                                          redemption_type="Partial Redemption By Face Value"), today=TODAY)
+    assert not any(f.optional for f in s.flows)

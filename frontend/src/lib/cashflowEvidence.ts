@@ -83,6 +83,8 @@ export function evidenceMatchesSchedule(
 }
 
 export function excludedReason(flow: Cashflow, asOf: string): string | null {
+  if (flow.optional)
+    return "Optional exit scenario, not a receipt; excluded from the hold-to-maturity projection.";
   if (flow.future || (flow.payment_date ?? flow.due_date) < asOf) return null;
   return flow.record_date && flow.record_date <= asOf
     ? "Record date has passed — a buyer today would not receive this payment; existing holders still may."

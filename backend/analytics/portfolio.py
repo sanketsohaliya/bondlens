@@ -128,10 +128,10 @@ def receiving_units(lots: list[dict[str, Any]], flow: Flow, *,
 
 def yield_on_cost(lots: list[dict[str, Any]], flows: list[Flow],
                   today: date) -> float | None:
-    """True yield on the user's money (XIRR %): lot purchases out at
-    their real dates and prices, coupons received since in (record-date
-    accurate per lot), all future flows in. None without future flows
-    or when any lot lacks price/date (legacy rows)."""
+    """Projected effective-annual XIRR: dated purchases and scheduled
+    eligible cashflows under the hold-to-maturity scenario. Optional exit
+    payouts are excluded; past scheduled dates are not payment evidence.
+    None without future flows or when any lot lacks price/date."""
     if not lots or not flows:
         return None
     if any(lot.get("price") is None or lot.get("purchase_date") is None

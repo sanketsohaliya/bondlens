@@ -96,6 +96,31 @@ describe("cashflow schedule presentation", () => {
     expect(html).not.toContain("Past");
   });
 
+  it("does not present an incomplete schedule subtotal as a complete future payout", () => {
+    const html = renderToStaticMarkup(
+      <CashflowSchedule bond={{ ...bond, future_total_per_unit: null }} asOf="2026-09-11" />,
+    );
+    expect(html).toContain("Future (total unavailable)");
+    expect(html).not.toContain("Future (₹0");
+  });
+
+  it("marks past buyback alternatives as optional rather than received payments", () => {
+    const alternative: Cashflow = {
+      ...flow,
+      event: "redemption",
+      due_date: "2025-09-01",
+      payment_date: "2025-09-01",
+      record_date: null,
+      future: false,
+      optional: true,
+    };
+    const html = renderToStaticMarkup(
+      <CashflowSchedule bond={{ ...bond, cashflows: [alternative] }} asOf="2026-09-11" />,
+    );
+    expect(html).toContain(">optional<");
+    expect(html).toContain("not a receipt");
+  });
+
   it("explains normalized combined payments without calling them estimates", () => {
     const payment: Cashflow = {
       ...receivable,

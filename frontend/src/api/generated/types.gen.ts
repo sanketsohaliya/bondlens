@@ -543,7 +543,7 @@ export type BondDetail = {
     /**
      * Future Total Per Unit
      */
-    future_total_per_unit: number;
+    future_total_per_unit: number | null;
     next_payment: Cashflow | null;
     /**
      * Listings
@@ -635,6 +635,10 @@ export type Cashflow = {
      * Future
      */
     future: boolean;
+    /**
+     * Optional
+     */
+    optional?: boolean;
     /**
      * Adjustments
      */
@@ -1630,6 +1634,14 @@ export type PortfolioPosition = {
      * Yield On Cost
      */
     yield_on_cost: number | null;
+    /**
+     * Ytm Effective
+     */
+    ytm_effective?: number | null;
+    /**
+     * Yield On Cost Notes
+     */
+    yield_on_cost_notes?: Array<string>;
     /**
      * Units
      */

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { PortfolioMonth, PortfolioPosition } from "../api/types";
-import { bondIncome, isPastMonth, monthGrid, weights } from "./portfolio";
+import { bondIncome, isPastMonth, monthGrid, portfolioYieldSpread, weights } from "./portfolio";
 
 const cf = (month: string, interest: number, principal = 0): PortfolioMonth => ({
   month,
@@ -86,6 +86,25 @@ const pos = (isin: string, value: number | null, over: Partial<PortfolioPosition
     value,
     ...over,
   }) as PortfolioPosition;
+
+describe("portfolio yield comparison", () => {
+  it("compares effective annual rates, not nominal YTM against XIRR", () => {
+    const original = ((1 + 0.1 / 12) ** 12 - 1) * 100;
+    const current = ((1 + 0.102 / 12) ** 12 - 1) * 100;
+    const p = pos("A", 1000, { ytm: 10.2, ytm_effective: current, yield_on_cost: original });
+    expect(portfolioYieldSpread(p)).toBeCloseTo(0.219315947, 7);
+  });
+
+  it("does not fall back to an unconverted nominal rate", () => {
+    expect(portfolioYieldSpread(pos("A", 1000, { ytm: 10.2, yield_on_cost: 10.47 }))).toBeNull();
+    expect(
+      portfolioYieldSpread(pos("A", 1000, { ytm_effective: 10.69, yield_on_cost: null })),
+    ).toBeNull();
+    expect(
+      portfolioYieldSpread(pos("A", 1000, { ytm_effective: Number.NaN, yield_on_cost: 10 })),
+    ).toBeNull();
+  });
+});
 
 describe("weights", () => {
   it("computes percentage weights by issuer", () => {

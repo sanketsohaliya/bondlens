@@ -6,10 +6,11 @@ payment frequency (falls back to annual when the frequency is unknown).
 """
 import math
 import re
+from dataclasses import replace
 from datetime import date, datetime
 
 from . import daycount
-from .schedule import Flow, Schedule
+from .schedule import Flow, Schedule, _months_back
 
 # Solutions outside this band almost always mean defective input data —
 # better to show nothing than a wrong number.
@@ -116,14 +117,18 @@ def yield_to_call(price: float | None, sched: Schedule,
     if not price or not sched.face_value or not sched.flows or sched.call_price_unsupported:
         return None
     cd = next((d for d in sorted(set(call_dates)) if today < d and d.year < 2500), None)
-    if cd is None or sched.pricing_issues(today, until=cd):
+    if cd is None:
+        return None
+    outstanding = _outstanding_at(sched, cd, today)
+    sched = replace(sched, flows=[replace(f, optional=False) if f.optional and f.due_date == cd else f
+                                 for f in sched.flows])
+    if sched.pricing_issues(today, until=cd):
         return None
     if sched.maturity_date is not None and cd > sched.maturity_date:
         return None
     coupons = [f for f in sched.flows if f.event == "interest"]
     if coupons and not any(f.due_date == cd for f in coupons):
         return None
-    outstanding = _outstanding_at(sched, cd, today)
     if outstanding is None or outstanding <= 0:
         return None
     same_date_redemptions = [f for f in sched.flows if f.event == "redemption" and f.due_date == cd]
@@ -319,15 +324,20 @@ def approx_ytm(price: float, coupon_pct: float | None, face_value: float | None,
             or maturity is None or maturity <= today or maturity.year >= 2500):
         return None
     m = periods_per_year or 1
+    if m not in (1, 2, 4, 12):
+        return None
     years = (maturity - today).days / 365.0
-    per_coupon = face_value * (coupon_pct or 0.0) / 100.0 / m
+    per_coupon = face_value * coupon_pct / 100.0 / m
     tv = []
-    t = years
-    # Stop half a period early: a fractional remainder would otherwise
-    # synthesize a coupon paying out almost immediately.
-    while t > 0.5 / m:
+    index = 0
+    # A near-term coupon needs actual accrual/entitlement information;
+    # withhold the approximation rather than silently omitting that coupon.
+    while coupon_pct and (due := _months_back(maturity, index * (12 // m))) > today:
+        t = (due - today).days / 365.0
+        if t <= 0.5 / m:
+            return None
         tv.append((t, per_coupon))
-        t -= 1.0 / m
+        index += 1
     if not tv:
         tv = [(years, 0.0)]
     tv[0] = (years, tv[0][1] + face_value)  # redemption rides the last flow
@@ -339,9 +349,10 @@ def fallback_ytm(price: float, sched: Schedule, terms: dict | None,
                  today: date) -> float | None:
     terms = terms or {}
     if (sched.pricing_issues(today) or sched.perpetual or sched.shape == "perpetual"
-            or sched.flows
+            or sched.flows or sched.call_price_unsupported
+            or (sched.coupon_rate and sched.periods_per_year not in (1, 2, 4, 12))
             or str(terms.get("coupon_basis") or "").lower().startswith("variable")
-            or "float" in str(terms.get("coupon_type") or "").lower()):
+            or any(word in str(terms.get("coupon_type") or "").lower() for word in ("float", "compound"))):
         return None
     return approx_ytm(price, sched.coupon_rate, sched.face_value, sched.maturity_date,
                       sched.periods_per_year or 1, today)
@@ -353,6 +364,21 @@ def call_terms_unresolved(terms: dict | None) -> bool:
     text = str(terms.get("call_specified_dates") or "")
     return not parse_call_dates(terms) or bool(re.search(
         r"thereafter|therafter|anniversary|any\s*time|on\s+or\s+after", text, re.I))
+
+
+def effective_annual(nominal_pct: float | None, periods_per_year: int | None) -> float | None:
+    if (nominal_pct is None or not math.isfinite(nominal_pct)
+            or periods_per_year not in (1, 2, 4, 12)):
+        return None
+    assert periods_per_year is not None
+    periodic = nominal_pct / 100 / periods_per_year
+    if periodic <= -1:
+        return None
+    try:
+        result = math.expm1(periods_per_year * math.log1p(periodic)) * 100
+    except OverflowError:
+        return None
+    return result if math.isfinite(result) else None
 
 
 def current_yield(price: float | None, coupon_pct: float | None,

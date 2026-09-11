@@ -26,6 +26,7 @@ import {
   allDatesPast,
   isPastMonth,
   monthGrid,
+  portfolioYieldSpread,
   usePortfolio,
   type WeightBy,
   weights,
@@ -292,7 +293,7 @@ const HOLDINGS_COLS: Array<{ label: string; key: HoldingsSortKey | null; right?:
   { label: "Invested", key: "invested", right: true },
   { label: "Value", key: "value", right: true },
   { label: "P&L", key: "gain", right: true },
-  { label: "YTM @ Cost", key: "yield_on_cost", right: true },
+  { label: "Projected XIRR", key: "yield_on_cost", right: true },
   { label: "YTM @ LTP", key: "ytm", right: true },
   { label: "Maturity", key: "maturity" },
   { label: "Next payment", key: "next_payment" },
@@ -425,9 +426,9 @@ function PositionRow({
           ? `held ${heldDays}d`
           : `held ${fmt.yearsMonths(heldDays / 365.25)}`;
   const weightPct = totalValue > 0 && p.value != null ? (p.value / totalValue) * 100 : null;
-  // Market yield vs the user's locked yield: is adding today better or
-  // worse than the original entry?
-  const spread = p.ytm != null && p.yield_on_cost != null ? p.ytm - p.yield_on_cost : null;
+  // Compare effective annual rates, not nominal YTM against XIRR.
+  // Different dates and cashflows mean this is not an entry recommendation.
+  const spread = portfolioYieldSpread(p);
   return (
     <>
       <tr
@@ -516,27 +517,34 @@ function PositionRow({
             </span>
           )}
         </td>
-        {/* The yield actually locked: XIRR over real buy dates/prices,
-            coupons received and future flows. */}
+        {/* Projected XIRR over dated purchases and scheduled cashflows;
+            optional exit payouts are not assumed to have been received. */}
         <td
           className={`${TD} text-right tabular-nums`}
-          title="True yield on your money (XIRR): actual buy dates and prices, coupons received, future flows"
+          title={
+            p.yield_on_cost_notes?.join("; ") ||
+            "Projected effective-annual XIRR from scheduled cashflows, not verified receipts"
+          }
         >
           {fmt.pct(p.yield_on_cost)}
         </td>
         <td className={`${TD} text-right tabular-nums`}>
-          <div>{fmt.pct(p.ytm)}</div>
+          <div
+            title={
+              p.ytm_effective != null
+                ? `${fmt.pct(p.ytm_effective)} effective annual using the model's compounding frequency`
+                : undefined
+            }
+          >
+            {fmt.pct(p.ytm)}
+          </div>
           {spread != null && Math.abs(spread) > 0.05 && (
             <div
-              className={`text-[10px] ${spread > 0 ? "text-emerald-500/80" : "text-red-400/70"}`}
-              title={
-                spread > 0
-                  ? `Market YTM is ${spread.toFixed(2)}pp above your locked yield — adding today beats your original entry`
-                  : `Market yields ${(-spread).toFixed(2)}pp less than you locked — your entry beat today's market`
-              }
+              className="text-[10px] text-zinc-500"
+              title="Effective-annual market yield minus projected cost XIRR. Dates, day-count conventions and cashflows can differ; not a buy/sell signal."
             >
               {spread > 0 ? "+" : "−"}
-              {Math.abs(spread).toFixed(2)}pp
+              {Math.abs(spread).toFixed(2)}pp effective
             </div>
           )}
         </td>
@@ -590,10 +598,10 @@ function IncomeBanner({ income }: { income: PortfolioIncome }) {
   return (
     <div className="flex flex-wrap items-center gap-x-6 gap-y-2 border-b border-zinc-800 bg-zinc-900/30 px-4 py-2">
       <IncomeItem
-        label="Received so far"
+        label="Past scheduled"
         value={fmt.inr(received)}
         valueClass="text-zinc-100"
-        tip={`Interest ${fmt.inr(income.received_interest)} · Principal ${fmt.inr(income.received_principal)}`}
+        tip={`Scheduled interest ${fmt.inr(income.received_interest)} · Principal ${fmt.inr(income.received_principal)}. Excludes optional exits; not confirmation of bank receipt.`}
       />
       {/* The split only earns its place when both parts are non-zero;
           "principal ₹0" is noise. Colours match the chart legend. */}
@@ -793,7 +801,7 @@ function CashflowChart({
         })
         .join("");
       el.innerHTML =
-        `<div style="color:#71717a;margin-bottom:2px">${d.toLocaleDateString("en-IN", { month: "short", year: "numeric" })}${isPastMonth(cf.month) ? " · received" : ""}${cf.estimated ? " (≈ est.)" : ""}</div>` +
+        `<div style="color:#71717a;margin-bottom:2px">${d.toLocaleDateString("en-IN", { month: "short", year: "numeric" })}${isPastMonth(cf.month) ? " · past scheduled" : ""}${cf.estimated ? " (≈ est.)" : ""}</div>` +
         `<table><thead><tr style="color:#71717a">` +
         `<td style="padding-right:10px">Bond</td>` +
         `<td style="padding-right:2px">ISIN</td>` +
@@ -927,7 +935,7 @@ function MonthPopover({
       >
         <div className="text-zinc-500 mb-1">
           {MONTHS[monthIdx]} {year} · {fmt.inr(m.interest + m.principal)}
-          {isPastMonth(m.month) && <span className="text-zinc-600"> · received</span>}
+          {isPastMonth(m.month) && <span className="text-zinc-600"> · past scheduled</span>}
           {m.estimated && " (≈ est.)"}
         </div>
         <table className="tabular-nums">
@@ -951,7 +959,12 @@ function MonthPopover({
               // month itself is still running.
               const banked = past || allDatesPast(b.dates);
               return (
-                <tr key={b.isin} title={banked && !past ? "Already received" : undefined}>
+                <tr
+                  key={b.isin}
+                  title={
+                    banked && !past ? "Scheduled date has passed; receipt not verified" : undefined
+                  }
+                >
                   <td className={`pr-3 ${banked ? "text-zinc-500" : labelCls}`}>
                     {b.estimated && <span className="text-zinc-500">≈</span>}
                     {pinned && onSelectBond ? (

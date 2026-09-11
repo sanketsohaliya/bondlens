@@ -46,6 +46,9 @@ class Flow:
     # payment_date; can precede the due date across weekends/holidays).
     payment_date: date | None = None
     adjustments: list[dict] = field(default_factory=list)
+    principal_reported: bool = False
+    full_redemption: bool = False
+    optional: bool = False
 
     def adjust(self, amount: float | None, kind: str, reason: str, *, estimated: bool = True) -> None:
         self.adjustments.append({"kind": kind, "previous_amount": self.amount,
@@ -62,7 +65,7 @@ class Flow:
         """True if a buyer settling today still receives this flow (record
         date, falling back to the money-lands date, hasn't passed). A
         coupon already paid early is gone even before its due date."""
-        if self.effective_date <= today:
+        if self.optional or self.effective_date <= today:
             return False
         if self.record_date is not None and self.record_date <= today:
             return False
@@ -76,6 +79,8 @@ class Flow:
         record date settles too late — same convention as
         receivable_by_buyer. Lots without a purchase date count as held
         all along."""
+        if self.optional:
+            return False
         if purchase_date is None:
             return True
         if self.record_date is not None:
@@ -118,7 +123,7 @@ class Schedule:
                 if f.amount and f.receivable_by_buyer(today)]
 
     def principal_at(self, on: date, today: date) -> float | None:
-        redemptions = [f for f in self.flows if f.event == "redemption" and f.due_date.year < 2500]
+        redemptions = [f for f in self.flows if f.event == "redemption" and not f.optional and f.due_date.year < 2500]
         base = _principal_base(self.face_value, redemptions, today)
         if base is None:
             return None
@@ -128,10 +133,10 @@ class Schedule:
         return any(f.estimated for f in self.future_flows(today)
                    if until is None or f.due_date <= until)
 
-    def pricing_issues(self, today: date, until: date | None = None) -> list[str]:
+    def pricing_issues(self, today: date, until: date | None = None, *, check_convention: bool = True) -> list[str]:
         issues = [message for due, message in self.input_issues
                   if due is None or (due >= today and (until is None or due <= until))]
-        if self.day_count not in daycount.SUPPORTED:
+        if check_convention and self.day_count not in daycount.SUPPORTED:
             issues.append("Unsupported day-count convention; yield withheld")
         relevant = [f for f in self.flows if (until is None or f.due_date <= until)
                     and f.receivable_by_buyer(today)]
@@ -141,17 +146,11 @@ class Schedule:
                or (f.record_date is not None and f.record_date > f.effective_date)
                for f in relevant):
             issues.append("Invalid cashflow dates; yield withheld")
-        dates = sorted({f.due_date for f in self.flows if f.event == "interest"
+        dates = sorted({f.due_date for f in self.flows if f.event == "interest" and not f.optional
                         and f.amount is not None and f.due_date.year < 2500
                         and (until is None or f.due_date <= until)})
-        redemptions = [f for f in self.flows if f.event == "redemption" and f.amount
+        redemptions = [f for f in self.flows if f.event == "redemption" and not f.optional and f.amount
                        and f.due_date.year < 2500]
-        combined = (self.face_value is not None and len(redemptions) > 1
-                    and sum(f.amount or 0 for f in redemptions) > self.face_value * (1 + _FACE_TOL)
-                    and not any(f.due_date < today for f in redemptions))
-        if combined:
-            dates = sorted(set(dates) | {f.due_date for f in redemptions
-                                        if until is None or f.due_date <= until})
         end = until or max((f.due_date for f in redemptions), default=self.maturity_date)
         periodic = (self.periods_per_year in (1, 2, 4, 12)
                     and (self.coupon_rate or (dates and self.shape not in ("zero_coupon", "cumulative")))
@@ -243,7 +242,7 @@ def build(isin: str, cashflows: list[dict], terms: dict | None,
     premium = str(terms.get("redemption_premium_details") or "").strip().lower()
     call_text = str(terms.get("call_specified_dates") or "").lower()
     sched.call_price_unsupported = (
-        premium not in ("", "-", "na", "n.a.", "not applicable", "nil", "none", "0", "0%")
+        premium not in ("", "-", "na", "n.a.", "not applicable", "nil", "none", "no", "0", "0.0", "0.00", "0%")
         or any(word in call_text for word in ("premium", "make whole", "make-whole")))
     for row in cashflows:
         due = row.get("due_date")
@@ -290,9 +289,10 @@ def build(isin: str, cashflows: list[dict], terms: dict | None,
             sched.warnings.append("perpetual with no published schedule")
         return sched
 
+    _mark_optional_exits(sched, flows, terms)
     terminal_ambiguous = _split_terminal_payment(sched, flows, terms)
-    interest = [f for f in flows if f.event == "interest"]
-    redemptions = [f for f in flows if f.event == "redemption"]
+    interest = [f for f in flows if f.event == "interest" and not f.optional]
+    redemptions = [f for f in flows if f.event == "redemption" and not f.optional]
 
     # --- repair missing redemption information -----------------------------
     # a) single redemption row with no amount -> the face value.
@@ -383,7 +383,7 @@ def build(isin: str, cashflows: list[dict], terms: dict | None,
     # principal" exceeds what was ever lent. Same dated totals, so YTM is
     # untouched. Runs after rescaling so amounts are per-unit; single
     # redemptions only (staggered schedules redeem face in parts).
-    if (face and len(redemptions) == 1 and not sched.input_issues
+    if (face and len(redemptions) == 1 and not sched.input_issues and not sched.call_price_unsupported
             and (amt := redemptions[0].amount) is not None
             and amt > face * (1.0 + _FACE_TOL)):
         r = redemptions[0]
@@ -409,7 +409,7 @@ def build(isin: str, cashflows: list[dict], terms: dict | None,
             split.adjust(excess, "redemption_interest_split", reason, estimated=False)
             r.adjust(face, "redemption_interest_split", reason, estimated=False)
             flows.append(split)
-            interest = [f for f in flows if f.event == "interest"]
+            interest = [f for f in flows if f.event == "interest" and not f.optional]
             sched.warnings.append(
                 f"redemption exceeded face by {excess:,.2f} — "
                 "reclassified as interest")
@@ -421,6 +421,11 @@ def build(isin: str, cashflows: list[dict], terms: dict | None,
         if name:
             sched.frequency = sched.frequency or name
             sched.periods_per_year = ppy
+
+    if _split_combined_installments(sched, flows, interest, redemptions, fixed_coupon, today):
+        interest = [f for f in flows if f.event == "interest" and not f.optional]
+        redemptions = [f for f in flows if f.event == "redemption" and not f.optional]
+        sched.redemption_matches_face = True
 
     # --- repair rate-filed-as-amount interest rows -------------------------
     # Some issuers file the coupon RATE into every amount field
@@ -514,7 +519,7 @@ def build(isin: str, cashflows: list[dict], terms: dict | None,
                     synthesized.append(f)
                 previous = due
             flows.extend(synthesized)
-            interest = [f for f in flows if f.event == "interest"]
+            interest = [f for f in flows if f.event == "interest" and not f.optional]
             sched.amounts_estimated = bool(synthesized) or sched.amounts_estimated
             sched.warnings.append(
                 f"{len(synthesized)} future coupon(s) synthesized from terms "
@@ -548,6 +553,85 @@ def build(isin: str, cashflows: list[dict], terms: dict | None,
     return sched
 
 
+def _mark_optional_exits(sched: Schedule, flows: list[Flow], terms: dict) -> None:
+    face, maturity = sched.face_value, sched.maturity_date
+    if not face or maturity is None or "face value" in str(terms.get("redemption_type") or "").lower():
+        return
+    option_terms = (sched.frequency == "cumulative"
+                    or any(str(terms.get(k) or "").strip().lower() == "yes" for k in ("call_indicator", "put_indicator")))
+    redemptions = [f for f in flows if f.full_redemption and f.amount is not None
+                   and math.isclose(f.amount, face, rel_tol=1e-6, abs_tol=0.01)]
+    dates = {f.due_date for f in redemptions}
+    if not option_terms or len(dates) < 2 or maturity not in dates or max(dates) != maturity:
+        return
+    optional_dates = dates - {maturity}
+    for f in flows:
+        if f.due_date in optional_dates and (f in redemptions or (sched.frequency == "cumulative" and f.event == "interest")):
+            f.optional = True
+            f.adjust(f.amount, "optional_redemption_scenario",
+                     "Alternative full-exit payout; excluded from hold-to-maturity cashflows, not treated as a receipt", estimated=False)
+    sched.warnings.append("Optional full-redemption scenarios are excluded from hold-to-maturity receipts and yields")
+
+
+def _split_combined_installments(sched: Schedule, flows: list[Flow], interest: list[Flow],
+                                 redemptions: list[Flow], fixed_coupon: bool, today: date) -> bool:
+    face, coupon, m = sched.face_value, sched.coupon_rate, sched.periods_per_year
+    if (not fixed_coupon or not face or not coupon or m not in (1, 2, 4, 12)
+            or sched.call_price_unsupported or sched.input_issues or len(redemptions) < 2
+            or sched.day_count not in daycount.SUPPORTED
+            or any(f.principal_reported or f.due_date <= today or f.amount is None for f in redemptions)
+            or sum(f.amount or 0 for f in redemptions) <= face):
+        return False
+    ordered = sorted(redemptions, key=lambda f: f.due_date)
+    if ordered[-1].due_date != sched.maturity_date:
+        return False
+    previous = max((f.due_date for f in interest if f.due_date < ordered[0].due_date), default=sched.allotment_date)
+    if previous is None:
+        return False
+    assert m is not None
+    outstanding = face
+    plan = []
+    tolerance = max(0.02, face * 0.0001)
+    for index, f in enumerate(ordered):
+        assert f.amount is not None
+        previous = max(previous, max((i.due_date for i in interest if i.due_date < f.due_date), default=previous))
+        fraction = daycount.year_frac(previous, f.due_date, sched.day_count)
+        if not 0 < fraction <= 1.5 / m:
+            return False
+        expected_coupon = round(outstanding * coupon / 100 * fraction, 2)
+        separate_coupon = any(i.due_date == f.due_date for i in interest)
+        principal = (f.amount if separate_coupon else
+                     round(f.amount - expected_coupon, 2) if index < len(ordered) - 1 else round(outstanding, 2))
+        if -0.02 <= principal < 0:
+            principal = 0.0
+        component = f.amount - principal
+        allowed_error = max(0.02, min(tolerance, expected_coupon * 0.01))
+        if (principal < 0 or principal > outstanding or component < 0
+                or (not separate_coupon and (component <= 0 or abs(component - expected_coupon) > allowed_error))):
+            return False
+        plan.append((f, principal, component))
+        outstanding = round(outstanding - principal, 2)
+        previous = f.due_date
+    if outstanding != 0:
+        return False
+    for f, principal, component in plan:
+        if component == 0:
+            continue
+        reason = "Interest component inferred from fixed-rate accrual and a fully reconciled principal timeline; published payment total unchanged"
+        if principal == 0:
+            f.event = "interest"
+            f.full_redemption = False
+            f.adjust(f.amount, "coupon_event_reclassified", reason)
+        else:
+            part = Flow("interest", f.due_date, f.record_date, f.amount, payment_date=f.payment_date,
+                        adjustments=list(f.adjustments))
+            part.adjust(component, "combined_installment_split", reason)
+            f.adjust(principal, "combined_installment_split", reason)
+            flows.append(part)
+    sched.warnings.append("Combined installment components inferred from coupon accrual and principal reconciliation; all cash totals preserved")
+    return True
+
+
 def _split_terminal_payment(sched: Schedule, flows: list[Flow], terms: dict) -> bool:
     face, coupon, maturity = sched.face_value, sched.coupon_rate, sched.maturity_date
     if not face or sched.perpetual or any(f.event == "redemption" for f in flows):
@@ -562,7 +646,7 @@ def _split_terminal_payment(sched: Schedule, flows: list[Flow], terms: dict) -> 
     expected = (_coupon_amount(previous, terminal.due_date, [], face, coupon, sched.day_count, terminal.due_date)
                 if coupon and coupon > 0 else None)
     basis = str(terms.get("coupon_basis") or "").lower()
-    supported = (len(candidates) == 1 and maturity == terminal.due_date
+    supported = (len(candidates) == 1 and maturity == terminal.due_date and not sched.call_price_unsupported
                  and sched.periods_per_year in (1, 2, 4, 12)
                  and "full" in str(terms.get("redemption_type") or "").lower()
                  and not basis.startswith("variable") and "zero" not in basis
@@ -646,7 +730,9 @@ def _normalize_rows(cashflows: list[dict]) -> list[Flow]:
             continue
         flows.append(Flow(event=event, due_date=due,
                           record_date=r.get("record_date"), amount=amount,
-                          payment_date=r.get("payment_date")))
+                          payment_date=r.get("payment_date"),
+                          principal_reported=event == "redemption" and _num(r.get("amount_redeem")) is not None,
+                          full_redemption=event == "redemption" and "full" in event_raw))
     return flows
 
 

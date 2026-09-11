@@ -99,6 +99,16 @@ export function bondIncome(
   };
 }
 
+export function portfolioYieldSpread(
+  position: Pick<PortfolioPosition, "ytm_effective" | "yield_on_cost">,
+): number | null {
+  const market = position.ytm_effective;
+  const cost = position.yield_on_cost;
+  if (market == null || cost == null || !Number.isFinite(market) || !Number.isFinite(cost))
+    return null;
+  return market - cost;
+}
+
 export interface Slice {
   label: string;
   value: number;
