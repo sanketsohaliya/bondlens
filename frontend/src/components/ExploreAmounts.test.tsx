@@ -31,14 +31,32 @@ describe("explore amount cells", () => {
     expect(html).toContain('type="button"');
   });
 
-  it("withholds stale amounts and count fractions while preserving other payout information", () => {
+  it("keeps an overnight snapshot visible until the bond's next boundary", () => {
     const html = renderToStaticMarkup(
-      <PayoutCell bond={bond} today="2026-09-12" onOpen={() => {}} />,
+      <PayoutCell
+        bond={{ ...bond, payout_valid_until: "2026-09-18" }}
+        today="2026-09-12"
+        onOpen={() => {}}
+      />,
+    );
+    expect(html).toContain("~₹12,560");
+    expect(html).toContain("18/20 left");
+  });
+
+  it("withholds amount and count once a boundary has passed, showing structure only", () => {
+    const html = renderToStaticMarkup(
+      <PayoutCell
+        bond={{ ...bond, payout_valid_until: "2026-09-12" }}
+        today="2026-09-12"
+        onOpen={() => {}}
+      />,
     );
     expect(html).not.toContain("12,560");
     expect(html).not.toContain("18/20 left");
+    expect(html).not.toContain("–");
     expect(html).toContain("Staggered");
     expect(html).toContain("monthly");
+    expect(html).toContain("07:00 IST refresh");
   });
 
   it("renders no dangling dash when the payout amount is unavailable", () => {

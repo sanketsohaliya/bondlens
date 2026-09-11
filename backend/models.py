@@ -60,6 +60,7 @@ class Bond(BaseModel):
     payout_total_per_unit: float | None = None
     payout_total_state: Literal["known", "estimated", "incomplete", "open_ended", "unavailable", "stale"] | None = None
     payout_as_of: date | None = None
+    payout_valid_until: date | None = None
     current_yield: float | None
     duration: float | None
     credit_rating: str | None

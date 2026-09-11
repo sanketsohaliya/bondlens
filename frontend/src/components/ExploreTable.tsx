@@ -55,6 +55,7 @@ type PayoutBond = Pick<
   | "payout_total_per_unit"
   | "payout_total_state"
   | "payout_as_of"
+  | "payout_valid_until"
 >;
 
 export function PayoutCell({

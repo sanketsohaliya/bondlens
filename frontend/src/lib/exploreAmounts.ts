@@ -3,12 +3,21 @@ import { fmt } from "../api/client";
 import type { AskYtm, Bond } from "../api/types";
 import { calendarAsOf, calendarDate } from "./cashflowEvidence";
 
-type PayoutData = Pick<Bond, "payout_total_per_unit" | "payout_total_state" | "payout_as_of">;
+type PayoutData = Pick<
+  Bond,
+  "payout_total_per_unit" | "payout_total_state" | "payout_as_of" | "payout_valid_until"
+>;
 
+/** Mirrors backend `payout_fields`: a snapshot is stale only once a payment or
+ * record date has fallen between its `as_of` and today — before that the buyer
+ * total is provably unchanged, so an overnight snapshot stays visible across
+ * the IST-midnight rollover instead of blanking until the 07:00 refresh. */
 export function payoutDisplay(bond: PayoutData, today: string) {
   let state = bond.payout_total_state ?? "unavailable";
-  if (bond.payout_as_of && bond.payout_as_of !== today) state = "stale";
-  else if (!bond.payout_as_of) state = "unavailable";
+  const asOf = bond.payout_as_of;
+  const validUntil = bond.payout_valid_until;
+  if (!asOf) state = "unavailable";
+  else if (asOf < today && validUntil != null && today >= validUntil) state = "stale";
   const amount = bond.payout_total_per_unit;
   if (
     ["known", "estimated"].includes(state) &&
@@ -25,7 +34,7 @@ export function payoutDisplay(bond: PayoutData, today: string) {
     open_ended: "No finite lifetime payout total for a perpetual or open-ended schedule.",
     unavailable: "Payout summary is not available yet. Open Cashflows for the schedule.",
     stale:
-      "Payout snapshot is out of date; amount and remaining-count fraction are withheld until refreshed.",
+      "Payout updates after the 07:00 IST refresh; a payment or record date has passed since the last snapshot.",
   }[state];
   const details = [reason];
   if (usable && amount != null)

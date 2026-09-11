@@ -7,6 +7,7 @@ const payout = {
   payout_total_per_unit: 12560,
   payout_total_state: "known" as const,
   payout_as_of: "2026-09-11",
+  payout_valid_until: "2026-09-18",
 };
 
 afterEach(() => {
@@ -49,11 +50,36 @@ describe("explore amounts", () => {
     expect(payoutDisplay(payout, "2026-09-11").detail).toContain("per unit");
   });
 
-  it("does not show an old cached total or its future-count fraction", () => {
-    const stale = payoutDisplay(payout, "2026-09-12");
-    expect(stale.label).toBeNull();
-    expect(stale.showCount).toBe(false);
-    expect(stale.detail).toContain("snapshot");
+  it("keeps an overnight snapshot until the bond's next payment or record date", () => {
+    // Midnight rollover on an open tab: today flips 11 → 12 Sept; boundary is 18 Sept.
+    for (const day of ["2026-09-12", "2026-09-17"]) {
+      const kept = payoutDisplay(payout, day);
+      expect(kept.label).toBe("₹12,560");
+      expect(kept.showCount).toBe(true);
+      expect(kept.state).toBe("known");
+    }
+    // No boundary known (pre-migration row or nothing ahead) → never stale.
+    expect(payoutDisplay({ ...payout, payout_valid_until: null }, "2026-12-01").label).toBe(
+      "₹12,560",
+    );
+    expect(payoutDisplay({ ...payout, payout_valid_until: undefined }, "2026-12-01").label).toBe(
+      "₹12,560",
+    );
+    // Boundary is today and snapshot is today → compute already accounted for it.
+    expect(payoutDisplay({ ...payout, payout_valid_until: "2026-09-11" }, "2026-09-11").label).toBe(
+      "₹12,560",
+    );
+  });
+
+  it("withholds the total and count once a boundary has passed since the snapshot", () => {
+    for (const day of ["2026-09-18", "2026-09-25"]) {
+      const stale = payoutDisplay(payout, day);
+      expect(stale.label).toBeNull();
+      expect(stale.showCount).toBe(false);
+      expect(stale.state).toBe("stale");
+      expect(stale.detail).toContain("07:00");
+      expect(stale.detail).toContain("record date");
+    }
     for (const state of ["incomplete", "open_ended", "unavailable", "stale"] as const) {
       expect(
         payoutDisplay({ ...payout, payout_total_state: state }, "2026-09-11").label,

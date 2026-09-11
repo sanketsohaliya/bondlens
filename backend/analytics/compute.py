@@ -24,7 +24,7 @@ _COLS: list[LiteralString] = [
     "nse_symbol", "nse_series", "bse_scrip_id", "coupon", "face_value",
     "coupon_basis", "frequency", "secured", "tax_free", "perpetual",
     "maturity_date", "schedule_shape", "future_flows", "total_flows",
-    "payout_total_snapshot", "payout_state_snapshot", "payout_as_of",
+    "payout_total_snapshot", "payout_state_snapshot", "payout_as_of", "payout_valid_until",
     "ltp", "trade_date", "exchange",
     "volume", "turnover", "num_trades", "nse_turnover", "bse_turnover",
     "prev_turnover", "prev_ltp",
@@ -93,7 +93,15 @@ def payout_summary(isin: str, cashflows: list[dict], terms: dict | None, today: 
     terms = terms or {}
     sched = schedule.build(isin, cashflows, terms, today=today)
     eligible = [f for f in sched.flows if f.receivable_by_buyer(today)]
+    # The buyer total only changes when `today` reaches a flow's effective
+    # (payment/due) date or record date — the two dates Flow.receivable_by_buyer
+    # tests. Record the earliest such date after today so the read path can
+    # keep serving this snapshot until then instead of blanking at midnight.
+    # Keep in step with receivable_by_buyer if that predicate ever changes.
+    boundaries = [d for f in sched.flows for d in (f.effective_date, f.record_date)
+                  if d is not None and today < d and d.year < 2500]
     result = {"payout_total_snapshot": None, "payout_state_snapshot": "unavailable", "payout_as_of": today,
+              "payout_valid_until": min(boundaries) if boundaries else None,
               "future_flows": len(sched.future_flows(today)), "total_flows": len(sched.flows)}
     maturity = terms.get("redemption_date")
     if terms.get("perpetual") or sched.shape == "perpetual" or (maturity and maturity.year >= 2500):

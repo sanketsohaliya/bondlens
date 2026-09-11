@@ -121,18 +121,50 @@ def test_invalid_record_date_sentinel_does_not_establish_buyer_entitlement():
     assert payout_summary(ISIN, data, TERMS, TODAY)["payout_state_snapshot"] == "incomplete"
 
 
-def test_snapshot_reader_hides_stale_values_without_mutating_the_snapshot():
+def test_snapshot_records_the_next_boundary_that_could_change_the_buyer_total():
+    # rows(): record 12 Sep, due 27 Sep, then maturity 27 Sep 2027. Earliest future boundary is the record date.
+    assert payout_summary(ISIN, rows(), TERMS, TODAY)["payout_valid_until"] == date(2026, 9, 12)
+    # Once the record date has passed, the next boundary is the payment (due) date.
+    assert payout_summary(ISIN, rows(), TERMS, date(2026, 9, 12))["payout_valid_until"] == date(2026, 9, 27)
+    # A planned payment date earlier than the due date is the real boundary.
+    data = rows()
+    data[0].update(record_date=None, payment_date=date(2026, 9, 20))
+    assert payout_summary(ISIN, data, TERMS, TODAY)["payout_valid_until"] == date(2026, 9, 20)
+    # Nothing ahead → no boundary; the snapshot stays valid indefinitely.
+    assert payout_summary(ISIN, rows(), TERMS, date(2030, 1, 1))["payout_valid_until"] is None
+    # A sentinel record date is never a boundary (and the row is incomplete anyway).
+    data = rows()
+    data[0]["record_date"] = date(9999, 12, 31)
+    assert payout_summary(ISIN, data, TERMS, TODAY)["payout_valid_until"] == date(2026, 9, 27)
+
+
+def test_snapshot_reader_withholds_only_when_a_boundary_has_actually_passed():
     from backend.queries import payout_fields
 
-    snapshot = {"payout_total_snapshot": 1200, "payout_state_snapshot": "known", "payout_as_of": TODAY}
+    snapshot = {"payout_total_snapshot": 1200, "payout_state_snapshot": "known",
+                "payout_as_of": TODAY, "payout_valid_until": date(2026, 9, 18)}
     before = deepcopy(snapshot)
-    assert payout_fields(snapshot, TODAY) == {
-        "payout_total_per_unit": 1200, "payout_total_state": "known", "payout_as_of": TODAY,
-    }
-    for day in (date(2026, 9, 10), date(2026, 9, 12)):
+    fresh = {"payout_total_per_unit": 1200, "payout_total_state": "known",
+             "payout_as_of": TODAY, "payout_valid_until": date(2026, 9, 18)}
+    # Same day: always current.
+    assert payout_fields(snapshot, TODAY) == fresh
+    # Overnight, before the boundary: provably identical → still shown. This is the fix.
+    assert payout_fields(snapshot, date(2026, 9, 12)) == fresh
+    assert payout_fields(snapshot, date(2026, 9, 17)) == fresh
+    # On/after the boundary: genuinely changed → withheld.
+    for day in (date(2026, 9, 18), date(2026, 9, 25)):
         result = payout_fields(snapshot, day)
         assert result["payout_total_per_unit"] is None
         assert result["payout_total_state"] == "stale"
+    # A snapshot dated *after* today (clock skew) is not treated as stale either.
+    assert payout_fields(snapshot, date(2026, 9, 10))["payout_total_state"] == "known"
+    # No boundary at all → never stale.
+    assert payout_fields({**snapshot, "payout_valid_until": None}, date(2026, 12, 1))["payout_total_state"] == "known"
+    # Row predating migration 0020 (column absent) → not stale.
+    legacy = {k: v for k, v in snapshot.items() if k != "payout_valid_until"}
+    assert payout_fields(legacy, date(2026, 9, 12))["payout_total_state"] == "known"
+    # Boundary is today and snapshot is today → current (compute already accounted for it).
+    assert payout_fields({**snapshot, "payout_valid_until": TODAY}, TODAY)["payout_total_state"] == "known"
     assert snapshot == before
     assert payout_fields({}, TODAY)["payout_total_state"] == "unavailable"
     assert payout_fields({**snapshot, "payout_state_snapshot": "incomplete"}, TODAY)["payout_total_per_unit"] is None

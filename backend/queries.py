@@ -200,11 +200,16 @@ FROM bond_analytics a
 
 def payout_fields(row: dict, today: date) -> dict:
     as_of = row.get("payout_as_of")
+    valid_until = row.get("payout_valid_until")
     state = row.get("payout_state_snapshot")
     amount = row.get("payout_total_snapshot")
     if as_of is None:
         state = "unavailable"
-    elif as_of != today:
+    elif as_of < today and valid_until is not None and today >= valid_until:
+        # A payment or record date fell between the snapshot and today, so the
+        # buyer total has genuinely moved; withhold until the next refresh.
+        # Before that boundary the snapshot is provably identical (see
+        # compute.payout_summary), so an overnight snapshot stays visible.
         state = "stale"
     elif state not in {"known", "estimated", "incomplete", "open_ended", "unavailable"}:
         state = "unavailable"
@@ -213,7 +218,7 @@ def payout_fields(row: dict, today: date) -> dict:
     ):
         state = "incomplete"
     return {"payout_total_per_unit": amount if state in {"known", "estimated"} else None,
-            "payout_total_state": state, "payout_as_of": as_of}
+            "payout_total_state": state, "payout_as_of": as_of, "payout_valid_until": valid_until}
 
 
 def explorer(f: dict, stale_days: int) -> tuple[list[dict], int, float | None]:

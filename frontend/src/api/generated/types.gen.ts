@@ -239,6 +239,10 @@ export type Bond = {
      */
     payout_as_of?: string | null;
     /**
+     * Payout Valid Until
+     */
+    payout_valid_until?: string | null;
+    /**
      * Current Yield
      */
     current_yield: number | null;
