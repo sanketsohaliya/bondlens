@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { api, fmt } from "../api/client";
 import type { AskYtm, Bond } from "../api/types";
+import { askTicketText, payoutDisplay, usePayoutDay } from "../lib/exploreAmounts";
 import { nextListName, useHeldIsins, useWatchlists } from "../lib/lists";
 import { useColumnWidths } from "../lib/useColumnWidths";
 import AddLotPopover from "./AddLotPopover";
@@ -21,11 +22,11 @@ const yearsMonths = (years: number) => {
   return `${y}y ${m}mo`;
 };
 
-const isZeroCoupon = (b: Bond) =>
+const isZeroCoupon = (b: Pick<Bond, "coupon_basis" | "schedule_shape">) =>
   (b.coupon_basis ?? "").toLowerCase().includes("zero") || b.schedule_shape === "zero_coupon";
 
 /** Payout structure — the column's primary line. */
-const payoutStructure = (b: Bond): string | null => {
+const payoutStructure = (b: Pick<Bond, "schedule_shape" | "frequency">): string | null => {
   switch (b.schedule_shape) {
     case "staggered":
       return "Staggered";
@@ -42,6 +43,105 @@ const payoutStructure = (b: Bond): string | null => {
       return b.frequency === "cumulative" ? "Pays at maturity" : null;
   }
 };
+
+type PayoutBond = Pick<
+  Bond,
+  | "schedule_shape"
+  | "coupon_basis"
+  | "frequency"
+  | "coupon"
+  | "future_flows"
+  | "total_flows"
+  | "payout_total_per_unit"
+  | "payout_total_state"
+  | "payout_as_of"
+>;
+
+export function PayoutCell({
+  bond: b,
+  today,
+  onOpen,
+}: {
+  bond: PayoutBond;
+  today: string;
+  onOpen: () => void;
+}) {
+  const payout = payoutDisplay(b, today);
+  const title = [b.coupon_basis, b.frequency, b.schedule_shape, payout.detail]
+    .filter(Boolean)
+    .join(" · ");
+  return (
+    <button
+      type="button"
+      className="block w-full min-w-0 overflow-hidden text-left"
+      title={title}
+      aria-label={`Open Cashflows. ${payout.detail}`}
+      onClick={(e) => {
+        e.stopPropagation();
+        onOpen();
+      }}
+    >
+      <div className="flex min-w-0 items-center gap-1 overflow-hidden text-zinc-200 group-hover/coupon:underline decoration-zinc-600 underline-offset-2">
+        <span className="truncate">{payoutStructure(b) ?? "–"}</span>
+        <span className="shrink-0 max-w-full truncate text-[11px] text-zinc-400">
+          · {payout.label}
+        </span>
+      </div>
+      <div className="truncate text-[11px] text-zinc-500">
+        {isZeroCoupon(b) ? (
+          "Zero coupon"
+        ) : b.coupon != null ? (
+          <>
+            {fmt.num(Number(b.coupon))}%
+            {b.coupon_basis?.startsWith("Variable") && (
+              <span
+                className="ml-1 text-[10px] px-1 rounded bg-amber-500/10 text-amber-500/90"
+                title="Floating / market-linked coupon — the rate resets"
+              >
+                float
+              </span>
+            )}
+            {b.frequency && b.frequency !== "cumulative" && ` ${b.frequency}`}
+          </>
+        ) : null}
+        {payout.showCount &&
+          b.future_flows != null &&
+          b.total_flows != null &&
+          b.total_flows > 0 && (
+            <span
+              title={`${b.future_flows} buyer-receivable flows with modeled amounts of ${b.total_flows} total cashflows`}
+            >
+              {(isZeroCoupon(b) || b.coupon != null) && " · "}
+              {b.future_flows}/{b.total_flows} left
+            </span>
+          )}
+      </div>
+    </button>
+  );
+}
+
+export function AskQuoteCell({ ask, onOpen }: { ask: AskYtm | null; onOpen: () => void }) {
+  const ticket = askTicketText(ask);
+  return (
+    <button
+      type="button"
+      className="block w-full min-w-0 overflow-hidden text-left"
+      title={ticket.detail}
+      aria-label={`Open Order Book. ${ticket.detail}`}
+      onClick={(e) => {
+        e.stopPropagation();
+        onOpen();
+      }}
+    >
+      <div
+        className={`truncate ${ask?.ytm != null ? "text-zinc-200 font-medium" : "text-zinc-500"} group-hover/ask:underline decoration-zinc-600 underline-offset-2`}
+      >
+        {ask?.ytm != null ? fmt.pct(ask.ytm) : "–"}
+      </div>
+      {ask && <div className="truncate text-[11px] text-zinc-400">{ticket.label}</div>}
+    </button>
+  );
+}
 
 type SortKey =
   | keyof Pick<
@@ -121,6 +221,7 @@ export default function ExploreTable({
   initialSort?: SortState;
   onSortChange?: (s: SortState) => void;
 }) {
+  const today = usePayoutDay();
   const [sort, setSortState] = useState<SortState>(initialSort ?? { key: "ask_ytm", dir: -1 });
   const setSort = (update: (s: SortState) => SortState) =>
     setSortState((s) => {
@@ -277,6 +378,7 @@ export default function ExploreTable({
             <Row
               key={b.isin}
               bond={b}
+              today={today}
               onSelect={onSelect}
               ask={kiteConnected ? (askMap.get(b.isin) ?? null) : undefined}
             />
@@ -301,10 +403,12 @@ export default function ExploreTable({
 
 function Row({
   bond: b,
+  today,
   onSelect,
   ask,
 }: {
   bond: Bond;
+  today: string;
   onSelect: (isin: string, tab?: "cashflows" | "ratings" | "chart" | "order book") => void;
   /** undefined = Kite not connected (no column); null = no live ask. */
   ask?: AskYtm | null;
@@ -428,32 +532,13 @@ function Row({
       {ask !== undefined && (
         <td
           className="group/ask px-3 py-2.5 whitespace-nowrap cursor-pointer"
-          title={
-            "Yield locked buying at the best ask (NSE/BSE), from your Kite session" +
-            (ask?.ask_price != null && ask?.ask_qty != null
-              ? ` — ticket ${fmt.inr(ask.ask_price * ask.ask_qty)} to lift the best ask`
-              : "")
-          }
+          title={askTicketText(ask).detail}
           onClick={(e) => {
             e.stopPropagation();
             onSelect(b.isin, "order book");
           }}
         >
-          {ask == null ? (
-            <span className="text-zinc-600">–</span>
-          ) : (
-            <>
-              <div
-                className={`${ask.ytm != null ? "text-zinc-200 font-medium" : "text-zinc-500"} group-hover/ask:underline decoration-zinc-600 underline-offset-2`}
-              >
-                {ask.ytm != null ? fmt.pct(ask.ytm) : "–"}
-              </div>
-              <div className="text-[11px] text-zinc-500">
-                {fmt.inrFull(ask.ask_price)}
-                {ask.ask_qty != null && ` × ${fmt.num(ask.ask_qty, 0)}`}
-              </div>
-            </>
-          )}
+          <AskQuoteCell ask={ask} onOpen={() => onSelect(b.isin, "order book")} />
         </td>
       )}
       <td
@@ -539,33 +624,7 @@ function Row({
           onSelect(b.isin, "cashflows");
         }}
       >
-        <div className="text-zinc-200 group-hover/coupon:underline decoration-zinc-600 underline-offset-2">
-          {payoutStructure(b) ?? <span className="text-zinc-500">–</span>}
-        </div>
-        <div className="text-[11px] text-zinc-500">
-          {isZeroCoupon(b) ? (
-            "Zero coupon"
-          ) : b.coupon != null ? (
-            <>
-              {fmt.num(Number(b.coupon))}%
-              {b.coupon_basis?.startsWith("Variable") && (
-                <span
-                  className="ml-1 text-[10px] px-1 rounded bg-amber-500/10 text-amber-500/90"
-                  title="Floating / market-linked coupon — the rate resets"
-                >
-                  float
-                </span>
-              )}
-              {b.frequency && b.frequency !== "cumulative" && ` ${b.frequency}`}
-            </>
-          ) : null}
-          {b.future_flows != null && b.total_flows != null && b.total_flows > 0 && (
-            <span title={`${b.future_flows} future of ${b.total_flows} total cashflows`}>
-              {(isZeroCoupon(b) || b.coupon != null) && " · "}
-              {b.future_flows}/{b.total_flows} left
-            </span>
-          )}
-        </div>
+        <PayoutCell bond={b} today={today} onOpen={() => onSelect(b.isin, "cashflows")} />
       </td>
       <td className="px-3 py-2.5 whitespace-nowrap text-right">
         {b.maturity_date != null ? (

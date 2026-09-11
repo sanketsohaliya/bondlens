@@ -4,8 +4,10 @@ Everything here is read-only. The explorer core loads the whole joined
 universe in a handful of set-based queries (not per-ISIN loops) and is
 cached by the app layer — data only changes when the daily jobs run.
 """
-from datetime import date
+import math
+from datetime import date, datetime
 from typing import Any, LiteralString
+from zoneinfo import ZoneInfo
 
 from . import db
 
@@ -196,6 +198,24 @@ FROM bond_analytics a
 """
 
 
+def payout_fields(row: dict, today: date) -> dict:
+    as_of = row.get("payout_as_of")
+    state = row.get("payout_state_snapshot")
+    amount = row.get("payout_total_snapshot")
+    if as_of is None:
+        state = "unavailable"
+    elif as_of != today:
+        state = "stale"
+    elif state not in {"known", "estimated", "incomplete", "open_ended", "unavailable"}:
+        state = "unavailable"
+    elif state in {"known", "estimated"} and (
+        not isinstance(amount, (int, float)) or isinstance(amount, bool) or not math.isfinite(amount) or amount < 0
+    ):
+        state = "incomplete"
+    return {"payout_total_per_unit": amount if state in {"known", "estimated"} else None,
+            "payout_total_state": state, "payout_as_of": as_of}
+
+
 def explorer(f: dict, stale_days: int) -> tuple[list[dict], int, float | None]:
     """Filtered explorer rows from bond_analytics.
 
@@ -323,7 +343,8 @@ def explorer(f: dict, stale_days: int) -> tuple[list[dict], int, float | None]:
         as_of = conn.execute(
             "SELECT extract(epoch FROM max(computed_at)) AS t "
             "FROM bond_analytics").fetchone()
-    return ([dict(r) for r in rows], total["n"] if total else 0,
+    today = datetime.now(ZoneInfo("Asia/Kolkata")).date()
+    return ([{**dict(r), **payout_fields(r, today)} for r in rows], total["n"] if total else 0,
             float(as_of["t"]) if as_of and as_of["t"] else None)
 
 
@@ -331,7 +352,7 @@ def analytics_row(isin: str, stale_days: int) -> dict | None:
     with db._conn() as conn:
         r = conn.execute(f"{_EXPLORER_SELECT} WHERE a.isin = %(isin)s",
                          {"isin": isin, "stale_days": stale_days}).fetchone()
-    return dict(r) if r else None
+    return {**dict(r), **payout_fields(r, datetime.now(ZoneInfo("Asia/Kolkata")).date())} if r else None
 
 
 def explorer_filters() -> dict:

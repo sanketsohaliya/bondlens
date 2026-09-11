@@ -227,6 +227,18 @@ export type Bond = {
      */
     total_flows?: number | null;
     /**
+     * Payout Total Per Unit
+     */
+    payout_total_per_unit?: number | null;
+    /**
+     * Payout Total State
+     */
+    payout_total_state?: 'known' | 'estimated' | 'incomplete' | 'open_ended' | 'unavailable' | 'stale' | null;
+    /**
+     * Payout As Of
+     */
+    payout_as_of?: string | null;
+    /**
      * Current Yield
      */
     current_yield: number | null;

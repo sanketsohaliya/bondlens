@@ -152,6 +152,7 @@ def test_tech_delay_does_not_brand_default(monkeypatch):
     }
     monkeypatch.setattr(queries, "explorer_core", lambda: core)
     monkeypatch.setattr(queries, "all_cashflows", lambda: {})
+    monkeypatch.setattr(queries, "cashflows_for", lambda isins: {})
     monkeypatch.setattr(queries, "all_terms", lambda: {})
     monkeypatch.setattr(queries, "current_ratings", lambda: {})
     monkeypatch.setattr(queries, "rating_history", lambda: {})

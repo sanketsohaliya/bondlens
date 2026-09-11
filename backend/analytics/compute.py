@@ -9,6 +9,7 @@ stored: they drift daily and are derived in SQL at read time. YTM is
 price-dependent and refreshed here whenever new trades land, which is
 exactly as often as prices can change.
 """
+import math
 from datetime import UTC, date, datetime
 from typing import LiteralString
 
@@ -23,6 +24,7 @@ _COLS: list[LiteralString] = [
     "nse_symbol", "nse_series", "bse_scrip_id", "coupon", "face_value",
     "coupon_basis", "frequency", "secured", "tax_free", "perpetual",
     "maturity_date", "schedule_shape", "future_flows", "total_flows",
+    "payout_total_snapshot", "payout_state_snapshot", "payout_as_of",
     "ltp", "trade_date", "exchange",
     "volume", "turnover", "num_trades", "nse_turnover", "bse_turnover",
     "prev_turnover", "prev_ltp",
@@ -87,6 +89,37 @@ def _f(v) -> float | None:
     return float(v) if v is not None else None
 
 
+def payout_summary(isin: str, cashflows: list[dict], terms: dict | None, today: date) -> dict:
+    terms = terms or {}
+    sched = schedule.build(isin, cashflows, terms, today=today)
+    eligible = [f for f in sched.flows if f.receivable_by_buyer(today)]
+    result = {"payout_total_snapshot": None, "payout_state_snapshot": "unavailable", "payout_as_of": today,
+              "future_flows": len(sched.future_flows(today)), "total_flows": len(sched.flows)}
+    maturity = terms.get("redemption_date")
+    if terms.get("perpetual") or sched.shape == "perpetual" or (maturity and maturity.year >= 2500):
+        result["payout_state_snapshot"] = "open_ended"
+    elif sched.flows:
+        invalid_source = any(v is not None and (not math.isfinite(float(v)) or float(v) < 0)
+                             for r in cashflows for key in ("amount_payable", "amount_redeem") if (v := r.get(key)) is not None)
+        incomplete = (not sched.usable or invalid_source or any(r.get("due_date") is None for r in cashflows)
+                      or any(f.due_date.year >= 2500 or f.effective_date.year >= 2500
+                             or (f.record_date is not None and f.record_date.year >= 2500)
+                             or f.amount is None or not math.isfinite(f.amount) or f.amount < 0 for f in eligible))
+        if incomplete:
+            result["payout_state_snapshot"] = "incomplete"
+        else:
+            amount = sum(f.amount for f in eligible if f.amount is not None)
+            if not math.isfinite(amount):
+                result["payout_state_snapshot"] = "incomplete"
+            else:
+                variable = (str(terms.get("coupon_basis") or "").strip().lower().startswith("variable")
+                            or "float" in str(terms.get("coupon_type") or "").lower())
+                estimated = any(f.estimated or (variable and f.event == "interest") for f in eligible)
+                result.update(payout_total_snapshot=round(amount, 2),
+                              payout_state_snapshot="estimated" if estimated else "known")
+    return result
+
+
 def build_rows(today: date | None = None) -> list[dict]:
     """Compute one analytics row per listed bond (pure; no writes)."""
     today = today or date.today()
@@ -94,6 +127,7 @@ def build_rows(today: date | None = None) -> list[dict]:
     core = queries.explorer_core()
     cashflows = queries.all_cashflows()
     terms_map = queries.all_terms()
+    payout_cashflows = queries.cashflows_for(list(core)) if core else {}
     current = queries.current_ratings()
     history = queries.rating_history()
     defaulted = queries.defaulted_isins()
@@ -103,6 +137,7 @@ def build_rows(today: date | None = None) -> list[dict]:
     for isin, r in core.items():
         sched = schedule.build(isin, cashflows.get(isin, []),
                                terms_map.get(isin), today=today)
+        payout = payout_summary(isin, payout_cashflows.get(isin, []), terms_map.get(isin), today)
         cur = current.get(isin, [])
         retail = r.get("retail_trade")
         otc = r.get("otc_trade")
@@ -160,8 +195,7 @@ def build_rows(today: date | None = None) -> list[dict]:
             "perpetual": perpetual,
             "maturity_date": red_date,
             "schedule_shape": sched.shape,
-            "future_flows": len(sched.future_flows(today)),
-            "total_flows": len(sched.flows),
+            **payout,
             "ltp": price,
             "trade_date": retail["trade_date"] if retail else None,
             "exchange": retail["exchange"] if retail else None,
