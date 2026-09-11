@@ -378,6 +378,53 @@ def symbol_bond_map() -> dict[tuple[str, str], dict]:
 
 # --- Detail view ------------------------------------------------------------
 
+def cashflow_evidence_inputs(isin: str) -> dict | None:
+    sources = ("nse_debt_announcements", "bse_corporate_actions")
+    with db._conn() as conn:
+        conn.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY")
+        bond = conn.execute("SELECT isin, status, on_nse, on_bse FROM bonds WHERE isin = %s", (isin,)).fetchone()
+        if bond is None:
+            return None
+        terms = conn.execute("SELECT * FROM bond_terms WHERE isin = %s", (isin,)).fetchone()
+        flows = conn.execute(
+            "SELECT event, due_date, record_date, payment_date, amount_payable, amount_redeem, amount_outstanding "
+            "FROM bond_cashflows WHERE isin = %s ORDER BY due_date", (isin,),
+        ).fetchall()
+        tables = conn.execute("SELECT to_regclass('corporate_actions') IS NOT NULL AS available").fetchone()
+        records: list[dict] = []
+        targets: dict[str, dict] = {}
+        latest: dict[str, dict] = {}
+        success: dict[str, Any] = {}
+        if tables and tables["available"]:
+            records = conn.execute(
+                "SELECT a.id, a.raw_id, a.source, a.source_record_id, a.scrip_code, a.issuer_name, "
+                "a.category_raw, a.headline, a.announced_at, a.first_seen_at, a.last_seen_at, "
+                "a.attachment_urls, a.source_url, a.raw, "
+                "EXISTS (SELECT 1 FROM corporate_action_isins v WHERE v.action_id=a.id "
+                "AND v.isin=%s AND v.method='bse_master') AS verified_bse "
+                "FROM corporate_actions a WHERE EXISTS (SELECT 1 FROM corporate_action_isins i "
+                "WHERE i.action_id=a.id AND i.isin=%s) ORDER BY a.id LIMIT 5001", (isin, isin),
+            ).fetchall()
+            targets = {r["source"]: dict(r) for r in conn.execute(
+                "SELECT source, active, state, blocked_reason, history_from, pending, recent_pending "
+                "FROM corporate_action_targets WHERE source = ANY(%s) AND isin=%s", (list(sources), isin),
+            )}
+            latest = {r["source"]: dict(r) for r in conn.execute(
+                "SELECT DISTINCT ON (source) source, ok FROM corporate_action_runs "
+                "WHERE mode='recent' ORDER BY source, run_at DESC, id DESC",
+            )}
+            success = {r["source"]: r["last_success_at"] for r in conn.execute(
+                "SELECT source, max(finished_at) AS last_success_at FROM corporate_action_runs "
+                "WHERE mode='recent' AND ok IS TRUE GROUP BY source",
+            )}
+        return {"bond": dict(bond), "terms": dict(terms) if terms else None,
+                "cashflows": [dict(r) for r in flows], "records": [dict(r) for r in records[:5000]],
+                "partial": len(records) > 5000,
+                "availability": [{"source": source, "target": targets.get(source),
+                                  "last_success_at": success.get(source),
+                                  "latest_ok": latest.get(source, {}).get("ok")} for source in sources]}
+
+
 def bond_row(isin: str) -> dict | None:
     with db._conn() as conn:
         r = conn.execute("""

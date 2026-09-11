@@ -273,6 +273,10 @@ export type Bond = {
  */
 export type BondDetail = {
     /**
+     * As Of
+     */
+    as_of?: string | null;
+    /**
      * Isin
      */
     isin: string;
@@ -618,6 +622,53 @@ export type Cashflow = {
 };
 
 /**
+ * CashflowEvidenceResponse
+ */
+export type CashflowEvidenceResponse = {
+    /**
+     * Isin
+     */
+    isin: string;
+    /**
+     * As Of
+     */
+    as_of: string;
+    /**
+     * Date From
+     */
+    date_from: string;
+    /**
+     * Date To
+     */
+    date_to: string;
+    /**
+     * Version
+     */
+    version: string;
+    /**
+     * Partial
+     */
+    partial: boolean;
+    /**
+     * Sources
+     */
+    sources: Array<EvidenceAvailability>;
+    /**
+     * Flows
+     */
+    flows: Array<FlowEvidence>;
+    /**
+     * Notices
+     */
+    notices: Array<ExchangeNotice>;
+    /**
+     * Unmatched Notice Ids
+     */
+    unmatched_notice_ids: Array<string>;
+    summary: EvidenceSummary;
+};
+
+/**
  * DepthLevel
  */
 export type DepthLevel = {
@@ -684,6 +735,178 @@ export type Document = {
 };
 
 /**
+ * EvidenceAvailability
+ */
+export type EvidenceAvailability = {
+    /**
+     * Source
+     */
+    source: 'NSE' | 'BSE';
+    /**
+     * Status
+     */
+    status: 'fresh' | 'stale' | 'incomplete' | 'unavailable' | 'mapping_blocked' | 'not_captured';
+    /**
+     * Last Success At
+     */
+    last_success_at?: string | null;
+    /**
+     * History Complete
+     */
+    history_complete?: boolean;
+    /**
+     * Reasons
+     */
+    reasons?: Array<string>;
+};
+
+/**
+ * EvidenceFieldComparison
+ */
+export type EvidenceFieldComparison = {
+    /**
+     * Field
+     */
+    field: 'due_date' | 'record_date' | 'payment_date' | 'amount';
+    /**
+     * State
+     */
+    state: 'agree' | 'different' | 'not_supplied' | 'not_comparable' | 'conflicting';
+    /**
+     * Nsdl Date
+     */
+    nsdl_date?: string | null;
+    /**
+     * Exchange Dates
+     */
+    exchange_dates?: Array<string>;
+};
+
+/**
+ * EvidenceSummary
+ */
+export type EvidenceSummary = {
+    /**
+     * Checked Flows
+     */
+    checked_flows: number;
+    /**
+     * Matched Flows
+     */
+    matched_flows: number;
+    /**
+     * Differences
+     */
+    differences: number;
+    /**
+     * Unmatched Notices
+     */
+    unmatched_notices: number;
+};
+
+/**
+ * ExchangeNotice
+ */
+export type ExchangeNotice = {
+    /**
+     * Id
+     */
+    id: string;
+    /**
+     * Source
+     */
+    source: 'NSE' | 'BSE';
+    /**
+     * Source Record Ids
+     */
+    source_record_ids: Array<string>;
+    /**
+     * Raw Ids
+     */
+    raw_ids: Array<number>;
+    /**
+     * Representation Count
+     */
+    representation_count: number;
+    /**
+     * Category
+     */
+    category: string;
+    /**
+     * Headline
+     */
+    headline: string;
+    /**
+     * Event Isin
+     */
+    event_isin: string | null;
+    /**
+     * Mentioned Isins
+     */
+    mentioned_isins: Array<string>;
+    /**
+     * Events
+     */
+    events: Array<'interest' | 'redemption'>;
+    /**
+     * Redemption Form
+     */
+    redemption_form: 'partial' | 'early' | null;
+    /**
+     * Nature
+     */
+    nature: string | null;
+    /**
+     * Due Date
+     */
+    due_date: string | null;
+    /**
+     * Record Date
+     */
+    record_date: string | null;
+    /**
+     * Ex Date
+     */
+    ex_date: string | null;
+    /**
+     * Reported Payment Date
+     */
+    reported_payment_date: string | null;
+    /**
+     * Published At
+     */
+    published_at: string | null;
+    /**
+     * First Captured At
+     */
+    first_captured_at: string | null;
+    /**
+     * Last Captured At
+     */
+    last_captured_at: string | null;
+    /**
+     * Links
+     */
+    links: Array<string>;
+    /**
+     * Status
+     */
+    status: 'matched' | 'unmatched' | 'ambiguous' | 'review_only' | 'context_only';
+    /**
+     * Reasons
+     */
+    reasons: Array<string>;
+    /**
+     * Flow Keys
+     */
+    flow_keys: Array<string>;
+    /**
+     * Unmatched Events
+     */
+    unmatched_events: Array<'interest' | 'redemption'>;
+};
+
+/**
  * Filters
  */
 export type Filters = {
@@ -699,6 +922,70 @@ export type Filters = {
      * Ratings
      */
     ratings: Array<string>;
+};
+
+/**
+ * FlowEvidence
+ */
+export type FlowEvidence = {
+    /**
+     * Key
+     */
+    key: string;
+    /**
+     * Event
+     */
+    event: 'interest' | 'redemption';
+    /**
+     * Due Date
+     */
+    due_date: string;
+    /**
+     * Record Date
+     */
+    record_date: string | null;
+    /**
+     * Payment Date
+     */
+    payment_date: string | null;
+    /**
+     * Checked
+     */
+    checked: boolean;
+    /**
+     * Ambiguous
+     */
+    ambiguous: boolean;
+    /**
+     * Sources
+     */
+    sources: Array<FlowSourceEvidence>;
+};
+
+/**
+ * FlowSourceEvidence
+ */
+export type FlowSourceEvidence = {
+    /**
+     * Source
+     */
+    source: 'NSE' | 'BSE';
+    /**
+     * Anchor
+     */
+    anchor: 'due_date' | 'record_date';
+    /**
+     * State
+     */
+    state: 'matched' | 'conflicting';
+    /**
+     * Notice Ids
+     */
+    notice_ids: Array<string>;
+    /**
+     * Fields
+     */
+    fields: Array<EvidenceFieldComparison>;
 };
 
 /**
@@ -2182,7 +2469,7 @@ export type BondsApiBondsGetData = {
         /**
          * Payout
          *
-         * maturity = zero-coupon/cumulative, periodic = coupon stream
+         * Payout structure: bullet, staggered, maturity (zero-coupon/cumulative) or perpetual
          */
         payout?: string | null;
         /**
@@ -2372,6 +2659,45 @@ export type BondDetailApiBondsIsinGetResponses = {
 };
 
 export type BondDetailApiBondsIsinGetResponse = BondDetailApiBondsIsinGetResponses[keyof BondDetailApiBondsIsinGetResponses];
+
+export type BondCashflowEvidenceApiBondsIsinCashflowEvidenceGetData = {
+    body?: never;
+    path: {
+        /**
+         * Isin
+         */
+        isin: string;
+    };
+    query?: {
+        /**
+         * From
+         */
+        from?: string | null;
+        /**
+         * To
+         */
+        to?: string | null;
+    };
+    url: '/api/bonds/{isin}/cashflow-evidence';
+};
+
+export type BondCashflowEvidenceApiBondsIsinCashflowEvidenceGetErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type BondCashflowEvidenceApiBondsIsinCashflowEvidenceGetError = BondCashflowEvidenceApiBondsIsinCashflowEvidenceGetErrors[keyof BondCashflowEvidenceApiBondsIsinCashflowEvidenceGetErrors];
+
+export type BondCashflowEvidenceApiBondsIsinCashflowEvidenceGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: CashflowEvidenceResponse;
+};
+
+export type BondCashflowEvidenceApiBondsIsinCashflowEvidenceGetResponse = BondCashflowEvidenceApiBondsIsinCashflowEvidenceGetResponses[keyof BondCashflowEvidenceApiBondsIsinCashflowEvidenceGetResponses];
 
 export type BondTradesApiBondsIsinTradesGetData = {
     body?: never;

@@ -2,6 +2,7 @@ import type {
   AskYtmResponse,
   BondDetail,
   BondsResponse,
+  CashflowEvidenceResponse,
   ExploreParams,
   Filters,
   KiteMargins,
@@ -56,6 +57,8 @@ export const api = {
     get<BondsResponse>("/api/bonds", params as Record<string, unknown>),
   bond: (isin: string, price?: number) =>
     get<BondDetail>(`/api/bonds/${isin}`, price ? { price } : undefined),
+  cashflowEvidence: (isin: string) =>
+    get<CashflowEvidenceResponse>(`/api/bonds/${isin}/cashflow-evidence`),
   trades: (
     isin: string,
     params?: { from?: string; to?: string; exchange?: string; segment?: string },

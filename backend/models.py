@@ -93,6 +93,88 @@ class Cashflow(BaseModel):
     future: bool
 
 
+class EvidenceAvailability(BaseModel):
+    source: Literal["NSE", "BSE"]
+    status: Literal["fresh", "stale", "incomplete", "unavailable", "mapping_blocked", "not_captured"]
+    last_success_at: datetime | None = None
+    history_complete: bool = False
+    reasons: list[str] = Field(default_factory=list)
+
+
+class EvidenceFieldComparison(BaseModel):
+    field: Literal["due_date", "record_date", "payment_date", "amount"]
+    state: Literal["agree", "different", "not_supplied", "not_comparable", "conflicting"]
+    nsdl_date: date | None = None
+    exchange_dates: list[date] = Field(default_factory=list)
+
+
+class FlowSourceEvidence(BaseModel):
+    source: Literal["NSE", "BSE"]
+    anchor: Literal["due_date", "record_date"]
+    state: Literal["matched", "conflicting"]
+    notice_ids: list[str]
+    fields: list[EvidenceFieldComparison]
+
+
+class FlowEvidence(BaseModel):
+    key: str
+    event: Literal["interest", "redemption"]
+    due_date: date
+    record_date: date | None
+    payment_date: date | None
+    checked: bool
+    ambiguous: bool
+    sources: list[FlowSourceEvidence]
+
+
+class ExchangeNotice(BaseModel):
+    id: str
+    source: Literal["NSE", "BSE"]
+    source_record_ids: list[str]
+    raw_ids: list[int]
+    representation_count: int
+    category: str
+    headline: str
+    event_isin: str | None
+    mentioned_isins: list[str]
+    events: list[Literal["interest", "redemption"]]
+    redemption_form: Literal["partial", "early"] | None
+    nature: str | None
+    due_date: date | None
+    record_date: date | None
+    ex_date: date | None
+    reported_payment_date: date | None
+    published_at: datetime | None
+    first_captured_at: datetime | None
+    last_captured_at: datetime | None
+    links: list[str]
+    status: Literal["matched", "unmatched", "ambiguous", "review_only", "context_only"]
+    reasons: list[str]
+    flow_keys: list[str]
+    unmatched_events: list[Literal["interest", "redemption"]]
+
+
+class EvidenceSummary(BaseModel):
+    checked_flows: int
+    matched_flows: int
+    differences: int
+    unmatched_notices: int
+
+
+class CashflowEvidenceResponse(BaseModel):
+    isin: str
+    as_of: date
+    date_from: date
+    date_to: date
+    version: str
+    partial: bool
+    sources: list[EvidenceAvailability]
+    flows: list[FlowEvidence]
+    notices: list[ExchangeNotice]
+    unmatched_notice_ids: list[str]
+    summary: EvidenceSummary
+
+
 class RatingEvent(BaseModel):
     rating: str | None
     outlook: str | None
@@ -120,6 +202,7 @@ class IssuerBond(BaseModel):
 
 
 class BondDetail(BaseModel):
+    as_of: date | None = None
     # Identity (bonds x bond_info)
     isin: str
     status: str

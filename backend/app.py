@@ -8,7 +8,7 @@ per-bond detail view computes yields live (it supports what-if pricing).
 """
 import asyncio
 import contextlib
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 
 from fastapi import (
     APIRouter,
@@ -31,6 +31,7 @@ from . import (
     auth,
     db,
     depth,
+    exchange_evidence,
     fills,
     kite,
     kite_connect,
@@ -385,6 +386,7 @@ def bond_detail(isin: str, price: float | None = Query(None, gt=0)):
 
     return {
         **row,
+        "as_of": today,
         "terms": terms,
         "trustee_name": queries.bond_trustee(isin),
         "kite_url": kite.kite_url(row.get("nse_symbol"), row.get("nse_series"),
@@ -445,6 +447,31 @@ def bond_detail(isin: str, price: float | None = Query(None, gt=0)):
 # --------------------------------------------------------------------------
 # Trade history
 # --------------------------------------------------------------------------
+
+@router.get("/api/bonds/{isin}/cashflow-evidence", response_model=models.CashflowEvidenceResponse)
+def bond_cashflow_evidence(
+    isin: str,
+    date_from: date | None = Query(None, alias="from"),
+    date_to: date | None = Query(None, alias="to"),
+):
+    today = date.today()
+    start = date_from or today
+    if start.year >= 2500:
+        raise HTTPException(status_code=422, detail="Evidence window requires a valid calendar date")
+    end = date_to or start + timedelta(days=90)
+    if end < start or (end - start).days > 366 or end.year >= 2500:
+        raise HTTPException(status_code=422, detail="Evidence window must be valid and at most 366 days")
+    isin = isin.strip().upper()
+    inputs = queries.cashflow_evidence_inputs(isin)
+    if inputs is None:
+        raise HTTPException(status_code=404, detail="Unknown ISIN")
+    sched = schedule.build(isin, inputs["cashflows"], inputs["terms"], today=today)
+    availability = exchange_evidence.source_availability(inputs["availability"], datetime.now(UTC))
+    return exchange_evidence.build_evidence(
+        isin, sched.flows, inputs["records"], as_of=today, date_from=start, date_to=end,
+        availability=availability, partial=inputs["partial"],
+    )
+
 
 @router.get("/api/bonds/{isin}/trades", response_model=models.TradesResponse)
 def bond_trades(
