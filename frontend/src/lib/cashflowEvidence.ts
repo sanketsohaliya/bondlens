@@ -1,4 +1,4 @@
-import type { Cashflow, CashflowEvidenceResponse } from "../api/types";
+import type { Cashflow, CashflowEvidenceResponse, FlowEvidence } from "../api/types";
 
 type FlowIdentity = Pick<Cashflow, "event" | "due_date" | "record_date" | "payment_date">;
 
@@ -75,9 +75,19 @@ export function evidenceMatchesSchedule(
   );
 }
 
-export function buyerEligibility(flow: Cashflow, asOf: string): string | null {
+export function excludedReason(flow: Cashflow, asOf: string): string | null {
   if (flow.future || (flow.payment_date ?? flow.due_date) < asOf) return null;
   return flow.record_date && flow.record_date <= asOf
-    ? "Record date passed; excluded for a new buyer under the current model. This may still be due to existing holders."
-    : "Scheduled today or otherwise excluded for a new buyer under the current entitlement model; this is not proof of payment.";
+    ? "Record date has passed — a buyer today would not receive this payment; existing holders still may."
+    : "A buyer today would not receive this payment under the current entitlement model; existing holders still may.";
+}
+
+export function rowAttention(row: FlowEvidence | undefined): "none" | "info" | "attention" {
+  if (!row?.sources.length) return "none";
+  const attention = row.sources.some(
+    (s) =>
+      s.state === "conflicting" ||
+      s.fields.some((f) => f.state === "different" || f.state === "conflicting"),
+  );
+  return attention ? "attention" : "info";
 }

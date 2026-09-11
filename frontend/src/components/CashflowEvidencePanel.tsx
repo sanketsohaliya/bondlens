@@ -208,17 +208,10 @@ export default function CashflowEvidencePanel({
       n.source_record_ids.some((id) => sourceIds.has(`${n.source}:${id}`)),
   );
   return (
-    <div className="space-y-3 whitespace-normal text-xs">
-      <p className="text-zinc-400">
-        Dates-only comparison. Amounts and calculations remain NSDL-based; source reports are not
-        proof of bank credit.
-      </p>
-      {attached.length > 0 && evidence.unmatched_notice_ids.length > 0 && (
-        <p className="text-zinc-400">
-          Other unmatched or review-only notices are listed below the schedule. Agreement here does
-          not resolve those notices.
-        </p>
-      )}
+    <div
+      className="space-y-3 whitespace-normal text-xs"
+      title="Dates-only comparison. Amounts and calculations remain NSDL-based; source reports are not proof of bank credit."
+    >
       {evidence.partial ? (
         <p className="text-amber-400/80">
           Incomplete evidence set: automatic matching is disabled.

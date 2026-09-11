@@ -101,6 +101,49 @@ describe("cashflow calendar and evidence", () => {
     expect(evidenceMatchesSchedule("TEST", "2026-09-11", [flow, duplicate], cached)).toBe(true);
   });
 
+  it("explains excluded rows briefly and grades evidence attention", async () => {
+    const { excludedReason, rowAttention } = await import("./cashflowEvidence");
+    expect(excludedReason(flow, "2026-09-11")).toContain("Record date has passed");
+    expect(excludedReason({ ...flow, future: true }, "2026-09-11")).toBeNull();
+    expect(excludedReason(flow, "2026-10-01")).toBeNull();
+    const row = evidence().flows[0];
+    expect(rowAttention(undefined)).toBe("none");
+    expect(rowAttention(row)).toBe("none");
+    const agree = {
+      ...row,
+      sources: [
+        {
+          source: "NSE" as const,
+          anchor: "due_date" as const,
+          state: "matched" as const,
+          notice_ids: [],
+          fields: [
+            {
+              field: "record_date" as const,
+              state: "agree" as const,
+              nsdl_date: null,
+              exchange_dates: [],
+            },
+          ],
+        },
+      ],
+    };
+    expect(rowAttention(agree)).toBe("info");
+    const differs = {
+      ...agree,
+      sources: [
+        {
+          ...agree.sources[0],
+          fields: [{ ...agree.sources[0].fields[0], state: "different" as const }],
+        },
+      ],
+    };
+    expect(rowAttention(differs)).toBe("attention");
+    expect(
+      rowAttention({ ...agree, sources: [{ ...agree.sources[0], state: "conflicting" as const }] }),
+    ).toBe("attention");
+  });
+
   it("does not tie date evidence to the current displayed monetary amount", () => {
     expect(
       evidenceMatchesSchedule("TEST", "2026-09-11", [{ ...flow, amount: 91 }], evidence()),

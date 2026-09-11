@@ -103,6 +103,8 @@ describe("cashflow evidence panel", () => {
     expect(html).toContain("90");
     expect(html).not.toContain("cashflow confirmed");
     expect(html).not.toContain("₹0");
+    expect(html).not.toContain('<p class="text-zinc-400">Dates-only comparison');
+    expect(html).not.toContain("Agreement here does not resolve");
   });
 
   it("escapes source text and does not render unsafe external links", () => {
