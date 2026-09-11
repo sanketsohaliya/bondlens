@@ -93,8 +93,8 @@ def all_cashflows() -> dict[str, list[dict]]:
     out: dict[str, list[dict]] = {}
     with db._conn() as conn:
         for r in conn.execute(
-                "SELECT isin, event, due_date, record_date, amount_payable, "
-                "amount_redeem, amount_outstanding FROM bond_cashflows "
+                "SELECT isin, event, due_date, record_date, payment_date, "
+                "amount_payable, amount_redeem, amount_outstanding FROM bond_cashflows "
                 "ORDER BY isin, due_date").fetchall():
             out.setdefault(r["isin"], []).append(r)
     return out

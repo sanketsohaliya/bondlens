@@ -1,5 +1,9 @@
+from contextlib import contextmanager
 from copy import deepcopy
-from datetime import date
+from datetime import date, timedelta
+from types import SimpleNamespace
+
+import pytest
 
 from backend.analytics.compute import payout_summary
 
@@ -134,37 +138,89 @@ def test_snapshot_reader_hides_stale_values_without_mutating_the_snapshot():
     assert payout_fields({**snapshot, "payout_state_snapshot": "incomplete"}, TODAY)["payout_total_per_unit"] is None
 
 
-def test_analytics_metadata_uses_payment_dates_without_changing_yield_inputs(monkeypatch):
-    from backend import queries
+@pytest.mark.parametrize(
+    "payment_shift,coupon_payment,record_offset,expected_ytm",
+    [
+        pytest.param(None, None, None, 10.0, id="missing-payment-dates"),
+        pytest.param(0, None, None, 10.0, id="same-payment-dates"),
+        pytest.param(3, None, None, 9.91, id="later-payment-dates"),
+        pytest.param(-3, None, None, 10.09, id="earlier-payment-dates"),
+        pytest.param(None, -1, None, 10.0, id="early-coupon-no-record-date"),
+        pytest.param(None, 0, None, 10.0, id="coupon-payment-today"),
+        pytest.param(None, -1, -10, 10.0, id="early-coupon-record-passed"),
+        pytest.param(None, 1, 0, 10.0, id="future-coupon-record-today"),
+    ],
+)
+def test_explorer_and_detail_use_same_payment_dates(
+    monkeypatch, payment_shift, coupon_payment, record_offset, expected_ytm,
+):
+    from backend import app as api_module
+    from backend import db, queries
     from backend.analytics import compute
 
-    legacy = rows()
-    current = deepcopy(legacy)
-    current[0]["payment_date"] = date(2026, 9, 10)
+    maturity = TODAY + timedelta(days=365)
+    terms = {**TERMS, "redemption_date": maturity,
+             "day_count_convention": "Actual/365"}
+    data = [
+        {"isin": ISIN, "event": "Interest", "due_date": maturity, "amount_payable": 100},
+        {"isin": ISIN, "event": "Redemption", "due_date": maturity, "amount_redeem": 1000},
+    ]
+    if payment_shift is not None:
+        for row in data:
+            row["payment_date"] = maturity + timedelta(days=payment_shift)
+    if coupon_payment is not None:
+        data.insert(0, {
+            "isin": ISIN, "event": "Interest", "due_date": TODAY + timedelta(days=2),
+            "payment_date": TODAY + timedelta(days=coupon_payment),
+            "record_date": TODAY + timedelta(days=record_offset) if record_offset is not None else None,
+            "amount_payable": 100,
+        })
+    before = deepcopy(data)
+
+    def execute(statement, params=None):
+        projection, separator, _ = statement.partition(" FROM bond_cashflows")
+        assert separator and projection.startswith("SELECT ")
+        assert params is None or params in ((ISIN,), ([ISIN],))
+        columns = [column.strip() for column in projection.removeprefix("SELECT ").split(",")]
+        result = [{column: row.get(column) for column in columns} for row in data]
+        return SimpleNamespace(fetchall=lambda: result)
+
+    @contextmanager
+    def connection():
+        yield SimpleNamespace(execute=execute)
+
+    class FixedDate(date):
+        @classmethod
+        def today(cls):
+            return TODAY
+
     core = {ISIN: {"isin": ISIN, "on_nse": True, "on_bse": False, "coupon_rate": 10,
-                   "face_value": 1000, "redemption_date": MATURITY,
+                   "face_value": 1000, "redemption_date": maturity,
                    "retail_trade": {"close": 1000, "trade_date": TODAY, "exchange": "NSE"}}}
+    monkeypatch.setattr(db, "_conn", connection)
+    monkeypatch.setattr(api_module, "date", FixedDate)
     monkeypatch.setattr(queries, "explorer_core", lambda: core)
-    monkeypatch.setattr(queries, "all_cashflows", lambda: {ISIN: legacy})
-    monkeypatch.setattr(queries, "all_terms", lambda: {ISIN: TERMS})
-    calls = []
-
-    def payout_inputs(isins):
-        calls.append(isins)
-        return {ISIN: current}
-
-    monkeypatch.setattr(queries, "cashflows_for", payout_inputs)
+    monkeypatch.setattr(queries, "all_terms", lambda: {ISIN: terms})
     monkeypatch.setattr(queries, "current_ratings", lambda: {})
-    monkeypatch.setattr(queries, "rating_history", lambda: {})
+    monkeypatch.setattr(queries, "rating_history", lambda *args: {})
     monkeypatch.setattr(queries, "defaulted_isins", lambda: set())
     monkeypatch.setattr(queries, "tech_delay_isins", lambda: set())
-    early = compute.build_rows(TODAY)[0]
-    assert early["payout_total_snapshot"] == 1100
-    assert early["future_flows"] == 2
-    assert calls == [[ISIN]]
-    current[0]["payment_date"] = date(2026, 9, 25)
-    later = compute.build_rows(TODAY)[0]
-    assert later["payout_total_snapshot"] == 1200
-    assert later["future_flows"] == 3
-    metadata = {"payout_total_snapshot", "payout_state_snapshot", "payout_as_of", "future_flows", "total_flows", "computed_at"}
-    assert {k: v for k, v in early.items() if k not in metadata} == {k: v for k, v in later.items() if k not in metadata}
+    monkeypatch.setattr(queries, "bond_row", lambda isin: {"isin": isin, "issuer_name": None})
+    monkeypatch.setattr(queries, "bond_terms", lambda isin: terms)
+    monkeypatch.setattr(queries, "bond_extras", lambda isin: {"defaults": [], "technical_defaults": []})
+    monkeypatch.setattr(queries, "bond_trustee", lambda isin: None)
+    monkeypatch.setattr(api_module.kite, "kite_url", lambda *args, **kwargs: None)
+
+    explorer = compute.build_rows(TODAY)[0]
+    monkeypatch.setattr(queries, "analytics_row", lambda *args: explorer)
+    detail = api_module.bond_detail(ISIN, price=None)
+
+    assert explorer["ltp"] == detail["ltp"] == 1000
+    assert explorer["payout_as_of"] == detail["as_of"] == TODAY
+    assert detail["ytm_exact"] == expected_ytm
+    assert explorer["ytm"] == detail["ytm"] == expected_ytm
+    assert explorer["ytm_method"] == "exact"
+    assert explorer["duration"] == detail["duration"]
+    assert explorer["payout_total_snapshot"] == detail["future_total_per_unit"] == 1100
+    assert explorer["future_flows"] == sum(f["future"] for f in detail["cashflows"]) == 2
+    assert data == before
