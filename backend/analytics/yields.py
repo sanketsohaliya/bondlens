@@ -221,25 +221,7 @@ def parse_call_dates(terms: dict | None) -> list[date]:
 
 def _outstanding_at(sched: Schedule, on: date, today: date | None = None) -> float | None:
     """Face outstanding before the call, reconciling original/current face."""
-    today = today or date.today()
-    face = sched.face_value
-    if face is None or not math.isfinite(face) or face <= 0:
-        return None
-    reds = [f for f in sched.flows if f.event == "redemption" and f.due_date.year < 2500]
-    if any(f.amount is None or not math.isfinite(f.amount) or f.amount < 0 for f in reds):
-        return None
-    total = sum(f.amount or 0 for f in reds)
-    future = sum(f.amount or 0 for f in reds if f.due_date > today)
-    if math.isclose(total, face, rel_tol=1e-6, abs_tol=0.01):
-        base = face
-    elif math.isclose(future, face, rel_tol=1e-6, abs_tol=0.01):
-        base = total
-    elif not reds or (len(reds) == 1 and reds[0].due_date >= on and (reds[0].amount or 0) >= face):
-        base = face
-    else:
-        return None
-    redeemed = sum(f.amount or 0 for f in reds if f.due_date < on)
-    return max(0.0, base - redeemed)
+    return sched.principal_at(on, today or date.today())
 
 
 def accrued_interest(sched: Schedule,
@@ -357,7 +339,7 @@ def fallback_ytm(price: float, sched: Schedule, terms: dict | None,
                  today: date) -> float | None:
     terms = terms or {}
     if (sched.pricing_issues(today) or sched.perpetual or sched.shape == "perpetual"
-            or (sched.flows and sched.shape not in ("plain", "zero_coupon"))
+            or sched.flows
             or str(terms.get("coupon_basis") or "").lower().startswith("variable")
             or "float" in str(terms.get("coupon_type") or "").lower()):
         return None

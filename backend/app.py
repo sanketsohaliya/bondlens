@@ -396,6 +396,7 @@ def bond_detail(isin: str, price: float | None = Query(None, gt=0)):
             "event": f.event, "due_date": f.due_date,
             "record_date": f.record_date, "payment_date": f.payment_date,
             "amount": f.amount, "estimated": f.estimated, "future": fut,
+            "adjustments": f.adjustments,
         })
     next_payment = next((f for f in flows_out if f["future"]), None)
 
@@ -427,6 +428,8 @@ def bond_detail(isin: str, price: float | None = Query(None, gt=0)):
         "schedule_usable": sched.usable and not pricing_issues,
         "schedule_warnings": list(dict.fromkeys(sched.warnings + pricing_notes)),
         "amounts_estimated": sched.amounts_estimated,
+        "yield_amounts_estimated": sched.yield_amounts_estimated(
+            today, until=future_calls[0] if perpetual and future_calls else None),
         "issue_date": terms.get("allotment_date") if terms else None,
         "maturity_date": red_date,
         "exchange": core.get("exchange"),

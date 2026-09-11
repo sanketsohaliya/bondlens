@@ -430,7 +430,9 @@ function ytmTip(b: BondDetail): string | null {
       `payments (${fmt.inr(total)} total, last on ${last}), each discounted by ` +
       `(1 + r/${m})^(${m}×t), sum to the dirty price ${fmt.inr(b.ltp)} paid today. ` +
       `t = years until each payment, compounded ${mName} (m=${m}). r = ${fmt.pct(b.ytm_exact)}.` +
-      (b.amounts_estimated ? " Some amounts were estimated as coupon × face." : "")
+      ((b.yield_amounts_estimated ?? b.amounts_estimated)
+        ? " This yield uses estimated amounts. Expand their details in Cashflows to see the assumptions."
+        : "")
     );
   }
   return (

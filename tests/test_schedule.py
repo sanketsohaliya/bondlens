@@ -1,6 +1,9 @@
 """Schedule engine tests — one fixture per shape found in the database."""
+from copy import deepcopy
 from datetime import date, timedelta
 from decimal import Decimal
+
+import pytest
 
 from backend.analytics import schedule
 
@@ -33,6 +36,8 @@ def test_classify_frequency_real_db_values():
         ("QUARTERLY", "quarterly", 4),
         ("Twice a year", "semiannual", 2),
         ("On Maturity", "cumulative", None),
+        ("CUMULATIVE", "cumulative", None),
+        ("cumulative along with redemption/buyback", "cumulative", None),
         ("Four times a year", "quarterly", 4),
         ("Irregular Occurence", "irregular", None),
         # 'SEMI ANNUAL' must not fall through to the 'annual' needle.
@@ -60,9 +65,12 @@ def test_rate_filed_as_amount_repaired():
     flows.append(_cf("Full Redemption", date(2029, 12, 29), payable=12.75))
     s = schedule.build("X", flows, _terms(
         coupon_rate=12.75, interest_payment_frequency="Twelve times a year",
-        redemption_date=date(2029, 12, 29)), today=date(2025, 12, 1))
+        redemption_date=date(2029, 12, 29), allotment_date=date(2025, 12, 28)), today=date(2025, 12, 1))
     interest = [f for f in s.flows if f.event == "interest"]
-    assert all(f.amount == round(1000 * 12.75 / 100 / 12, 2) for f in interest)
+    previous = date(2025, 12, 28)
+    for f in interest:
+        assert f.amount == round(1000 * 12.75 / 100 * (f.due_date - previous).days / 365, 2)
+        previous = f.due_date
     assert all(f.estimated for f in interest)
     redemption = [f for f in s.flows if f.event == "redemption"][0]
     assert redemption.amount == 1000  # the earlier implausible-vs-face repair
@@ -265,11 +273,11 @@ def test_cumulative_split_still_works_when_no_same_date_interest():
     assert inte.amount == 60597
 
 
-def test_interest_on_wrong_face_basis_rescaled():
+def test_interest_on_unverified_face_basis_is_withheld():
     # 79NHIT35 / INE0H7R07017: current face 300, coupon 7.9%, but NSDL
     # publishes interest on the 3,000 original-face basis (~119/half) —
-    # exact YTM came out 92.73% (true ~7.4%). The amounts are rescaled by
-    # the implied factor so the exact solve prices the traded bond.
+    # the old repair divided by an implied factor to lower the yield.
+    # That factor alone cannot establish the correct cashflow units.
     flows = [_cf("Interest", date(2026, 11, 14), payable=119.47),
              _cf("Interest", date(2027, 5, 14), payable=117.53),
              _cf("Interest", date(2027, 11, 14), payable=119.47),
@@ -280,11 +288,11 @@ def test_interest_on_wrong_face_basis_rescaled():
         interest_payment_frequency="Twice a year",
         redemption_type="Partial Redemption By Face Value",
         redemption_date=date(2035, 10, 25)), today=TODAY)
-    assert s.usable and s.amounts_estimated
-    assert any("original face basis" in w for w in s.warnings)
-    rescaled = [f.amount for f in s.flows if f.event == "interest"]
-    # ~119 / ~10 ≈ 11.85 (coupon 7.9% x face 300 / 2)
-    assert all(a is not None and 10 < a < 14 for a in rescaled)
+    assert s.usable and not s.amounts_estimated
+    assert any("original face basis" in w for w in s.pricing_issues(TODAY))
+    amounts = [f.amount for f in s.flows if f.event == "interest"]
+    # An inferred factor of ~10 is not independent evidence for rescaling.
+    assert amounts == [119.47, 117.53, 119.47]
 
 
 def test_sane_interest_amounts_not_rescaled():
@@ -308,8 +316,10 @@ def test_missing_future_coupons_synthesized():
     assert any("synthesized from terms" in w for w in s.warnings)
     future_int = [f for f in s.flows
                   if f.event == "interest" and f.due_date > TODAY]
-    assert len(future_int) == 2  # Dec 2026 + Dec 2027 anchored at maturity
-    assert all(f.amount == 73.8 and f.estimated for f in future_int)
+    assert len(future_int) == 3  # Dec 2026 + Dec 2027 plus the final maturity stub
+    assert [f.due_date for f in future_int] == [date(2026, 12, 1), date(2027, 12, 1), date(2027, 12, 19)]
+    assert [f.amount for f in future_int] == [73.8, 73.8, 3.64]
+    assert all(f.estimated for f in future_int)
     from backend.analytics import yields
     y = yields.exact_ytm(1072.0, s, today=date(2026, 8, 20))
     assert y is not None and 4.5 < y < 6.0  # was -5.09
@@ -401,13 +411,13 @@ def test_final_coupon_folded_into_redemption():
     assert s.usable
 
 
-def test_implausible_redemption_overridden():
+def test_unverified_small_redemption_is_preserved_and_withheld():
     flows = [_cf("Interest", date(2027, 1, 1), payable=100),
              _cf("Full Redemption", date(2030, 1, 1), redeem=59)]
     s = schedule.build("X", flows, _terms(), today=TODAY)
-    assert s.usable
+    assert not s.usable and s.pricing_issues(TODAY)
     red = [f for f in s.flows if f.event == "redemption"][0]
-    assert red.amount == 1000 and red.estimated
+    assert red.amount == 59 and not red.estimated
 
 
 def test_synthesized_redemption():
@@ -535,3 +545,159 @@ def test_yield_validation_is_scoped_to_the_call_date():
 
 def test_hyphenated_half_yearly_frequency():
     assert schedule.classify_frequency("Half-yearly") == ("semiannual", 2)
+
+
+@pytest.mark.parametrize("face,coupon,previous,maturity,total,frequency", [
+    (100000, 10.5, date(2027, 7, 28), date(2027, 8, 27), 100863.01, "Monthly"),
+    (10000, 11, date(2027, 7, 5), date(2027, 8, 5), 10093.42, "Monthly"),
+    (1000, 7.53, date(2032, 8, 1), date(2033, 8, 1), 1075.3, "Annual"),
+])
+def test_terminal_interest_includes_principal_without_adding_money(face, coupon, previous, maturity, total, frequency):
+    from backend.analytics import yields
+
+    record, payment = maturity - timedelta(days=7), maturity + timedelta(days=2)
+    rows = [_cf("Interest", previous, payable=face * coupon / 100 / (12 if frequency == "Monthly" else 1)),
+            {**_cf("Interest", maturity, payable=total, record=record), "payment_date": payment}]
+    before = deepcopy(rows)
+    s = schedule.build("X", rows, _terms(face_value=face, coupon_rate=coupon,
+                                          redemption_date=maturity, interest_payment_frequency=frequency),
+                       today=previous - timedelta(days=1))
+    principal = [f for f in s.flows if f.event == "redemption"]
+    assert len(principal) == 1 and principal[0].amount == face
+    assert principal[0].record_date == record and principal[0].payment_date == payment
+    assert sum(f.amount or 0 for f in s.flows) == pytest.approx(sum(r["amount_payable"] for r in rows))
+    assert not s.amounts_estimated
+    assert principal[0].adjustments[0]["kind"] == "combined_payment_split"
+    assert principal[0].adjustments[0]["previous_amount"] == total
+    assert yields.exact_ytm(face, s, previous - timedelta(days=1)) is not None
+    assert rows == before
+
+
+@pytest.mark.parametrize("offset,total", [(6, 100883.29), (0, 200000)])
+def test_ambiguous_terminal_lump_does_not_get_an_extra_principal_or_fallback(offset, total):
+    from backend.analytics import compute, yields
+
+    maturity = date(2027, 8, 27)
+    terms = _terms(face_value=100000, coupon_rate=10.5, redemption_date=maturity,
+                   interest_payment_frequency="Monthly")
+    rows = [_cf("Interest", date(2027, 7, 27), payable=891.78),
+            _cf("Interest", maturity - timedelta(days=offset), payable=total)]
+    s = schedule.build("X", rows, terms, today=date(2027, 7, 1))
+    assert not any(f.event == "redemption" and f.estimated for f in s.flows)
+    assert s.pricing_issues(date(2027, 7, 1))
+    assert yields.exact_ytm(100000, s, date(2027, 7, 1)) is None
+    assert yields.fallback_ytm(100000, s, terms, date(2027, 7, 1)) is None
+    assert compute.payout_summary("X", rows, terms, date(2027, 7, 1))["payout_total_snapshot"] is None
+
+
+def test_synthesized_staggered_coupons_follow_outstanding_principal():
+    from backend.analytics import yields
+
+    start, middle, end = date(2025, 1, 1), date(2026, 1, 1), date(2027, 1, 1)
+    rows = [_cf("Partial Redemption", middle, redeem=500), _cf("Partial Redemption", end, redeem=500)]
+    s = schedule.build("X", rows, _terms(allotment_date=start, redemption_date=end,
+                                          day_count_convention="Actual/365"), today=start)
+    assert [(f.due_date, f.amount) for f in s.flows if f.event == "interest"] == [(middle, 100), (end, 50)]
+    assert yields.exact_ytm(1000, s, start) == 10.0
+    assert all(f.adjustments for f in s.flows if f.estimated)
+
+
+def test_missing_coupon_uses_current_face_without_subtracting_history_twice():
+    start, end = date(2026, 1, 1), date(2027, 1, 1)
+    rows = [_cf("Partial Redemption", date(2025, 1, 1), redeem=200),
+            _cf("Interest", start, payable=80), _cf("Interest", end),
+            _cf("Partial Redemption", end, redeem=800)]
+    s = schedule.build("X", rows, _terms(face_value=800, redemption_date=end,
+                                          day_count_convention="Actual/365"), today=start)
+    [coupon] = [f for f in s.flows if f.event == "interest" and f.due_date == end]
+    assert coupon.amount == 80 and coupon.estimated
+    assert coupon.adjustments[0]["kind"] == "coupon_estimated"
+    assert coupon.adjustments[0]["previous_amount"] is None
+
+
+def test_missing_coupon_integrates_mid_period_principal_repayments():
+    start, partial, end = date(2025, 1, 1), date(2025, 7, 2), date(2026, 1, 1)
+    rows = [_cf("Interest", start, payable=100), _cf("Partial Redemption", partial, redeem=500),
+            _cf("Interest", end), _cf("Partial Redemption", end, redeem=500)]
+    s = schedule.build("X", rows, _terms(redemption_date=end, day_count_convention="Actual/365"), today=start)
+    [coupon] = [f for f in s.flows if f.event == "interest" and f.estimated]
+    assert coupon.amount == 74.93
+
+
+def test_missing_first_coupon_uses_allotment_anchor():
+    start, end = date(2025, 1, 1), date(2026, 1, 1)
+    s = schedule.build("X", [_cf("Interest", end), _cf("Redemption", end, redeem=1000)],
+                       _terms(allotment_date=start, redemption_date=end, day_count_convention="Actual/365"), today=start)
+    [coupon] = [f for f in s.flows if f.event == "interest"]
+    assert coupon.amount == 100 and coupon.estimated
+
+
+def test_synthesis_without_a_coupon_anchor_is_withheld():
+    from backend.analytics import yields
+
+    end = date(2027, 1, 1)
+    terms = _terms(redemption_date=end)
+    s = schedule.build("X", [_cf("Redemption", end, redeem=1000)], terms, today=TODAY)
+    assert not any(f.event == "interest" for f in s.flows)
+    assert yields.exact_ytm(1000, s, TODAY) is None
+    assert yields.fallback_ytm(1000, s, terms, TODAY) is None
+
+
+def test_synthesized_month_end_dates_do_not_drift():
+    s = schedule.build("X", [_cf("Redemption", date(2025, 5, 31), redeem=1000)],
+                       _terms(allotment_date=date(2025, 1, 31), redemption_date=date(2025, 5, 31),
+                              interest_payment_frequency="Monthly"), today=date(2025, 1, 31))
+    assert [f.due_date for f in s.flows if f.event == "interest"] == [
+        date(2025, 2, 28), date(2025, 3, 31), date(2025, 4, 30), date(2025, 5, 31)]
+
+
+def test_issue_level_scaling_requires_independent_quantity_evidence():
+    from backend.analytics import yields
+
+    rows = [_cf("Interest", date(2027, 1, 1), payable=1000),
+            _cf("Redemption", date(2028, 1, 1), redeem=10000)]
+    s = schedule.build("X", rows, _terms(redemption_date=date(2028, 1, 1)), today=TODAY)
+    assert s.scale == 1
+    assert s.pricing_issues(TODAY)
+    assert yields.exact_ytm(1000, s, TODAY) is None
+
+
+@pytest.mark.parametrize("overrides", [
+    {"coupon_basis": "Variable Interest"},
+    {"coupon_type": "Floating"},
+    {"coupon_basis": "Zero Interest"},
+    {"interest_payment_frequency": "On Maturity"},
+])
+def test_unknown_coupons_are_not_filled_from_unsupported_headline_rates(overrides):
+    from backend.analytics import yields
+
+    end = date(2027, 1, 1)
+    rows = [_cf("Interest", date(2026, 1, 1), payable=100), _cf("Interest", end),
+            _cf("Redemption", end, redeem=1000)]
+    s = schedule.build("X", rows, _terms(redemption_date=end, **overrides), today=TODAY)
+    future = [f for f in s.flows if f.event == "interest" and f.due_date == end]
+    assert future[0].amount is None
+    assert yields.exact_ytm(1000, s, TODAY) is None
+
+
+def test_rate_repair_also_uses_the_staggered_principal_timeline():
+    start, middle, end = date(2025, 1, 1), date(2026, 1, 1), date(2027, 1, 1)
+    rows = [_cf("Interest", middle, payable=10), _cf("Redemption", middle, redeem=500),
+            _cf("Interest", end, payable=10), _cf("Redemption", end, redeem=500)]
+    s = schedule.build("X", rows, _terms(allotment_date=start, redemption_date=end,
+                                          day_count_convention="Actual/365"), today=start)
+    assert [f.amount for f in s.flows if f.event == "interest"] == [100, 50]
+    assert all(f.adjustments[0]["kind"] == "coupon_rate_repaired" for f in s.flows if f.event == "interest")
+
+
+@pytest.mark.parametrize("premium,last_coupon,placeholder", [("2% premium", 100, True), (None, 1100, True), ("2% premium", 100, False)])
+def test_ambiguous_missing_principal_is_not_assumed_to_be_par(premium, last_coupon, placeholder):
+    from backend.analytics import yields
+
+    start, end = date(2025, 1, 1), date(2026, 1, 1)
+    rows = [_cf("Interest", start, payable=100), _cf("Interest", end, payable=last_coupon)]
+    if placeholder:
+        rows.append(_cf("Redemption", end))
+    s = schedule.build("X", rows, _terms(redemption_date=end, redemption_premium_details=premium), today=start)
+    assert [f.amount for f in s.flows if f.event == "redemption"] == ([None] if placeholder else [])
+    assert yields.exact_ytm(1100, s, start) is None

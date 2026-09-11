@@ -96,6 +96,71 @@ describe("cashflow schedule presentation", () => {
     expect(html).not.toContain("Past");
   });
 
+  it("explains normalized combined payments without calling them estimates", () => {
+    const payment: Cashflow = {
+      ...receivable,
+      event: "redemption",
+      amount: 1000,
+      adjustments: [
+        {
+          kind: "combined_payment_split",
+          previous_amount: 1100,
+          amount: 1000,
+          reason: "Split published terminal payment; total unchanged",
+        },
+      ],
+    };
+    const html = renderToStaticMarkup(
+      <CashflowSchedule bond={{ ...bond, cashflows: [payment] }} asOf="2026-09-11" />,
+    );
+    expect(html).toContain("normalized");
+    expect(html).toContain("total unchanged");
+    expect(html).toContain("₹1,100");
+    expect(html).not.toContain("some amounts estimated");
+  });
+
+  it("identifies an added principal rather than claiming it is a coupon estimate", () => {
+    const payment: Cashflow = {
+      ...receivable,
+      event: "redemption",
+      amount: 1000,
+      estimated: true,
+      adjustments: [
+        {
+          kind: "principal_synthesized",
+          previous_amount: null,
+          amount: 1000,
+          reason: "Added principal from face and maturity; no source redemption row",
+        },
+      ],
+    };
+    const html = renderToStaticMarkup(
+      <CashflowSchedule
+        bond={{ ...bond, amounts_estimated: true, cashflows: [payment] }}
+        asOf="2026-09-11"
+      />,
+    );
+    expect(html).toContain("1 future amount estimated");
+    expect(html).toContain("Added principal from face and maturity");
+    expect(html).toContain("not supplied");
+    expect(html).not.toContain("estimated from coupon rate");
+  });
+
+  it("distinguishes estimates outside current buyer cashflows", () => {
+    const html = renderToStaticMarkup(
+      <CashflowSchedule
+        bond={{
+          ...bond,
+          amounts_estimated: true,
+          cashflows: [{ ...flow, estimated: true }, receivable],
+        }}
+        asOf="2026-09-11"
+      />,
+    );
+    expect(html).toContain("Only past/excluded amounts estimated");
+    expect(html).not.toContain("future amount estimated");
+  });
+
   it("dims and tags a record-date-passed row without inline prose", () => {
     const html = renderToStaticMarkup(<CashflowSchedule bond={bond} asOf="2026-09-11" />);
     expect(html).toContain(">excluded<");

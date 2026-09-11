@@ -19,6 +19,9 @@ describe("yield presentation", () => {
   it("distinguishes published and estimated schedules", () => {
     expect(yieldLabel(bond)).toBe("YTM (exact)");
     expect(yieldLabel({ ...bond, amounts_estimated: true })).toBe("YTM (estimated)");
+    expect(yieldLabel({ ...bond, amounts_estimated: true, yield_amounts_estimated: false })).toBe(
+      "YTM (exact)",
+    );
     expect(yieldLabel({ ...bond, ytm_exact: null, ytm_approx: 10 })).toBe("YTM (approx)");
   });
 

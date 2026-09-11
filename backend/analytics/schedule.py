@@ -13,8 +13,8 @@ observed across the full database:
 
 Amount normalization: NSDL publishes amounts inconsistently — usually per
 unit of face value, sometimes at issue level (total ₹ across all units).
-The engine reconciles the redemption total against face value to detect
-and rescale issue-level schedules instead of assuming either convention.
+The engine reconciles principal against face value and requires published
+quantity evidence before rescaling issue-level schedules.
 
 Missing interest amounts are estimated from the coupon rate, face value
 outstanding and the actual day-count between flows; every estimated flow
@@ -45,6 +45,13 @@ class Flow:
     # Business-day-adjusted date the money actually lands (NSDL's
     # payment_date; can precede the due date across weekends/holidays).
     payment_date: date | None = None
+    adjustments: list[dict] = field(default_factory=list)
+
+    def adjust(self, amount: float | None, kind: str, reason: str, *, estimated: bool = True) -> None:
+        self.adjustments.append({"kind": kind, "previous_amount": self.amount,
+                                 "amount": amount, "reason": reason})
+        self.amount = amount
+        self.estimated = self.estimated or estimated
 
     @property
     def effective_date(self) -> date:
@@ -110,6 +117,17 @@ class Schedule:
         return [f for f in self.flows
                 if f.amount and f.receivable_by_buyer(today)]
 
+    def principal_at(self, on: date, today: date) -> float | None:
+        redemptions = [f for f in self.flows if f.event == "redemption" and f.due_date.year < 2500]
+        base = _principal_base(self.face_value, redemptions, today)
+        if base is None:
+            return None
+        return max(0.0, base - sum(f.amount or 0 for f in redemptions if f.due_date < on))
+
+    def yield_amounts_estimated(self, today: date, until: date | None = None) -> bool:
+        return any(f.estimated for f in self.future_flows(today)
+                   if until is None or f.due_date <= until)
+
     def pricing_issues(self, today: date, until: date | None = None) -> list[str]:
         issues = [message for due, message in self.input_issues
                   if due is None or (due >= today and (until is None or due <= until))]
@@ -169,6 +187,8 @@ _FREQ_MAP = [
     ("quarter", "quarterly", 4),
     ("four times", "quarterly", 4),
     ("every year", "annual", 1),
+    ("each year", "annual", 1),
+    ("cumulative", "cumulative", None),
     ("maturity", "cumulative", None),
     ("irregular", "irregular", None),
 ]
@@ -236,6 +256,10 @@ def build(isin: str, cashflows: list[dict], terms: dict | None,
 
     freq_name, ppy = classify_frequency(terms.get("interest_payment_frequency"))
     sched.frequency, sched.periods_per_year = freq_name, ppy
+    zero_basis = "zero" in str(terms.get("coupon_basis") or "").lower()
+    variable = (str(terms.get("coupon_basis") or "").lower().startswith("variable")
+                or any(word in str(terms.get("coupon_type") or "").lower() for word in ("float", "compound")))
+    fixed_coupon = not variable and not zero_basis and sched.frequency != "cumulative"
 
     flows = _normalize_rows(cashflows)
     # NSDL repeats the entire per-unit schedule once per further-issue
@@ -266,35 +290,51 @@ def build(isin: str, cashflows: list[dict], terms: dict | None,
             sched.warnings.append("perpetual with no published schedule")
         return sched
 
+    terminal_ambiguous = _split_terminal_payment(sched, flows, terms)
     interest = [f for f in flows if f.event == "interest"]
     redemptions = [f for f in flows if f.event == "redemption"]
 
     # --- repair missing redemption information -----------------------------
     # a) single redemption row with no amount -> the face value.
     if face and len(redemptions) == 1 and redemptions[0].amount is None:
-        redemptions[0].amount = face
-        redemptions[0].estimated = True
-    # b) single full-redemption row implausibly below face (usually an
-    #    interest amount misfiled as the redemption) -> override with face.
+        possible_combined = any(f.amount is not None and f.amount >= face * (1 - _FACE_TOL)
+                                and abs((f.due_date - redemptions[0].due_date).days) <= 7 for f in interest)
+        if sched.call_price_unsupported or possible_combined:
+            sched.input_issues.append((redemptions[0].due_date,
+                "Missing principal has unresolved premium or combined-payment terms; par redemption not assumed"))
+        else:
+            redemptions[0].adjust(face, "principal_assumed", "Missing redemption amount filled from face value")
+    # b) a small full-redemption may contain a misfiled coupon rate. Repair
+    #    only with matching coupon-field evidence; otherwise preserve it.
     if (face and len(redemptions) == 1 and redemptions[0].amount is not None
             and interest
             and "full" in (terms.get("redemption_type") or "").lower()
             and redemptions[0].amount < face * (1.0 - _FACE_TOL)):
-        sched.warnings.append(
-            f"implausible redemption {redemptions[0].amount:,.2f} vs face "
-            f"{face:,.0f} — overridden with face")
-        redemptions[0].amount = face
-        redemptions[0].estimated = True
+        rate_filed = (fixed_coupon and coupon is not None and len(interest) >= 2
+                      and redemptions[0].amount == coupon
+                      and all(f.amount == coupon for f in interest))
+        if rate_filed:
+            redemptions[0].adjust(face, "principal_overridden",
+                                  "Coupon rate filed in redemption and coupon fields; principal inferred from full-redemption terms")
+            sched.warnings.append("coupon rate filed as redemption — overridden with face")
+        else:
+            sched.input_issues.append((redemptions[0].due_date,
+                                       "Published redemption is below face; amount preserved, principal basis requires review"))
     # c) no redemption rows at all but terms carry a redemption date ->
     #    synthesize the principal flow (NSDL sometimes omits it).
-    if face and not redemptions and not perpetual:
+    if face and not redemptions and not perpetual and not terminal_ambiguous:
         red_date = terms.get("redemption_date")
         if red_date is not None and red_date > today:
-            synth = Flow(event="redemption", due_date=red_date,
-                         amount=face, estimated=True)
-            flows.append(synth)
-            redemptions = [synth]
-            sched.warnings.append("synthesized redemption from bond_terms")
+            if sched.call_price_unsupported:
+                sched.input_issues.append((None, "Unresolved redemption premium; principal cannot be synthesized at par"))
+            elif "partial" in str(terms.get("redemption_type") or "").lower():
+                sched.input_issues.append((None, "Missing partial-redemption timeline; principal cannot be synthesized"))
+            else:
+                synth = Flow(event="redemption", due_date=red_date)
+                synth.adjust(face, "principal_synthesized", "Added principal from face value and maturity terms; no redemption row was published")
+                flows.append(synth)
+                redemptions = [synth]
+                sched.warnings.append("synthesized redemption from bond_terms")
 
     # --- reconcile principal against face value ----------------------------
     redemption_total = sum(f.amount for f in redemptions if f.amount)
@@ -318,17 +358,19 @@ def build(isin: str, cashflows: list[dict], terms: dict | None,
             # CURRENT outstanding face; past redemptions explain the rest.
             sched.redemption_matches_face = True
         elif ratio >= _MIN_SCALE:
-            # Issue-level schedule: try net_quantity first, else the ratio
-            # itself (redemption premium bonds excluded by _MIN_SCALE).
+            # Issue-level schedules require a published quantity to verify
+            # scaling; the redemption/face ratio alone is not evidence.
             qty = _num(terms.get("net_quantity"))
-            scale = qty if qty and abs(redemption_total / qty / face - 1.0) <= _FACE_TOL else ratio
-            for f in flows:
-                if f.amount:
-                    f.amount = f.amount / scale
-            sched.scale = scale
-            sched.redemption_matches_face = True
-            sched.warnings.append(
-                f"issue-level amounts rescaled by {scale:,.0f}")
+            if qty and abs(redemption_total / qty / face - 1.0) <= _FACE_TOL:
+                for f in flows:
+                    if f.amount:
+                        f.adjust(f.amount / qty, "issue_rescaled",
+                                 f"Converted issue-level amount to one unit using published quantity {qty:g}", estimated=False)
+                sched.scale = qty
+                sched.redemption_matches_face = True
+                sched.warnings.append(f"issue-level amounts rescaled by {qty:,.0f}")
+            else:
+                sched.input_issues.append((None, "Issue-level amount basis is unverified; amounts preserved, yield withheld"))
         else:
             sched.warnings.append(
                 f"redemption total {redemption_total:,.2f} vs face "
@@ -341,7 +383,7 @@ def build(isin: str, cashflows: list[dict], terms: dict | None,
     # principal" exceeds what was ever lent. Same dated totals, so YTM is
     # untouched. Runs after rescaling so amounts are per-unit; single
     # redemptions only (staggered schedules redeem face in parts).
-    if (face and len(redemptions) == 1
+    if (face and len(redemptions) == 1 and not sched.input_issues
             and (amt := redemptions[0].amount) is not None
             and amt > face * (1.0 + _FACE_TOL)):
         r = redemptions[0]
@@ -354,16 +396,19 @@ def build(isin: str, cashflows: list[dict], terms: dict | None,
         same_date_interest = sum(f.amount or 0 for f in interest
                                  if f.due_date == r.due_date)
         if (same_date_interest
-                and abs(excess - same_date_interest) <= face * _FACE_TOL):
-            r.amount = face
+                and abs(excess - same_date_interest) <= max(0.01, same_date_interest * 0.01)):
+            r.adjust(face, "folded_coupon_removed", "Removed a matching final coupon also published separately on the same date")
             sched.warnings.append(
                 f"final coupon {excess:,.2f} listed both separately and "
                 "inside the redemption — folded copy dropped")
         else:
-            flows.append(Flow(event="interest", due_date=r.due_date,
-                              record_date=r.record_date, amount=excess,
-                              estimated=r.estimated, payment_date=r.payment_date))
-            r.amount = face
+            split = Flow(event="interest", due_date=r.due_date,
+                         record_date=r.record_date, amount=r.amount,
+                         estimated=r.estimated, payment_date=r.payment_date)
+            reason = "Split published redemption total into face principal and excess interest; total payment unchanged"
+            split.adjust(excess, "redemption_interest_split", reason, estimated=False)
+            r.adjust(face, "redemption_interest_split", reason, estimated=False)
+            flows.append(split)
             interest = [f for f in flows if f.event == "interest"]
             sched.warnings.append(
                 f"redemption exceeded face by {excess:,.2f} — "
@@ -384,22 +429,25 @@ def build(isin: str, cashflows: list[dict], terms: dict | None,
     # numerically AND that disagrees with coupon x face / m — on bonds
     # where the two legitimately coincide (face 100 annual) the mismatch
     # test fails and nothing changes.
-    if face and coupon and sched.periods_per_year and len(interest) >= 2:
+    if face and coupon and fixed_coupon and sched.periods_per_year and len(interest) >= 2:
         expected = face * coupon / 100.0 / sched.periods_per_year
         amts = [f.amount for f in interest if f.amount is not None]
         if (len(amts) == len(interest)
                 and all(abs(a - coupon) < 0.005 for a in amts)
                 and abs(expected - coupon) / expected > 0.05):
-            for f in interest:
-                f.amount = round(expected, 2)
-                f.estimated = True
+            previous = sched.allotment_date
+            for f in sorted(interest, key=lambda f: f.due_date):
+                amount = _coupon_amount(previous, f.due_date, redemptions, face, coupon, dc, today)
+                f.adjust(amount, "coupon_rate_repaired",
+                         "Published amount equals the coupon rate; recalculated using accrual dates and outstanding principal when known")
+                previous = f.due_date
             sched.warnings.append(
                 f"interest amounts equal the coupon rate ({coupon:g}) — "
-                f"recomputed as coupon × face / periods = {expected:,.2f}")
+                "recomputed from coupon dates and principal timeline")
 
     # --- estimate missing interest amounts --------------------------------
-    if face and coupon and dc in daycount.SUPPORTED:
-        _estimate_missing(interest, redemptions, face, coupon, dc)
+    if face and coupon and fixed_coupon and dc in daycount.SUPPORTED and not sched.input_issues:
+        _estimate_missing(interest, redemptions, face, coupon, dc, today, sched.allotment_date)
     if any(f.estimated for f in flows):
         sched.amounts_estimated = True
 
@@ -407,29 +455,23 @@ def build(isin: str, cashflows: list[dict], terms: dict | None,
     # Amortized bonds sometimes publish interest computed on the ORIGINAL
     # face while bond_terms carries the reduced current face (79NHIT35:
     # coupon 7.9% on face 300, published coupons ~119 — the 3,000
-    # original-face basis). Rescale by the implied factor so the exact
-    # solve prices the bond that actually trades.
-    zero_basis = "zero" in (terms.get("coupon_basis") or "").lower()
-    if face and coupon and len(interest) >= 2:
+    # original-face basis). An implied factor flags a suspected mismatch;
+    # it is not independent evidence for rewriting published payments.
+    if face and coupon and fixed_coupon and len(interest) >= 2:
         dated = sorted((f for f in interest if f.amount),
                        key=lambda f: f.due_date)
         implied = []
         for prev, cur in itertools.pairwise(dated):
             gap = (cur.due_date - prev.due_date).days / 365.0
             if gap > 0.04 and cur.amount:  # ignore same-date splits
-                implied.append(cur.amount / (face * gap) * 100.0)
+                basis = _coupon_amount(prev.due_date, cur.due_date, redemptions, face, 1.0, dc, today)
+                if basis and cur.receivable_by_buyer(today) and not cur.estimated:
+                    implied.append(cur.amount / basis)
         if implied:
             med = sorted(implied)[len(implied) // 2]
             if med > coupon * 2.5:
-                k = med / coupon
-                for f in interest:
-                    if f.amount:
-                        f.amount = round(f.amount / k, 2)
-                        f.estimated = True
-                sched.amounts_estimated = True
-                sched.warnings.append(
-                    f"interest amounts ÷{k:,.1f} — published on the "
-                    "original face basis, rescaled to the current face")
+                sched.input_issues.append((None,
+                    "Coupon amounts imply an unverified original face basis; published amounts preserved, yield withheld"))
 
     # --- synthesize missing future coupons ----------------------------------
     # When NSDL publishes no future interest rows for a coupon-bearing
@@ -444,24 +486,39 @@ def build(isin: str, cashflows: list[dict], terms: dict | None,
     future_red = sum(f.amount or 0 for f in redemptions if f.due_date > today)
     genuinely_cumulative = bool(
         face and future_red > face * (1.0 + _FACE_TOL))
-    if (face and coupon and not zero_basis and not genuinely_cumulative
+    if (face and coupon and not zero_basis and not genuinely_cumulative and not perpetual
             and future_red > 0
             and not any(f.due_date > today for f in interest)):
-        m = sched.periods_per_year or 1
+        m = sched.periods_per_year
         final = max(f.due_date for f in redemptions if f.due_date > today)
-        step = 12 // m if m in (1, 2, 4, 12) else 12
-        due, synthesized = final, []
-        while due > today:
-            synthesized.append(Flow(
-                event="interest", due_date=due,
-                amount=round(face * coupon / 100.0 / m, 2), estimated=True))
-            due = _months_back(due, step)
-        flows.extend(synthesized)
-        interest = [f for f in flows if f.event == "interest"]
-        sched.amounts_estimated = True
-        sched.warnings.append(
-            f"{len(synthesized)} future coupon(s) synthesized from terms "
-            f"({coupon:g}% ÷ {m}/yr) — none were published")
+        anchor = max((f.due_date for f in interest if f.due_date <= today), default=sched.allotment_date)
+        if (m not in (1, 2, 4, 12) or anchor is None or anchor > today or not fixed_coupon or final.year >= 2500
+                or sched.input_issues or _principal_base(face, redemptions, today) is None):
+            sched.input_issues.append((None, "Missing or ambiguous coupon anchor, rate, or principal timeline; coupons not synthesized"))
+        else:
+            assert m is not None
+            step = 12 // m
+            index = max(0, ((today.year - anchor.year) * 12 + today.month - anchor.month) // step)
+            previous = _months_back(anchor, -index * step)
+            if previous > today:
+                index -= 1
+                previous = _months_back(anchor, -index * step)
+            synthesized = []
+            while previous < final:
+                index += 1
+                due = min(_months_back(anchor, -index * step), final)
+                if due > today:
+                    f = Flow(event="interest", due_date=due)
+                    f.adjust(_coupon_amount(previous, due, redemptions, face, coupon, dc, today),
+                             "coupon_synthesized", "Generated from the fixed coupon, dated principal balances, and coupon anchor; record date not supplied")
+                    synthesized.append(f)
+                previous = due
+            flows.extend(synthesized)
+            interest = [f for f in flows if f.event == "interest"]
+            sched.amounts_estimated = bool(synthesized) or sched.amounts_estimated
+            sched.warnings.append(
+                f"{len(synthesized)} future coupon(s) synthesized from terms "
+                f"({coupon:g}% using principal timeline) — none were published")
 
     # --- classify shape ----------------------------------------------------
     zero_coupon = "zero" in (terms.get("coupon_basis") or "").lower()
@@ -489,6 +546,80 @@ def build(isin: str, cashflows: list[dict], terms: dict | None,
 
     sched.flows = sorted(flows, key=lambda f: (f.due_date, f.event))
     return sched
+
+
+def _split_terminal_payment(sched: Schedule, flows: list[Flow], terms: dict) -> bool:
+    face, coupon, maturity = sched.face_value, sched.coupon_rate, sched.maturity_date
+    if not face or sched.perpetual or any(f.event == "redemption" for f in flows):
+        return False
+    candidates = [f for f in flows if f.event == "interest" and f.amount is not None
+                  and f.amount >= face * (1 - _FACE_TOL)]
+    if not candidates:
+        return False
+    terminal = candidates[0]
+    previous = max((f.due_date for f in flows if f.event == "interest" and f.due_date < terminal.due_date),
+                   default=sched.allotment_date)
+    expected = (_coupon_amount(previous, terminal.due_date, [], face, coupon, sched.day_count, terminal.due_date)
+                if coupon and coupon > 0 else None)
+    basis = str(terms.get("coupon_basis") or "").lower()
+    supported = (len(candidates) == 1 and maturity == terminal.due_date
+                 and sched.periods_per_year in (1, 2, 4, 12)
+                 and "full" in str(terms.get("redemption_type") or "").lower()
+                 and not basis.startswith("variable") and "zero" not in basis
+                 and "float" not in str(terms.get("coupon_type") or "").lower()
+                 and not any(f.due_date > terminal.due_date for f in flows)
+                 and expected is not None and terminal.amount is not None
+                 and abs(terminal.amount - face - expected) <= max(0.02, expected * 0.03))
+    if not supported:
+        sched.input_issues.append((None, "Terminal interest may include principal but its date, amount, or terms are ambiguous; no extra principal added"))
+        return True
+    assert terminal.amount is not None
+    total = terminal.amount
+    reason = f"Split published terminal payment {total:,.2f} into principal {face:,.2f} and interest {total - face:,.2f}; total unchanged"
+    principal = Flow("redemption", terminal.due_date, terminal.record_date, total,
+                     terminal.estimated, terminal.payment_date)
+    terminal.adjust(round(total - face, 2), "combined_payment_split", reason, estimated=False)
+    principal.adjust(face, "combined_payment_split", reason, estimated=False)
+    flows.append(principal)
+    sched.warnings.append(reason)
+    return False
+
+
+def _principal_base(face: float | None, redemptions: list[Flow], today: date) -> float | None:
+    if face is None or not math.isfinite(face) or face <= 0:
+        return None
+    if any(f.amount is None or not math.isfinite(f.amount) or f.amount < 0 for f in redemptions):
+        return None
+    total = sum(f.amount or 0 for f in redemptions)
+    future = sum(f.amount or 0 for f in redemptions if f.due_date > today)
+    if math.isclose(total, face, rel_tol=1e-6, abs_tol=0.01):
+        return face
+    if math.isclose(future, face, rel_tol=1e-6, abs_tol=0.01):
+        return total
+    if not redemptions or (len(redemptions) == 1 and redemptions[0].due_date > today
+                           and (redemptions[0].amount or 0) >= face):
+        return face
+    return None
+
+
+def _coupon_amount(start: date | None, end: date, redemptions: list[Flow], face: float,
+                   coupon: float, dc: str, today: date) -> float | None:
+    if start is None or start >= end or end.year >= 2500 or dc not in daycount.SUPPORTED:
+        return None
+    if not math.isfinite(coupon) or coupon < 0 or daycount.year_frac(start, end, dc) > 1.5:
+        return None
+    base = _principal_base(face, redemptions, today)
+    if base is None:
+        return None
+    outstanding = base - sum(f.amount or 0 for f in redemptions if f.due_date <= start)
+    cursor, amount = start, 0.0
+    for redemption in sorted(redemptions, key=lambda f: f.due_date):
+        if start < redemption.due_date < end:
+            amount += max(0.0, outstanding) * coupon / 100 * daycount.year_frac(cursor, redemption.due_date, dc)
+            outstanding -= redemption.amount or 0
+            cursor = redemption.due_date
+    amount += max(0.0, outstanding) * coupon / 100 * daycount.year_frac(cursor, end, dc)
+    return round(amount, 2) if math.isfinite(amount) else None
 
 
 def _months_back(d: date, months: int) -> date:
@@ -520,28 +651,21 @@ def _normalize_rows(cashflows: list[dict]) -> list[Flow]:
 
 
 def _estimate_missing(interest: list[Flow], redemptions: list[Flow],
-                      face: float, coupon_pct: float, dc: str):
+                      face: float, coupon_pct: float, dc: str, today: date,
+                      allotment_date: date | None):
     """Fill missing interest amounts as coupon x outstanding face x period
     year-fraction. Outstanding face steps down at each partial redemption
     (staggered bonds keep paying coupons on the reduced principal)."""
-    if not interest:
-        return
-    events = sorted(interest + redemptions, key=lambda f: f.due_date)
-    outstanding = face
-    prev_date = None
-    for f in events:
-        if f.event == "redemption":
-            if f.amount:
-                outstanding = max(0.0, outstanding - f.amount)
-            continue
+    prev_date = allotment_date
+    for f in sorted(interest, key=lambda f: f.due_date):
         if f.amount is None:
-            if prev_date is not None and outstanding > 0:
-                frac = daycount.year_frac(prev_date, f.due_date, dc)
+            if prev_date is not None:
                 # Guard: a first-in-series or irregular gap > 1.5y means we
                 # can't trust the estimate.
-                if 0 < frac <= 1.5:
-                    f.amount = round(outstanding * coupon_pct / 100.0 * frac, 2)
-                    f.estimated = True
+                amount = _coupon_amount(prev_date, f.due_date, redemptions, face, coupon_pct, dc, today)
+                if amount is not None:
+                    f.adjust(amount, "coupon_estimated",
+                             f"Estimated at {coupon_pct:g}% from {prev_date} to {f.due_date}, integrating dated principal repayments")
         prev_date = f.due_date
 
 

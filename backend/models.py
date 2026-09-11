@@ -84,6 +84,13 @@ class Filters(BaseModel):
     ratings: list[str]
 
 
+class CashflowAdjustment(BaseModel):
+    kind: str
+    previous_amount: float | None
+    amount: float | None
+    reason: str
+
+
 class Cashflow(BaseModel):
     event: Literal["interest", "redemption"]
     due_date: date
@@ -94,6 +101,7 @@ class Cashflow(BaseModel):
     amount: float | None
     estimated: bool
     future: bool
+    adjustments: list[CashflowAdjustment] = Field(default_factory=list)
 
 
 class EvidenceAvailability(BaseModel):
@@ -253,6 +261,7 @@ class BondDetail(BaseModel):
     schedule_usable: bool
     schedule_warnings: list[str]
     amounts_estimated: bool
+    yield_amounts_estimated: bool = False
     issue_date: date | None
     maturity_date: date | None
     years_to_maturity: float | None

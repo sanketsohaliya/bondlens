@@ -459,6 +459,10 @@ export type BondDetail = {
      */
     amounts_estimated: boolean;
     /**
+     * Yield Amounts Estimated
+     */
+    yield_amounts_estimated?: boolean;
+    /**
      * Issue Date
      */
     issue_date: string | null;
@@ -631,6 +635,32 @@ export type Cashflow = {
      * Future
      */
     future: boolean;
+    /**
+     * Adjustments
+     */
+    adjustments?: Array<CashflowAdjustment>;
+};
+
+/**
+ * CashflowAdjustment
+ */
+export type CashflowAdjustment = {
+    /**
+     * Kind
+     */
+    kind: string;
+    /**
+     * Previous Amount
+     */
+    previous_amount: number | null;
+    /**
+     * Amount
+     */
+    amount: number | null;
+    /**
+     * Reason
+     */
+    reason: string;
 };
 
 /**

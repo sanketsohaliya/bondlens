@@ -3,7 +3,13 @@ import { calendarAsOf } from "./cashflowEvidence";
 
 type YieldData = Pick<
   BondDetail,
-  "ytm" | "ytm_exact" | "ytm_approx" | "amounts_estimated" | "maturity_date" | "call_dates"
+  | "ytm"
+  | "ytm_exact"
+  | "ytm_approx"
+  | "amounts_estimated"
+  | "yield_amounts_estimated"
+  | "maturity_date"
+  | "call_dates"
 >;
 
 export function isYieldToCall(bond: YieldData): boolean {
@@ -23,6 +29,9 @@ export function firstFutureCall(bond: Pick<BondDetail, "as_of" | "call_dates">):
 export function yieldLabel(bond: YieldData): string {
   if (bond.ytm == null) return "Yield unavailable";
   if (isYieldToCall(bond)) return "YTC";
-  if (bond.ytm_exact != null) return bond.amounts_estimated ? "YTM (estimated)" : "YTM (exact)";
+  if (bond.ytm_exact != null)
+    return (bond.yield_amounts_estimated ?? bond.amounts_estimated)
+      ? "YTM (estimated)"
+      : "YTM (exact)";
   return "YTM (approx)";
 }

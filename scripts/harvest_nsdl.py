@@ -5,12 +5,12 @@ append-only, so parsing decisions can change later without refetching and
 the history of changing data (ratings, holdings, redemptions) is retained.
 
 Endpoint tiers (refresh policy):
-  static    isins, coupondetail, instruments, listings, keycontacts
-            -- contractual/historical facts; fetched once, skipped forever
-  weekly    credit_ratings, defaultdetail, getTDbyIsin, restructuring
-            -- event-driven credit data
-  monthly   redemptions, keydocuments
-            -- slow-moving (buybacks, new documents)
+  static    isins, listings, keycontacts
+            -- issuer/listing/contact metadata; fetched once on success
+  weekly    instruments, coupondetail, redemptions, credit_ratings,
+            defaultdetail, getTDbyIsin, restructuring -- financial terms
+  monthly   keydocuments
+            -- slow-moving documents
   quarterly quarterenddate + publicshareholderdetails
             -- investor category holdings; ALL quarters are fetched
                (historical), already-captured quarters are frozen
@@ -55,9 +55,9 @@ HEADERS = {
 # Key Documents. (Liquidity Window Facility has no public API.)
 ENDPOINTS = {
     "isins": ("/isins", "static"),          # actually /public/isins, see fetch()
-    "instruments": ("/instruments", "static"),
-    "coupondetail": ("/coupondetail", "static"),
-    "redemptions": ("/redemptions", "monthly"),
+    "instruments": ("/instruments", "weekly"),
+    "coupondetail": ("/coupondetail", "weekly"),
+    "redemptions": ("/redemptions", "weekly"),
     "credit_ratings": ("/credit-ratings", "weekly"),
     "listings": ("/listings", "static"),
     "restructuring": ("/restructuring", "weekly"),
@@ -140,16 +140,30 @@ def session(rotate: bool = False) -> requests.Session:
 
 def fetch(url: str, tag: str):
     """GET with retries. Returns (http_status, text) or (None, None).
-    4xx is a real answer (e.g. 400 'No Record Found'), not a failure."""
+    Only JSON success or explicit 400 'No Record Found' is cacheable."""
     for attempt in range(MAX_ATTEMPTS):
+        delay = min(5 * (attempt + 1), 20)
         try:
             r = session(rotate=attempt > 0).get(url, timeout=45)
-            if r.status_code < 500:
-                return r.status_code, r.text
+            if r.status_code in (200, 400):
+                payload = json.loads(r.text)
+                if r.status_code == 200 and isinstance(payload, (dict, list)):
+                    return r.status_code, r.text
+                if r.status_code == 400 and "no record found" in str(payload).lower():
+                    return r.status_code, r.text
+            if r.status_code < 500 and r.status_code != 429:
+                return None, None
+            if r.status_code == 429:
+                retry_after = r.headers.get("Retry-After", "")
+                if retry_after.isdigit():
+                    delay = int(retry_after)
+                    if delay > 60:
+                        return None, None
             print(f"  {tag}: http={r.status_code} retry", flush=True)
         except Exception as exc:  # noqa: BLE001
             print(f"  {tag}: {str(exc)[:60]} retry", flush=True)
-        time.sleep(min(5 * (attempt + 1), 20))
+        if attempt + 1 < MAX_ATTEMPTS:
+            time.sleep(delay)
     return None, None
 
 
@@ -220,7 +234,7 @@ def finish_nsdl_run(run_id, ok, notes=None):
 
 def due(prev, tier, force):
     """Should this (isin, endpoint) be fetched now?"""
-    if force or prev is None:
+    if force or prev is None or prev[0] not in (200, 400):
         return True
     if tier == "static":
         return False  # terminal answer already stored

@@ -90,7 +90,7 @@ function ytmLine(b: BondDetail): string | null {
     return `YTC: ${fmt.pct(b.ytm)} (conditional on call ${fmt.date(firstFutureCall(b))}; not maturity yield or full yield-to-worst)`;
   const method =
     b.ytm_exact != null
-      ? b.amounts_estimated
+      ? (b.yield_amounts_estimated ?? b.amounts_estimated)
         ? "from cashflows, some amounts estimated"
         : "exact, from published cashflows"
       : "approximation";

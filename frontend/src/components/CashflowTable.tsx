@@ -86,6 +86,8 @@ export function CashflowSchedule({
   const unmatchedIds = new Set(evidence?.unmatched_notice_ids ?? []);
   const unmatched = evidence?.notices.filter((n) => unmatchedIds.has(n.id)) ?? [];
   const receivable = b.cashflows.filter((f) => f.future).length;
+  const futureEstimates = b.cashflows.filter((f) => f.estimated && f.future).length;
+  const otherEstimates = b.cashflows.filter((f) => f.estimated && !f.future).length;
   const summary = summaryLine(evidence, { loading, unavailable, mismatch });
 
   const renderRow = (flow: Cashflow, index: number, sectionIndex: number, dimSection: boolean) => {
@@ -157,11 +159,7 @@ export function CashflowSchedule({
           </td>
           <td className="px-3 py-2 text-right whitespace-nowrap">
             {fmt.inr(flow.amount)}
-            {flow.estimated && (
-              <span className="text-amber-500 ml-1" title="estimated from coupon rate">
-                ~
-              </span>
-            )}
+            <AmountProvenance flow={flow} />
           </td>
         </tr>
         {open && (
@@ -327,7 +325,16 @@ export function CashflowSchedule({
         <span title="Flows a buyer today would receive / all scheduled flows">
           {receivable} future / {b.cashflows.length} total flows
         </span>
-        {b.amounts_estimated && <span className="text-amber-500">some amounts estimated</span>}
+        {(futureEstimates > 0 || otherEstimates > 0) && (
+          <span
+            className="text-amber-500"
+            title={`${futureEstimates} estimates in current buyer cashflows; ${otherEstimates} in past or excluded flows. Expand the amount details for each adjustment.`}
+          >
+            {futureEstimates > 0
+              ? `${futureEstimates} future amount${futureEstimates === 1 ? "" : "s"} estimated`
+              : "Only past/excluded amounts estimated"}
+          </span>
+        )}
         {refresh && (
           <button
             type="button"
@@ -376,6 +383,42 @@ export function CashflowSchedule({
         </p>
       )}
     </div>
+  );
+}
+
+function AmountProvenance({ flow }: { flow: Cashflow }) {
+  const adjustments = flow.adjustments ?? [];
+  if (adjustments.length === 0)
+    return flow.estimated ? (
+      <span
+        className="text-amber-500 ml-1"
+        title="Estimated amount; detailed provenance unavailable"
+      >
+        ~
+      </span>
+    ) : null;
+  const amount = (value: number | null) =>
+    value == null ? "not supplied" : `₹${fmt.num(value, 2)}`;
+  return (
+    <details className="mt-0.5 text-[11px] text-zinc-400 whitespace-normal">
+      <summary className={`cursor-pointer ${flow.estimated ? "text-amber-500" : "text-zinc-500"}`}>
+        {flow.estimated
+          ? flow.amount == null
+            ? "estimate unavailable"
+            : "estimated"
+          : "normalized"}
+      </summary>
+      <div className="mt-1 max-w-72 space-y-2 text-left">
+        {adjustments.map((adjustment, index) => (
+          <div key={`${adjustment.kind}:${index}`}>
+            <p>{adjustment.reason}</p>
+            <p className="text-zinc-500">
+              Before: {amount(adjustment.previous_amount)}. After: {amount(adjustment.amount)}.
+            </p>
+          </div>
+        ))}
+      </div>
+    </details>
   );
 }
 

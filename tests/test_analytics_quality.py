@@ -272,3 +272,30 @@ def test_perpetual_ytc_is_not_presented_as_maturity_ytm_or_full_ytw(pricing_case
     assert detail["ytm_exact"] is None and detail["yield_to_worst"] is None
     assert all(entry["ytm"] is None for entry in book["ytm_at_ask"])
     assert portfolio["positions"][0]["yield_on_cost"] is None
+
+
+def test_combined_terminal_payment_preserves_totals_and_exposes_provenance(pricing_case):
+    end = TODAY + timedelta(days=365)
+    flows = [{"event": "Interest", "due_date": TODAY, "amount_payable": 100},
+             {"event": "Interest", "due_date": end, "amount_payable": 1100}]
+    row, detail, _, _ = pricing_case(flows, {"redemption_type": "Full Redemption"})
+    assert row["ytm"] == detail["ytm"] == 10
+    assert row["ytm_method"] == "exact"
+    assert row["payout_total_snapshot"] == detail["future_total_per_unit"] == 1100
+    final = [f for f in detail["cashflows"] if f["due_date"] == end]
+    assert len(final) == 2
+    assert all(not f["estimated"] and f["adjustments"][0]["kind"] == "combined_payment_split" for f in final)
+
+
+def test_historical_estimates_do_not_label_current_yield_as_estimated(pricing_case):
+    end = TODAY + timedelta(days=365)
+    flows = [{"event": "Interest", "due_date": TODAY - timedelta(days=730), "amount_payable": None},
+             {"event": "Interest", "due_date": TODAY - timedelta(days=365), "amount_payable": 100},
+             {"event": "Interest", "due_date": TODAY, "amount_payable": 100},
+             {"event": "Interest", "due_date": end, "amount_payable": 100},
+             {"event": "Redemption", "due_date": end, "amount_redeem": 1000}]
+    row, detail, _, _ = pricing_case(flows, {"allotment_date": TODAY - timedelta(days=1095)})
+    assert row["ytm_method"] == "exact"
+    assert detail["amounts_estimated"] is True
+    assert detail["yield_amounts_estimated"] is False
+    assert detail["cashflows"][0]["adjustments"][0]["kind"] == "coupon_estimated"
