@@ -16,7 +16,7 @@ export function payoutDisplay(bond: PayoutData, today: string) {
   )
     state = "incomplete";
   const usable = state === "known" || state === "estimated";
-  const label = usable ? `${state === "estimated" ? "~" : ""}${fmt.inr(amount)}/u` : "–";
+  const label = usable ? `${state === "estimated" ? "~" : ""}${fmt.inr(amount)}` : null;
   const reason = {
     known: "Remaining gross modeled interest plus principal per unit for a new buyer.",
     estimated: "Indicative total: includes estimated cashflows or variable-rate assumptions.",

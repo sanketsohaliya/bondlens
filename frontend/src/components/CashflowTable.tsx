@@ -8,7 +8,7 @@ import {
   evidenceMatchesSchedule,
   excludedReason,
   flowKey,
-  rowAttention,
+  sourceChip,
   splitCashflows,
 } from "../lib/cashflowEvidence";
 import CashflowEvidencePanel, { NoticeCard } from "./CashflowEvidencePanel";
@@ -90,7 +90,7 @@ export function CashflowSchedule({
     const open = expanded === selection;
     const effective = flow.payment_date ?? flow.due_date;
     const excluded = dimSection ? null : excludedReason(flow, asOf);
-    const attention = rowAttention(row);
+    const chip = sourceChip(row);
     const dateTitle =
       flow.payment_date && flow.payment_date !== flow.due_date
         ? `Contractual due date: ${calendarDate(flow.due_date)}`
@@ -99,7 +99,7 @@ export function CashflowSchedule({
       <Fragment key={`${key}:${index}`}>
         <tr className={dimSection || excluded ? "opacity-60" : ""}>
           <td className="px-3 py-2 whitespace-nowrap">
-            {attention === "none" ? (
+            {!chip ? (
               <span title={dateTitle}>{calendarDate(effective)}</span>
             ) : (
               <button
@@ -107,19 +107,20 @@ export function CashflowSchedule({
                 aria-expanded={open}
                 aria-controls={id}
                 aria-label={`${open ? "Hide" : "Show"} exchange date comparison for ${flow.event} due ${flow.due_date}`}
-                title={
-                  attention === "attention"
-                    ? "Exchange notice differs on a date — click to compare"
-                    : "Exchange notice agrees on dates — click to compare"
-                }
                 onClick={() => setExpanded(open ? null : selection)}
                 className="inline-flex min-h-6 items-center gap-1.5 hover:text-zinc-100"
               >
                 <span title={dateTitle}>{calendarDate(effective)}</span>
                 <span
-                  aria-hidden="true"
-                  className={`inline-block h-1.5 w-1.5 rounded-full ${attention === "attention" ? "bg-amber-400/80" : "bg-zinc-500"}`}
-                />
+                  title={
+                    chip.attention
+                      ? "Exchange notice differs on a date — click to compare"
+                      : "Exchange notice agrees on dates — click to compare"
+                  }
+                  className={`rounded border px-1 text-[10px] leading-4 ${chip.attention ? "border-amber-500/30 text-amber-400/80" : "border-zinc-700 text-zinc-400"}`}
+                >
+                  {chip.text}
+                </span>
               </button>
             )}
             {excluded && (

@@ -99,19 +99,20 @@ describe("cashflow schedule presentation", () => {
     expect(html.match(/opacity-60/g)).toHaveLength(1);
   });
 
-  it("marks evidence rows with a dot only and shows no summary when nothing needs attention", () => {
+  it("marks evidence rows with a source chip and shows no summary when nothing needs attention", () => {
     const agree = { ...differing, fields: [{ ...differing.fields[0], state: "agree" as const }] };
     const html = renderToStaticMarkup(
       <CashflowSchedule bond={bond} asOf="2026-09-11" evidence={view([agree])} />,
     );
     expect(html).toContain('aria-expanded="false"');
+    expect(html).toMatch(/<span[^>]*border-zinc-700[^>]*>NSE<\/span>/);
+    expect(html).not.toContain("rounded-full");
     expect(html).not.toContain(">Check<");
-    expect(html).not.toContain(">NSE<");
     expect(html).not.toContain("to review");
     expect(html).not.toContain("Capture current");
   });
 
-  it("shows one attention line when a date differs", () => {
+  it("colours the chip amber and shows one attention line when a date differs", () => {
     const html = renderToStaticMarkup(
       <CashflowSchedule
         bond={bond}
@@ -121,8 +122,8 @@ describe("cashflow schedule presentation", () => {
         })}
       />,
     );
+    expect(html).toMatch(/<span[^>]*border-amber-500\/30[^>]*>NSE<\/span>/);
     expect(html).toContain("1 date difference");
-    expect(html).toContain("text-amber-400/80");
   });
 
   it("collapses loading and unavailable states into a single quiet line", () => {

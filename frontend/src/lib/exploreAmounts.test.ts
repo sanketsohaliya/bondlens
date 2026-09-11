@@ -41,22 +41,25 @@ describe("explore amounts", () => {
   });
 
   it("labels current per-unit totals, estimates and known zero", () => {
-    expect(payoutDisplay(payout, "2026-09-11").label).toBe("₹12,560/u");
+    expect(payoutDisplay(payout, "2026-09-11").label).toBe("₹12,560");
     expect(payoutDisplay({ ...payout, payout_total_state: "estimated" }, "2026-09-11").label).toBe(
-      "~₹12,560/u",
+      "~₹12,560",
     );
-    expect(payoutDisplay({ ...payout, payout_total_per_unit: 0 }, "2026-09-11").label).toBe("₹0/u");
+    expect(payoutDisplay({ ...payout, payout_total_per_unit: 0 }, "2026-09-11").label).toBe("₹0");
+    expect(payoutDisplay(payout, "2026-09-11").detail).toContain("per unit");
   });
 
   it("does not show an old cached total or its future-count fraction", () => {
     const stale = payoutDisplay(payout, "2026-09-12");
-    expect(stale.label).toBe("–");
+    expect(stale.label).toBeNull();
     expect(stale.showCount).toBe(false);
     expect(stale.detail).toContain("snapshot");
     for (const state of ["incomplete", "open_ended", "unavailable", "stale"] as const) {
-      expect(payoutDisplay({ ...payout, payout_total_state: state }, "2026-09-11").label).toBe("–");
+      expect(
+        payoutDisplay({ ...payout, payout_total_state: state }, "2026-09-11").label,
+      ).toBeNull();
     }
-    expect(payoutDisplay({}, "2026-09-11").label).toBe("–");
+    expect(payoutDisplay({}, "2026-09-11").label).toBeNull();
     expect(payoutDisplay({}, "2026-09-11").showCount).toBe(true);
   });
 

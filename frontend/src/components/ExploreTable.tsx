@@ -81,11 +81,13 @@ export function PayoutCell({
         onOpen();
       }}
     >
-      <div className="flex min-w-0 items-center gap-1 overflow-hidden text-zinc-200 group-hover/coupon:underline decoration-zinc-600 underline-offset-2">
+      <div className="flex min-w-0 items-baseline gap-2 overflow-hidden text-zinc-200 group-hover/coupon:underline decoration-zinc-600 underline-offset-2">
         <span className="truncate">{payoutStructure(b) ?? "–"}</span>
-        <span className="shrink-0 max-w-full truncate text-[11px] text-zinc-400">
-          · {payout.label}
-        </span>
+        {payout.label && (
+          <span className="shrink-0 max-w-full truncate text-[11px] text-zinc-400">
+            {payout.label}
+          </span>
+        )}
       </div>
       <div className="truncate text-[11px] text-zinc-500">
         {isZeroCoupon(b) ? (

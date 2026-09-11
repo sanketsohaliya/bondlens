@@ -97,6 +97,12 @@ describe("cashflow evidence panel", () => {
     const html = renderToStaticMarkup(
       <CashflowEvidencePanel flow={flow} row={view.flows[0]} evidence={view} />,
     );
+    expect(html).toContain("BSE confirms record date 12 Sept 2026");
+    expect(html).toContain('href="https://www.bseindia.com/"');
+    expect(html).toContain('rel="noopener noreferrer"');
+    expect(html).not.toContain('href="javascript:');
+    expect(html).toMatch(/<details[^>]*><summary[^>]*>Details<\/summary>/);
+    expect(html.indexOf("Details</summary>")).toBeLessThan(html.indexOf("Record date only"));
     expect(html).toContain("Record date only");
     expect(html).toContain("Not supplied");
     expect(html).toContain("NSDL");

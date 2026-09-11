@@ -1,4 +1,11 @@
-import type { Cashflow, CashflowEvidenceResponse, FlowEvidence } from "../api/types";
+import type {
+  Cashflow,
+  CashflowEvidenceResponse,
+  EvidenceFieldComparison,
+  ExchangeNotice,
+  FlowEvidence,
+  FlowSourceEvidence,
+} from "../api/types";
 
 type FlowIdentity = Pick<Cashflow, "event" | "due_date" | "record_date" | "payment_date">;
 
@@ -80,6 +87,82 @@ export function excludedReason(flow: Cashflow, asOf: string): string | null {
   return flow.record_date && flow.record_date <= asOf
     ? "Record date has passed — a buyer today would not receive this payment; existing holders still may."
     : "A buyer today would not receive this payment under the current entitlement model; existing holders still may.";
+}
+
+export function validLink(value: string): boolean {
+  if (
+    /[\s\\]/.test(value) ||
+    [...value].some((c) => c.charCodeAt(0) < 32 || c.charCodeAt(0) === 127)
+  )
+    return false;
+  try {
+    const url = new URL(value);
+    return ["https:", "http:"].includes(url.protocol) && !url.username && !url.password;
+  } catch {
+    return false;
+  }
+}
+
+const SOURCE_ORDER: Array<FlowSourceEvidence["source"]> = ["NSE", "BSE"];
+
+export function sourceChip(
+  row: FlowEvidence | undefined,
+): { text: string; attention: boolean } | null {
+  const attention = rowAttention(row);
+  if (attention === "none" || !row) return null;
+  const names = SOURCE_ORDER.filter((s) => row.sources.some((x) => x.source === s));
+  return { text: names.join("·"), attention: attention === "attention" };
+}
+
+const FIELD_NAMES: Record<EvidenceFieldComparison["field"], string> = {
+  due_date: "due",
+  record_date: "record date",
+  payment_date: "payment date",
+  amount: "amount",
+};
+
+export type Verdict = { text: string; tone: "ok" | "attention" | "muted"; link: string | null };
+
+const exDates = (f: EvidenceFieldComparison) => (f.exchange_dates ?? []).map(calendarDate);
+
+export function verdictFor(sources: FlowSourceEvidence[], notices: ExchangeNotice[]): Verdict[] {
+  return sources.map((s) => {
+    const dated = s.fields.filter((f) => f.field !== "amount");
+    const link =
+      notices
+        .filter((n) => s.notice_ids.includes(n.id))
+        .flatMap((n) => n.links)
+        .find(validLink) ?? null;
+    const conflicting = dated.filter((f) => f.state === "conflicting");
+    if (s.state === "conflicting" || conflicting.length) {
+      const detail = conflicting
+        .map((f) => `${FIELD_NAMES[f.field]} (${exDates(f).join(" / ")})`)
+        .join("; ");
+      return {
+        text: `${s.source} filings disagree with each other${detail ? ` on ${detail}` : ""} — no version treated as authoritative`,
+        tone: "attention",
+        link,
+      };
+    }
+    const differing = dated.filter((f) => f.state === "different");
+    if (differing.length) {
+      const clauses = differing.map(
+        (f) =>
+          `${FIELD_NAMES[f.field]} ${exDates(f).join(" / ")} — NSDL has ${calendarDate(f.nsdl_date)}`,
+      );
+      return { text: `${s.source} says ${clauses.join("; ")}`, tone: "attention", link };
+    }
+    const agreeing = dated.filter((f) => f.state === "agree");
+    if (agreeing.length) {
+      const parts = agreeing.map((f) => `${FIELD_NAMES[f.field]} ${calendarDate(f.nsdl_date)}`);
+      return { text: `${s.source} confirms ${parts.join(" and ")}`, tone: "ok", link };
+    }
+    return {
+      text: `${s.source} notice matched, but supplied no comparable dates`,
+      tone: "muted",
+      link,
+    };
+  });
 }
 
 export function rowAttention(row: FlowEvidence | undefined): "none" | "info" | "attention" {

@@ -20,7 +20,10 @@ describe("explore amount cells", () => {
       <PayoutCell bond={bond} today="2026-09-11" onOpen={() => {}} />,
     );
     expect(html).toContain("Staggered");
-    expect(html).toContain("~₹12,560/u");
+    expect(html).toContain("~₹12,560");
+    expect(html).not.toContain("/u<");
+    expect(html).toContain("/unit");
+    expect(html).not.toMatch(/Staggered<\/span><span[^>]*>\s*·/);
     expect(html).toContain("14.4");
     expect(html).toContain("monthly");
     expect(html).toContain("18/20 left");
@@ -32,10 +35,28 @@ describe("explore amount cells", () => {
     const html = renderToStaticMarkup(
       <PayoutCell bond={bond} today="2026-09-12" onOpen={() => {}} />,
     );
-    expect(html).not.toContain("~₹12,560/u");
+    expect(html).not.toContain("12,560");
     expect(html).not.toContain("18/20 left");
     expect(html).toContain("Staggered");
     expect(html).toContain("monthly");
+  });
+
+  it("renders no dangling dash when the payout amount is unavailable", () => {
+    const html = renderToStaticMarkup(
+      <PayoutCell
+        bond={{
+          ...bond,
+          schedule_shape: "perpetual",
+          payout_total_state: "open_ended",
+          payout_total_per_unit: null,
+        }}
+        today="2026-09-11"
+        onOpen={() => {}}
+      />,
+    );
+    expect(html).toContain("Perpetual");
+    expect(html).not.toContain("–");
+    expect(html).toContain("No finite lifetime payout total");
   });
 
   it("shows ticket value below ask yield and retains exact arithmetic in details", () => {

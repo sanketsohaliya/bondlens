@@ -7,7 +7,7 @@ import type {
   ExchangeNotice,
   FlowEvidence,
 } from "../api/types";
-import { calendarDate } from "../lib/cashflowEvidence";
+import { calendarDate, validLink, verdictFor } from "../lib/cashflowEvidence";
 
 const REASONS: Record<string, string> = {
   event_applies_to_another_isin:
@@ -62,20 +62,6 @@ export function SourceAvailability({ sources }: { sources: EvidenceAvailability[
       ))}
     </div>
   );
-}
-
-function validLink(value: string): boolean {
-  if (
-    /[\s\\]/.test(value) ||
-    [...value].some((c) => c.charCodeAt(0) < 32 || c.charCodeAt(0) === 127)
-  )
-    return false;
-  try {
-    const url = new URL(value);
-    return ["https:", "http:"].includes(url.protocol) && !url.username && !url.password;
-  } catch {
-    return false;
-  }
 }
 
 const NOTICE_STATES: Record<ExchangeNotice["status"], string> = {
@@ -233,75 +219,102 @@ export default function CashflowEvidencePanel({
           </p>
         )
       )}
-      {attached.some((s) => s.state === "conflicting") && (
-        <p className="text-amber-400/80">
-          Conflicting source versions are recorded. No version is treated as authoritative.
+      {verdictFor(attached, notices).map((v) => (
+        <p
+          key={v.text}
+          className={
+            v.tone === "attention"
+              ? "text-amber-400/80"
+              : v.tone === "ok"
+                ? "text-zinc-300"
+                : "text-zinc-400"
+          }
+        >
+          {v.text}
+          {v.link && (
+            <>
+              {" · "}
+              <a
+                href={v.link}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-zinc-400 underline decoration-zinc-700 underline-offset-2 hover:text-zinc-100"
+              >
+                source ↗
+              </a>
+            </>
+          )}
         </p>
-      )}
-      {attached.length > 0 && (
-        <div className="overflow-x-auto">
-          <table className="w-full text-[11px]">
-            <thead>
-              <tr className="border-b border-zinc-800 text-left text-zinc-400">
-                <th className="py-2 pr-3 font-medium">Field</th>
-                <th className="px-2 font-medium">NSDL</th>
-                {attached.map((s) => (
-                  <th key={s.source} className="px-2 font-medium">
-                    {s.source}
-                    <div className="font-normal text-[10px]">
-                      {s.anchor === "record_date" ? "Record date only" : "Due-date anchored"}
-                    </div>
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {FIELDS.map(([field, label]) => (
-                <tr key={field} className="border-b border-zinc-800/50">
-                  <td className="py-2 pr-3 text-zinc-400">{label}</td>
-                  <td className="px-2 text-zinc-300">
-                    {field === "amount"
-                      ? `${flow.estimated ? "~" : ""}${fmt.inr(flow.amount)}${flow.estimated ? " (estimated)" : ""}`
-                      : calendarDate(flow[field])}
-                  </td>
-                  {attached.map((s) => {
-                    const comparison = s.fields.find((f) => f.field === field);
-                    const dates = comparison?.exchange_dates ?? [];
-                    const attention =
-                      comparison?.state === "different" || comparison?.state === "conflicting";
-                    return (
-                      <td
-                        key={s.source}
-                        className={`px-2 ${attention ? "text-amber-400/80" : "text-zinc-400"}`}
-                      >
-                        {dates.length ? dates.map(calendarDate).join(" / ") : "Not supplied"}
-                        {comparison?.state === "agree" && (
-                          <span className="block text-[10px] text-zinc-400">Date agrees</span>
-                        )}
-                        {comparison?.state === "different" && (
-                          <span className="block text-[10px]">Date differs</span>
-                        )}
-                        {comparison?.state === "conflicting" && (
-                          <span className="block text-[10px]">Source versions differ</span>
-                        )}
-                        {comparison?.state === "not_supplied" && dates.length > 0 && (
-                          <span className="block text-[10px] text-zinc-400">
-                            NSDL date unavailable
-                          </span>
-                        )}
-                      </td>
-                    );
-                  })}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-      <SourceAvailability sources={evidence.sources} />
-      {[...notices, ...related].map((notice) => (
-        <NoticeCard key={notice.id} notice={notice} />
       ))}
+      <details className="text-zinc-400">
+        <summary className="cursor-pointer text-[11px] hover:text-zinc-200">Details</summary>
+        <div className="mt-3 space-y-3">
+          {attached.length > 0 && (
+            <div className="overflow-x-auto">
+              <table className="w-full text-[11px]">
+                <thead>
+                  <tr className="border-b border-zinc-800 text-left text-zinc-400">
+                    <th className="py-2 pr-3 font-medium">Field</th>
+                    <th className="px-2 font-medium">NSDL</th>
+                    {attached.map((s) => (
+                      <th key={s.source} className="px-2 font-medium">
+                        {s.source}
+                        <div className="font-normal text-[10px]">
+                          {s.anchor === "record_date" ? "Record date only" : "Due-date anchored"}
+                        </div>
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {FIELDS.map(([field, label]) => (
+                    <tr key={field} className="border-b border-zinc-800/50">
+                      <td className="py-2 pr-3 text-zinc-400">{label}</td>
+                      <td className="px-2 text-zinc-300">
+                        {field === "amount"
+                          ? `${flow.estimated ? "~" : ""}${fmt.inr(flow.amount)}${flow.estimated ? " (estimated)" : ""}`
+                          : calendarDate(flow[field])}
+                      </td>
+                      {attached.map((s) => {
+                        const comparison = s.fields.find((f) => f.field === field);
+                        const dates = comparison?.exchange_dates ?? [];
+                        const attention =
+                          comparison?.state === "different" || comparison?.state === "conflicting";
+                        return (
+                          <td
+                            key={s.source}
+                            className={`px-2 ${attention ? "text-amber-400/80" : "text-zinc-400"}`}
+                          >
+                            {dates.length ? dates.map(calendarDate).join(" / ") : "Not supplied"}
+                            {comparison?.state === "agree" && (
+                              <span className="block text-[10px] text-zinc-400">Date agrees</span>
+                            )}
+                            {comparison?.state === "different" && (
+                              <span className="block text-[10px]">Date differs</span>
+                            )}
+                            {comparison?.state === "conflicting" && (
+                              <span className="block text-[10px]">Source versions differ</span>
+                            )}
+                            {comparison?.state === "not_supplied" && dates.length > 0 && (
+                              <span className="block text-[10px] text-zinc-400">
+                                NSDL date unavailable
+                              </span>
+                            )}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          <SourceAvailability sources={evidence.sources} />
+          {[...notices, ...related].map((notice) => (
+            <NoticeCard key={notice.id} notice={notice} />
+          ))}
+        </div>
+      </details>
     </div>
   );
 }
