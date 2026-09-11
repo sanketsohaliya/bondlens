@@ -1,13 +1,10 @@
-import { fmt } from "../api/client";
 import type {
   Cashflow,
   CashflowEvidenceResponse,
-  EvidenceAvailability,
-  EvidenceFieldComparison,
   ExchangeNotice,
   FlowEvidence,
 } from "../api/types";
-import { calendarDate, validLink, verdictFor } from "../lib/cashflowEvidence";
+import { calendarDate, noticeFacts, validLink, verdictFor } from "../lib/cashflowEvidence";
 
 const REASONS: Record<string, string> = {
   event_applies_to_another_isin:
@@ -41,29 +38,6 @@ export function reasonText(reason: string): string {
   return REASONS[reason] ?? reason.replaceAll("_", " ");
 }
 
-const AVAILABILITY: Record<EvidenceAvailability["status"], string> = {
-  fresh: "Capture current",
-  stale: "Capture stale / failed",
-  incomplete: "Capture incomplete",
-  unavailable: "Capture unavailable",
-  mapping_blocked: "Mapping unresolved",
-  not_captured: "Not captured",
-};
-
-export function SourceAvailability({ sources }: { sources: EvidenceAvailability[] }) {
-  return (
-    <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-zinc-400">
-      {sources.map((s) => (
-        <span key={s.source} title={(s.reasons ?? []).map(reasonText).join(" ")}>
-          <span className="text-zinc-400">{s.source}</span> · {AVAILABILITY[s.status]}
-          {s.last_success_at &&
-            ` · checked ${new Date(s.last_success_at).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })} IST`}
-        </span>
-      ))}
-    </div>
-  );
-}
-
 const NOTICE_STATES: Record<ExchangeNotice["status"], string> = {
   matched: "Matched notice",
   unmatched: "Not matched to NSDL",
@@ -72,108 +46,76 @@ const NOTICE_STATES: Record<ExchangeNotice["status"], string> = {
   context_only: "Related mention only",
 };
 
-export function NoticeCard({ notice: n }: { notice: ExchangeNotice }) {
-  const links = n.links.filter(validLink);
-  const dates = [
-    ["Contractual due", n.due_date],
-    ["Record date", n.record_date],
-    ["Ex-date", n.ex_date],
-    ["Issuer-reported payment", n.reported_payment_date],
-  ];
+export function NoticeCard({
+  notice: n,
+  showLink = true,
+}: {
+  notice: ExchangeNotice;
+  showLink?: boolean;
+}) {
+  const facts = noticeFacts(n);
+  const links = showLink ? n.links.filter(validLink) : [];
   return (
-    <article className="rounded-md border border-zinc-800 bg-zinc-950/50 p-3 text-xs whitespace-normal">
-      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+    <div className="space-y-1 text-xs whitespace-normal">
+      <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
         <span className="font-semibold text-zinc-300">{n.source}</span>
         <span className={n.redemption_form === "early" ? "text-amber-400/80" : "text-zinc-400"}>
-          {n.category || n.nature || "Captured notice"}
+          {facts.header}
         </span>
-        <span className="text-[10px] text-zinc-400">{NOTICE_STATES[n.status]}</span>
+        {n.status !== "matched" && (
+          <span className="text-[10px] text-zinc-500">{NOTICE_STATES[n.status]}</span>
+        )}
       </div>
-      <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-[11px]">
-        {dates
-          .filter(([, value]) => value)
-          .map(([label, value]) => (
-            <div key={label}>
-              <dt className="text-zinc-400">{label}</dt>
-              <dd className="text-zinc-300">{calendarDate(value)}</dd>
-            </div>
+      {facts.quote && (
+        <p className="italic text-zinc-400 whitespace-pre-wrap break-words">“{facts.quote}”</p>
+      )}
+      {facts.dates.length > 0 && (
+        <p className="text-[11px]">
+          {facts.dates.map((d, i) => (
+            <span key={d.label} title={d.title}>
+              {i > 0 && <span className="text-zinc-600"> · </span>}
+              <span className="text-zinc-500">{d.label} </span>
+              <span className="text-zinc-300">{d.value}</span>
+            </span>
           ))}
-      </dl>
-      {n.source === "BSE" && !n.due_date && (
-        <p className="mt-2 text-[11px] text-zinc-400">
-          Payment due date and amount not supplied. Ex-date is not a payment date.
         </p>
       )}
+      {facts.time && <p className="text-[11px] text-zinc-500">{facts.time}</p>}
       {n.reasons.length > 0 && (
-        <ul className="mt-2 space-y-1 text-[11px] text-zinc-400">
+        <ul className="space-y-0.5 text-[11px] text-zinc-400">
           {n.reasons.map((reason) => (
             <li key={reason}>{reasonText(reason)}</li>
           ))}
         </ul>
       )}
       {n.unmatched_events.length > 0 && (
-        <p className="mt-1 text-[11px] text-zinc-400">
+        <p className="text-[11px] text-zinc-400">
           Unmatched components: {n.unmatched_events.join(", ")}
         </p>
       )}
-      <details className="mt-2 text-[11px] text-zinc-400">
-        <summary className="cursor-pointer hover:text-zinc-300">
-          Original notice and provenance
-        </summary>
-        <p className="mt-2 whitespace-pre-wrap break-words text-zinc-400">
-          {n.headline || "No source text captured."}
-        </p>
-        {n.event_isin && <p className="mt-1 break-all">Payment-line ISIN: {n.event_isin}</p>}
-        {n.published_at ? (
-          <p className="mt-1">
-            Filed on{" "}
-            {new Date(n.published_at).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })} IST
-          </p>
-        ) : (
-          n.first_captured_at && (
-            <p className="mt-1">
-              First captured{" "}
-              {new Date(n.first_captured_at).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}{" "}
-              IST · publication time not supplied
-            </p>
-          )
-        )}
-        <p className="mt-1">
-          {n.representation_count} stored representation{n.representation_count === 1 ? "" : "s"}{" "}
-          (not a payment count).
-        </p>
-        <p className="break-words">Evidence IDs: {n.raw_ids.join(", ")}</p>
-      </details>
-      <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1">
-        {links.map((url, i) => (
-          <a
-            key={url}
-            href={url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-[11px] text-zinc-400 underline decoration-zinc-700 underline-offset-2 hover:text-zinc-100"
-          >
-            {n.source === "BSE" ? "BSE source" : "Source document"}
-            {links.length > 1 ? ` ${i + 1}` : ""}
-          </a>
-        ))}
-        {links.length === 0 && (
-          <span className="text-[11px] text-zinc-400">Source link not captured</span>
-        )}
-      </div>
-    </article>
+      {showLink && (
+        <div className="flex flex-wrap gap-x-3 gap-y-1">
+          {links.map((url, i) => (
+            <a
+              key={url}
+              href={url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-[11px] text-zinc-400 underline decoration-zinc-700 underline-offset-2 hover:text-zinc-100"
+            >
+              source ↗{links.length > 1 ? ` ${i + 1}` : ""}
+            </a>
+          ))}
+          {links.length === 0 && (
+            <span className="text-[11px] text-zinc-500">Source link not captured</span>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
-const FIELDS: Array<[EvidenceFieldComparison["field"], string]> = [
-  ["due_date", "Contractual due date"],
-  ["payment_date", "Planned payment date"],
-  ["record_date", "Record date"],
-  ["amount", "Amount / unit"],
-];
-
 export default function CashflowEvidencePanel({
-  flow,
   row,
   evidence,
 }: {
@@ -193,6 +135,7 @@ export default function CashflowEvidencePanel({
       n.reasons.includes("competing_versions") &&
       n.source_record_ids.some((id) => sourceIds.has(`${n.source}:${id}`)),
   );
+  const shown = [...notices, ...related];
   return (
     <div
       className="space-y-3 whitespace-normal text-xs"
@@ -246,75 +189,16 @@ export default function CashflowEvidencePanel({
           )}
         </p>
       ))}
-      <details className="text-zinc-400">
-        <summary className="cursor-pointer text-[11px] hover:text-zinc-200">Details</summary>
-        <div className="mt-3 space-y-3">
-          {attached.length > 0 && (
-            <div className="overflow-x-auto">
-              <table className="w-full text-[11px]">
-                <thead>
-                  <tr className="border-b border-zinc-800 text-left text-zinc-400">
-                    <th className="py-2 pr-3 font-medium">Field</th>
-                    <th className="px-2 font-medium">NSDL</th>
-                    {attached.map((s) => (
-                      <th key={s.source} className="px-2 font-medium">
-                        {s.source}
-                        <div className="font-normal text-[10px]">
-                          {s.anchor === "record_date" ? "Record date only" : "Due-date anchored"}
-                        </div>
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {FIELDS.map(([field, label]) => (
-                    <tr key={field} className="border-b border-zinc-800/50">
-                      <td className="py-2 pr-3 text-zinc-400">{label}</td>
-                      <td className="px-2 text-zinc-300">
-                        {field === "amount"
-                          ? `${flow.estimated ? "~" : ""}${fmt.inr(flow.amount)}${flow.estimated ? " (estimated)" : ""}`
-                          : calendarDate(flow[field])}
-                      </td>
-                      {attached.map((s) => {
-                        const comparison = s.fields.find((f) => f.field === field);
-                        const dates = comparison?.exchange_dates ?? [];
-                        const attention =
-                          comparison?.state === "different" || comparison?.state === "conflicting";
-                        return (
-                          <td
-                            key={s.source}
-                            className={`px-2 ${attention ? "text-amber-400/80" : "text-zinc-400"}`}
-                          >
-                            {dates.length ? dates.map(calendarDate).join(" / ") : "Not supplied"}
-                            {comparison?.state === "agree" && (
-                              <span className="block text-[10px] text-zinc-400">Date agrees</span>
-                            )}
-                            {comparison?.state === "different" && (
-                              <span className="block text-[10px]">Date differs</span>
-                            )}
-                            {comparison?.state === "conflicting" && (
-                              <span className="block text-[10px]">Source versions differ</span>
-                            )}
-                            {comparison?.state === "not_supplied" && dates.length > 0 && (
-                              <span className="block text-[10px] text-zinc-400">
-                                NSDL date unavailable
-                              </span>
-                            )}
-                          </td>
-                        );
-                      })}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-          <SourceAvailability sources={evidence.sources} />
-          {[...notices, ...related].map((notice) => (
-            <NoticeCard key={notice.id} notice={notice} />
-          ))}
-        </div>
-      </details>
+      {shown.length > 0 && (
+        <details className="text-zinc-400">
+          <summary className="cursor-pointer text-[11px] hover:text-zinc-200">Details</summary>
+          <div className="mt-3 space-y-3">
+            {shown.map((notice) => (
+              <NoticeCard key={notice.id} notice={notice} showLink={false} />
+            ))}
+          </div>
+        </details>
+      )}
     </div>
   );
 }

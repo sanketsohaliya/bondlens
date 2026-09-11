@@ -169,6 +169,73 @@ describe("cashflow calendar and evidence", () => {
     });
   });
 
+  it("reduces a notice to what the exchange actually said", async () => {
+    const { noticeFacts } = await import("./cashflowEvidence");
+    const base = {
+      id: "b1",
+      source: "BSE" as const,
+      source_record_ids: [],
+      raw_ids: [543],
+      representation_count: 1,
+      category: "Payment of Interest",
+      headline: "Payment of Interest",
+      event_isin: "X",
+      mentioned_isins: [],
+      events: ["interest" as const],
+      redemption_form: null,
+      nature: null,
+      due_date: null,
+      record_date: "2026-09-14",
+      ex_date: "2026-09-11",
+      reported_payment_date: null,
+      published_at: null,
+      first_captured_at: "2026-09-11T03:51:05Z",
+      last_captured_at: null,
+      links: [],
+      status: "matched" as const,
+      reasons: [],
+      flow_keys: [],
+      unmatched_events: [],
+    };
+    const bse = noticeFacts(base);
+    expect(bse.header).toBe("Payment of Interest");
+    expect(bse.quote).toBeNull();
+    expect(bse.dates.map((d) => `${d.label} ${d.value}`)).toEqual([
+      "Ex-date 11 Sept 2026",
+      "Record date 14 Sept 2026",
+    ]);
+    expect(bse.dates[0].title).toContain("not a payment date");
+    expect(bse.time).toBe("Captured 11 Sept 2026, 09:21 IST");
+
+    const nse = noticeFacts({
+      ...base,
+      source: "NSE",
+      category: "Record Date Updates",
+      headline:
+        "Issuer has informed the Exchange regarding Record Date Updates. Record date - 11-Sep-2026 , Due date - 27-Sep-2026",
+      due_date: "2026-09-27",
+      record_date: "2026-09-11",
+      ex_date: null,
+      reported_payment_date: "2026-09-27",
+      published_at: "2026-09-10T10:00:00Z",
+    });
+    expect(nse.quote).toMatch(/^Issuer has informed/);
+    expect(nse.dates.map((d) => d.label)).toEqual(["Record date", "Due", "Payment"]);
+    expect(nse.time).toBe("Filed 10 Sept 2026, 15:30 IST");
+
+    expect(noticeFacts({ ...base, headline: "  payment of interest  " }).quote).toBeNull();
+    expect(noticeFacts({ ...base, headline: "" }).quote).toBeNull();
+    const bare = noticeFacts({
+      ...base,
+      record_date: null,
+      ex_date: null,
+      first_captured_at: null,
+    });
+    expect(bare.dates).toEqual([]);
+    expect(bare.time).toBeNull();
+    expect(noticeFacts({ ...base, category: "", nature: "Interest" }).header).toBe("Interest");
+  });
+
   it("writes one-line verdicts that name dates and never amounts", async () => {
     const { verdictFor } = await import("./cashflowEvidence");
     const f = (

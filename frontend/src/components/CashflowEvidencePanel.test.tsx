@@ -93,7 +93,7 @@ const view: CashflowEvidenceResponse = {
 };
 
 describe("cashflow evidence panel", () => {
-  it("labels BSE agreement as record-date-only and leaves amount unchecked", () => {
+  it("leads with the verdict and keeps Details to what the exchange said", () => {
     const html = renderToStaticMarkup(
       <CashflowEvidencePanel flow={flow} row={view.flows[0]} evidence={view} />,
     );
@@ -102,23 +102,47 @@ describe("cashflow evidence panel", () => {
     expect(html).toContain('rel="noopener noreferrer"');
     expect(html).not.toContain('href="javascript:');
     expect(html).toMatch(/<details[^>]*><summary[^>]*>Details<\/summary>/);
-    expect(html.indexOf("Details</summary>")).toBeLessThan(html.indexOf("Record date only"));
-    expect(html).toContain("Record date only");
-    expect(html).toContain("Not supplied");
-    expect(html).toContain("NSDL");
-    expect(html).toContain("90");
-    expect(html).not.toContain("cashflow confirmed");
+    const details = html.slice(html.indexOf("Details</summary>"));
+    expect(details).toContain("Payment of Interest");
+    expect(details).toContain("Ex-date");
+    expect(details).toContain("11 Sept 2026");
+    expect(details).toContain("Record date");
+    expect(details).toContain("Captured 11 Sept 2026, 05:30 IST");
+    expect(details).not.toContain("<table");
+    expect(details).not.toContain("Not supplied");
+    expect(details).not.toContain("Evidence IDs");
+    expect(details).not.toContain("representation");
+    expect(details).not.toContain("Capture current");
+    expect(details).not.toContain("Payment-line ISIN");
+    expect(details).not.toContain("Matched notice");
+    expect(details).not.toContain("<a ");
+    expect((html.match(/bseindia\.com/g) ?? []).length).toBe(1);
     expect(html).not.toContain("₹0");
-    expect(html).not.toContain('<p class="text-zinc-400">Dates-only comparison');
-    expect(html).not.toContain("Agreement here does not resolve");
   });
 
-  it("escapes source text and does not render unsafe external links", () => {
-    const html = renderToStaticMarkup(<NoticeCard notice={notice} />);
+  it("escapes source text, rejects unsafe links and keeps status/link for unmatched notices", () => {
+    const html = renderToStaticMarkup(<NoticeCard notice={{ ...notice, status: "unmatched" }} />);
     expect(html).toContain("&lt;script&gt;");
     expect(html).not.toContain("<script>");
     expect(html).not.toContain("javascript:");
-    expect(html).toContain("First captured");
-    expect(html).not.toContain("Filed on");
+    expect(html).toContain("Not matched to NSDL");
+    expect(html).toContain('href="https://www.bseindia.com/"');
+    expect(html).toContain("Captured");
+    expect(html).not.toContain("Filed");
+  });
+
+  it("quotes the headline only when it adds to the category", () => {
+    const same = renderToStaticMarkup(
+      <NoticeCard notice={{ ...notice, headline: "payment of interest" }} showLink={false} />,
+    );
+    expect(same).not.toContain("“");
+    const distinct = renderToStaticMarkup(
+      <NoticeCard
+        notice={{ ...notice, headline: "Issuer informed the Exchange." }}
+        showLink={false}
+      />,
+    );
+    expect(distinct).toContain("“Issuer informed the Exchange.”");
+    expect(distinct).not.toContain("<a ");
   });
 });

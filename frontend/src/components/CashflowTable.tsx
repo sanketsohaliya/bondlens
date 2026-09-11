@@ -263,7 +263,7 @@ export function CashflowSchedule({
             </span>
           )}
           {showNotices && unmatched.length > 0 && (
-            <div className="mt-2 space-y-2">
+            <div className="mt-2 divide-y divide-zinc-800/60 [&>*]:pt-2 [&>*:first-child]:pt-0">
               {unmatched.map((notice) => (
                 <NoticeCard key={notice.id} notice={notice} />
               ))}

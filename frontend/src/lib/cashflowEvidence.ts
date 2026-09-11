@@ -165,6 +165,56 @@ export function verdictFor(sources: FlowSourceEvidence[], notices: ExchangeNotic
   });
 }
 
+export function calendarDateTime(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const parsed = new Date(value);
+  if (!Number.isFinite(parsed.getTime())) return null;
+  const date = parsed.toLocaleDateString("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    timeZone: "Asia/Kolkata",
+  });
+  const time = parsed.toLocaleTimeString("en-IN", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+    timeZone: "Asia/Kolkata",
+  });
+  return `${date}, ${time} IST`;
+}
+
+export type NoticeFacts = {
+  header: string;
+  quote: string | null;
+  dates: Array<{ label: string; value: string; title?: string }>;
+  time: string | null;
+};
+
+const EX_DATE_TITLE =
+  "Exchange ex-date: trades from this date settle without the payment. It is not a payment date.";
+
+export function noticeFacts(n: ExchangeNotice): NoticeFacts {
+  const header = (n.category || n.nature || "Captured notice").trim();
+  const headline = (n.headline ?? "").trim();
+  const quote = headline && headline.toLowerCase() !== header.toLowerCase() ? headline : null;
+  const dates: NoticeFacts["dates"] = [];
+  if (n.ex_date)
+    dates.push({ label: "Ex-date", value: calendarDate(n.ex_date), title: EX_DATE_TITLE });
+  if (n.record_date) dates.push({ label: "Record date", value: calendarDate(n.record_date) });
+  if (n.due_date) dates.push({ label: "Due", value: calendarDate(n.due_date) });
+  if (n.reported_payment_date)
+    dates.push({
+      label: "Payment",
+      value: calendarDate(n.reported_payment_date),
+      title: "Payment date as reported by the issuer; not confirmation of bank credit.",
+    });
+  const filed = calendarDateTime(n.published_at);
+  const captured = calendarDateTime(n.first_captured_at);
+  const time = filed ? `Filed ${filed}` : captured ? `Captured ${captured}` : null;
+  return { header, quote, dates, time };
+}
+
 export function rowAttention(row: FlowEvidence | undefined): "none" | "info" | "attention" {
   if (!row?.sources.length) return "none";
   const attention = row.sources.some(
