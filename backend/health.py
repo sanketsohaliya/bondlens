@@ -94,6 +94,14 @@ def check(now: datetime | None = None) -> list[str]:
             if age > timedelta(days=BACKUP_MAX_AGE_DAYS):
                 problems.append(f"backup: {age.days} days old")
 
+    with db._conn() as conn:
+        available = conn.execute("SELECT to_regclass('corporate_action_runs') AS name").fetchone()
+    if available and available["name"]:
+        from .corporate_action_store import Store
+        from .corporate_actions import capture_health
+
+        problems.extend(capture_health(Store().snapshot(), now))
+
     return problems
 
 
