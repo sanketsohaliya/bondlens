@@ -299,6 +299,16 @@ def test_unresolved_call_terms_remain_visible_without_claiming_ytw(pricing_case)
     assert any("call" in w.lower() and "unresolved" in w.lower() for w in detail["schedule_warnings"])
 
 
+@pytest.mark.parametrize("convention", ["Actual/Actual", None])
+def test_clean_act_act_schedule_has_no_warnings(pricing_case, convention):
+    end = TODAY + timedelta(days=365)
+    flows = [{"event": "Interest", "due_date": end, "amount_payable": 100},
+             {"event": "Redemption", "due_date": end, "amount_redeem": 1000}]
+    _, detail, _, _ = pricing_case(flows, {"day_count_convention": convention})
+    assert detail["schedule_warnings"] == []
+    assert detail["schedule_usable"] is True
+
+
 def test_perpetual_ytc_is_not_presented_as_maturity_ytm_or_full_ytw(pricing_case):
     end = TODAY + timedelta(days=365)
     flows = [{"event": "Interest", "due_date": end, "amount_payable": 100},

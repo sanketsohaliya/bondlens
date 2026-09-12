@@ -383,8 +383,6 @@ def bond_detail(isin: str, price: float | None = Query(None, gt=0, allow_inf_nan
     future_calls = [d for d in call_dates if d > today]
     pricing_issues = sched.pricing_issues(today, until=future_calls[0] if perpetual and future_calls else None)
     pricing_notes = list(pricing_issues)
-    if sched.day_count == "act/act":
-        pricing_notes.append("Actual/Actual is modeled using calendar-year ISDA fractions; verify the issue's quotation convention")
     if yields.call_terms_unresolved(terms):
         ytw = None
         pricing_notes.append("Call terms are unresolved or recurring; only explicit dates can be priced, and full yield-to-worst is unavailable")
