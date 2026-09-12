@@ -490,7 +490,7 @@ function PositionRow({
           </button>
           <div className="flex items-center gap-3 text-[11px]">
             {p.symbol && <CopyText value={p.symbol} label="symbol" className="text-zinc-500" />}
-            <CopyText value={p.isin} label="ISIN" className="font-mono text-zinc-500" />
+            <CopyText value={p.isin} label="ISIN" className="text-zinc-500" />
           </div>
         </td>
         {/* Same treatment as the explorer's rating cell: full rating with
