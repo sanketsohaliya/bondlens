@@ -31,7 +31,12 @@ describe("explore amount cells", () => {
     expect(html).toContain("Staggered");
     expect(html).toContain("~₹12,560");
     expect(html).not.toContain("/u<");
-    expect(html).toContain("/unit");
+    expect(html).toContain("per unit");
+    expect(html).toContain("paid monthly");
+    expect(html).toContain("principal repaid in parts");
+    expect(html).toContain("click to see every payment");
+    expect(html).not.toContain("Fixed Interest · monthly · staggered");
+    expect(html).not.toContain("buyer-receivable");
     expect(html).not.toMatch(/Staggered<\/span><span[^>]*>\s*·/);
     expect(html).toContain("14.4");
     expect(html).toContain("monthly");
@@ -83,7 +88,7 @@ describe("explore amount cells", () => {
     );
     expect(html).toContain("Perpetual");
     expect(html).not.toContain("–");
-    expect(html).toContain("No finite lifetime payout total");
+    expect(html).toContain("no maturity");
   });
 
   it("shows ticket value below ask yield and retains exact arithmetic in details", () => {

@@ -7,6 +7,7 @@ import { useAuth } from "../lib/auth";
 import {
   askTicketText,
   otcLine,
+  paymentsLeftText,
   payoutDisplay,
   shouldOpenRow,
   usePayoutDay,
@@ -97,21 +98,19 @@ export function PayoutCell({
   bond: b,
   today,
   onOpen,
+  payout = payoutDisplay(b, today),
 }: {
   bond: PayoutBond;
   today: string;
   onOpen: () => void;
+  payout?: ReturnType<typeof payoutDisplay>;
 }) {
-  const payout = payoutDisplay(b, today);
-  const title = [b.coupon_basis, b.frequency, b.schedule_shape, payout.detail]
-    .filter(Boolean)
-    .join(" · ");
   return (
     <button
       type="button"
       className="block w-full min-w-0 overflow-hidden text-left"
-      title={title}
-      aria-label={`Open Cashflows. ${payout.detail}`}
+      title={payout.detail}
+      aria-label={`Open Cashflows. ${payout.detail.replace(/\n/g, " ")}`}
       onClick={(e) => {
         e.stopPropagation();
         onOpen();
@@ -147,7 +146,7 @@ export function PayoutCell({
           b.total_flows != null &&
           b.total_flows > 0 && (
             <span
-              title={`${b.future_flows} buyer-receivable flows with modeled amounts of ${b.total_flows} total cashflows`}
+              title={`${paymentsLeftText(b.future_flows, b.total_flows)} (interest and principal payments a buyer today would receive)`}
             >
               {(isZeroCoupon(b) || b.coupon != null) && " · "}
               {b.future_flows}/{b.total_flows} left
@@ -475,6 +474,7 @@ export function Row({
   /** undefined = Kite not connected (no column); null = no live ask. */
   ask?: AskYtm | null;
 }) {
+  const payout = payoutDisplay(b, today);
   return (
     <tr
       onClick={() => {
@@ -679,17 +679,23 @@ export function Row({
         />
       </td>
       {/* Payout: structure primary, rate/frequency and remaining flow
-          count muted beneath. Verbatim detail in the tooltip; click =
-          the actual payment schedule. */}
+          count muted beneath. Tooltip leads with the rupee total a buyer
+          receives, then structure in plain words; click = the actual
+          payment schedule. */}
       <td
         className="group/coupon px-3 py-2.5 whitespace-nowrap cursor-pointer"
-        title={[b.coupon_basis, b.frequency, b.schedule_shape].filter(Boolean).join(" · ")}
+        title={payout.detail}
         onClick={(e) => {
           e.stopPropagation();
           onSelect(b.isin, "cashflows");
         }}
       >
-        <PayoutCell bond={b} today={today} onOpen={() => onSelect(b.isin, "cashflows")} />
+        <PayoutCell
+          bond={b}
+          today={today}
+          payout={payout}
+          onOpen={() => onSelect(b.isin, "cashflows")}
+        />
       </td>
       <td className="px-3 py-2.5 whitespace-nowrap text-right">
         {b.maturity_date != null ? (

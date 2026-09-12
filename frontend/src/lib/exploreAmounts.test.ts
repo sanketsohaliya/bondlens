@@ -4,7 +4,9 @@ import {
   askTicket,
   askTicketText,
   otcLine,
+  paymentsLeftText,
   payoutDisplay,
+  payoutStructureNote,
   shouldOpenRow,
   watchPayoutDay,
 } from "./exploreAmounts";
@@ -15,6 +17,12 @@ const payout = {
   payout_total_state: "known" as const,
   payout_as_of: "2026-09-11",
   payout_valid_until: "2026-09-18",
+  coupon: 11.6,
+  coupon_basis: "Fixed Interest",
+  frequency: "monthly",
+  schedule_shape: "staggered",
+  future_flows: 21,
+  total_flows: 29,
 };
 
 afterEach(() => {
@@ -55,6 +63,55 @@ describe("explore amounts", () => {
     );
     expect(payoutDisplay({ ...payout, payout_total_per_unit: 0 }, "2026-09-11").label).toBe("₹0");
     expect(payoutDisplay(payout, "2026-09-11").detail).toContain("per unit");
+  });
+
+  it("explains the payout in plain, line-broken English led by the rupee total", () => {
+    const lines = payoutDisplay(payout, "2026-09-11").detail.split("\n");
+    expect(lines).toEqual([
+      "You'd receive ₹12,560 per unit if you buy now and hold to maturity — 21 of 29 payments still to come.",
+      "11.6% fixed interest, paid monthly · principal repaid in parts, not one lump sum at maturity",
+      "Before tax & fees · gross cash, not profit or a guaranteed return.",
+      "Schedule per NSDL as of 11 Sept 2026 · click to see every payment.",
+    ]);
+    const detail = lines.join("\n");
+    for (const jargon of [
+      "modeled",
+      "buyer-entitlement",
+      "present value",
+      "staggered",
+      "Fixed Interest",
+    ])
+      expect(detail).not.toContain(jargon);
+    const est = payoutDisplay({ ...payout, payout_total_state: "estimated" }, "2026-09-11").detail;
+    expect(est).toContain("about ₹12,560");
+    expect(est).toContain("estimated");
+    expect(
+      payoutDisplay({ ...payout, payout_total_state: "open_ended" }, "2026-09-11").detail,
+    ).toContain("no maturity");
+    expect(
+      payoutDisplay({ ...payout, schedule_shape: "perpetual" }, "2026-09-11").detail,
+    ).toContain("hold to the first call");
+    expect(payoutDisplay({}, "2026-09-11").detail).toBe(
+      "Payout total not available yet.\nClick to see every payment.",
+    );
+  });
+
+  it("describes structure and remaining payments without raw tokens", () => {
+    expect(payoutStructureNote(payout)).toBe(
+      "11.6% fixed interest, paid monthly · principal repaid in parts, not one lump sum at maturity",
+    );
+    expect(
+      payoutStructureNote({ coupon: 9.5, coupon_basis: "Variable Interest", frequency: "annual" }),
+    ).toBe("9.5% floating interest, paid annual");
+    expect(
+      payoutStructureNote({ coupon_basis: "Zero Coupon", schedule_shape: "zero_coupon" }),
+    ).toBe("No coupons · bought at a discount, single payment at maturity");
+    expect(
+      payoutStructureNote({ coupon: 8, frequency: "cumulative", schedule_shape: "cumulative" }),
+    ).toBe("8% fixed interest · interest accrues and is paid with principal at maturity");
+    expect(payoutStructureNote({})).toBeNull();
+    expect(paymentsLeftText(21, 29)).toBe("21 of 29 payments still to come");
+    expect(paymentsLeftText(0, 5)).toBe("no payments left to receive");
   });
 
   it("keeps an overnight snapshot until the bond's next payment or record date", () => {

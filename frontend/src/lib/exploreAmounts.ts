@@ -6,7 +6,46 @@ import { calendarAsOf, calendarDate } from "./cashflowEvidence";
 type PayoutData = Pick<
   Bond,
   "payout_total_per_unit" | "payout_total_state" | "payout_as_of" | "payout_valid_until"
->;
+> &
+  Partial<
+    Pick<
+      Bond,
+      "coupon" | "coupon_basis" | "frequency" | "schedule_shape" | "future_flows" | "total_flows"
+    >
+  >;
+
+const SHAPE_NOTE: Record<string, string> = {
+  staggered: "principal repaid in parts, not one lump sum at maturity",
+  zero_coupon: "bought at a discount, single payment at maturity",
+  cumulative: "interest accrues and is paid with principal at maturity",
+  perpetual: "no maturity date",
+  irregular: "non-standard schedule",
+  plain: "principal repaid in full at maturity",
+};
+
+/** Plain-English payout structure ("11.6% fixed interest, paid monthly ·
+ * principal repaid in parts…") — never leaks raw enum tokens. */
+export function payoutStructureNote(
+  b: Partial<Pick<Bond, "coupon" | "coupon_basis" | "frequency" | "schedule_shape">>,
+): string | null {
+  const basis = (b.coupon_basis ?? "").toLowerCase();
+  const zero = basis.includes("zero") || b.schedule_shape === "zero_coupon";
+  let rate: string | null = null;
+  if (zero) rate = "No coupons";
+  else if (b.coupon != null) {
+    rate = `${fmt.num(Number(b.coupon))}% ${basis.startsWith("variable") ? "floating" : "fixed"} interest`;
+    if (b.frequency && b.frequency !== "cumulative") rate += `, paid ${b.frequency.toLowerCase()}`;
+  }
+  const shape = b.schedule_shape ? SHAPE_NOTE[b.schedule_shape] : null;
+  const parts = [rate, shape].filter(Boolean);
+  return parts.length ? parts.join(" · ") : null;
+}
+
+export function paymentsLeftText(future: number, total: number): string {
+  return future === 0
+    ? "no payments left to receive"
+    : `${future} of ${total} payments still to come`;
+}
 
 /** Mirrors backend `payout_fields`: a snapshot is stale only once a payment or
  * record date has fallen between its `as_of` and today — before that the buyer
@@ -25,27 +64,31 @@ export function payoutDisplay(bond: PayoutData, today: string) {
   )
     state = "incomplete";
   const usable = state === "known" || state === "estimated";
+  const showCount = state !== "stale";
   const label = usable ? `${state === "estimated" ? "~" : ""}${fmt.inr(amount)}` : null;
-  const reason = {
-    known: "Remaining gross modeled interest plus principal per unit for a new buyer.",
-    estimated: "Indicative total: includes estimated cashflows or variable-rate assumptions.",
+  const horizon = bond.schedule_shape === "perpetual" ? "the first call" : "maturity";
+  const left =
+    showCount && bond.future_flows != null && bond.total_flows != null && bond.total_flows > 0
+      ? ` — ${paymentsLeftText(bond.future_flows, bond.total_flows)}`
+      : "";
+  const headline = {
+    known: `You'd receive ${fmt.inrFull(amount)} per unit if you buy now and hold to ${horizon}${left}.`,
+    estimated: `You'd receive about ${fmt.inrFull(amount)} per unit if you buy now and hold to ${horizon}${left}. Some amounts are estimated (floating rate or missing data).`,
     incomplete:
-      "A complete bounded payout total is unavailable; no known subtotal is shown as a total.",
-    open_ended: "No finite lifetime payout total for a perpetual or open-ended schedule.",
-    unavailable: "Payout summary is not available yet. Open Cashflows for the schedule.",
+      "Total can't be shown — some payment amounts are missing, so no partial figure is given.",
+    open_ended: "No fixed total — this bond has no maturity, so payments continue indefinitely.",
+    unavailable: "Payout total not available yet.",
     stale:
-      "Payout updates after the 07:00 IST refresh; a payment or record date has passed since the last snapshot.",
+      "Total is being recalculated — a payment or record date has passed. Updates after the 07:00 IST refresh.",
   }[state];
-  const details = [reason];
-  if (usable && amount != null)
-    details.push(
-      `Total ₹${fmt.num(amount, 2)}/unit, before taxes/fees. Not profit, present value or guaranteed receipt.`,
-    );
-  if (bond.payout_as_of)
-    details.push(
-      `Snapshot date: ${calendarDate(bond.payout_as_of)}. Based on the NSDL-derived buyer-entitlement model.`,
-    );
-  return { label, detail: details.join(" "), state, showCount: state !== "stale" };
+  const lines = [headline, payoutStructureNote(bond)];
+  if (usable) lines.push("Before tax & fees · gross cash, not profit or a guaranteed return.");
+  lines.push(
+    bond.payout_as_of
+      ? `Schedule per NSDL as of ${calendarDate(bond.payout_as_of)} · click to see every payment.`
+      : "Click to see every payment.",
+  );
+  return { label, detail: lines.filter(Boolean).join("\n"), state, showCount };
 }
 
 export function askTicket(ask: AskYtm | null | undefined): number | null {
