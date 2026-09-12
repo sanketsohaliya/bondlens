@@ -186,12 +186,61 @@ describe("cashflow schedule presentation", () => {
     expect(html).not.toContain("future amount estimated");
   });
 
-  it("dims and tags a record-date-passed row without inline prose", () => {
+  it("dims a record-date-passed row per cell, keeps the tag legible and strikes the amount", () => {
     const html = renderToStaticMarkup(<CashflowSchedule bond={bond} asOf="2026-09-11" />);
     expect(html).toContain(">excluded<");
     expect(html).toContain("Record date has passed");
     expect(html).not.toContain("<details");
-    expect(html.match(/opacity-60/g)).toHaveLength(1);
+    // Row opacity would drag the tag down with it; the dim lives on the cells instead.
+    expect(html).not.toContain("opacity-60");
+    // The tag uses the same chip token as an agreeing BSE chip, at full strength.
+    const tag = html.match(
+      /<span class="([^"]*)"[^>]*title="Record date has passed[^"]*">excluded<\/span>/,
+    );
+    expect(tag).not.toBeNull();
+    expect(tag?.[1]).toContain("text-zinc-400");
+    expect(tag?.[1]).toContain("border-zinc-700");
+    expect(tag?.[1]).not.toContain("text-zinc-500");
+    expect(tag?.[1]).not.toContain("amber");
+    // Only the excluded row's amount is struck, and only its cells are muted.
+    // Give the two rows distinct amounts so each cell can be attributed.
+    const html2 = renderToStaticMarkup(
+      <CashflowSchedule
+        bond={{ ...bond, cashflows: [flow, { ...receivable, amount: 77 }] }}
+        asOf="2026-09-11"
+      />,
+    );
+    const amountCells = [
+      ...html2.matchAll(/<td class="([^"]*text-right[^"]*)"[^>]*>(₹[\d,]+)/g),
+    ].map((m) => [m[2], m[1]] as const);
+    expect(amountCells).toHaveLength(2);
+    const excludedAmount = amountCells.find(([v]) => v === "₹90")?.[1] ?? "";
+    const normalAmount = amountCells.find(([v]) => v === "₹77")?.[1] ?? "";
+    expect(excludedAmount).toContain("line-through");
+    expect(excludedAmount).toContain("text-zinc-500");
+    expect(normalAmount).not.toContain("line-through");
+    expect(normalAmount).not.toContain("text-zinc-500");
+  });
+
+  it("dims an optional exit scenario without striking its amount", () => {
+    const alternative: Cashflow = {
+      ...flow,
+      event: "redemption",
+      due_date: "2027-09-01",
+      payment_date: "2027-09-01",
+      record_date: null,
+      future: true,
+      optional: true,
+    };
+    const html = renderToStaticMarkup(
+      <CashflowSchedule
+        bond={{ ...bond, cashflows: [receivable, alternative] }}
+        asOf="2026-09-11"
+      />,
+    );
+    expect(html).toContain(">optional<");
+    expect(html).not.toContain("opacity-60");
+    expect(html).not.toContain("line-through");
   });
 
   it("marks evidence rows with a source chip and shows no summary when nothing needs attention", () => {
@@ -265,11 +314,14 @@ describe("cashflow schedule presentation", () => {
     }
   });
 
-  it("renders past dates dimmed under a plain heading", () => {
+  it("renders past dates dimmed under a plain heading, without striking received amounts", () => {
     const html = renderToStaticMarkup(<CashflowSchedule bond={bond} asOf="2026-11-01" />);
     expect(html).toContain(">Past<");
     expect(html).not.toContain("does not confirm");
-    expect(html.match(/opacity-60/g)).toHaveLength(2);
+    expect(html).not.toContain("opacity-60");
+    // Both rows are past: both dimmed, neither lost, so no strike-through anywhere.
+    expect(html).not.toContain("line-through");
+    expect((html.match(/text-zinc-500/g) ?? []).length).toBeGreaterThanOrEqual(4);
   });
 
   const orphan: ExchangeNotice = {

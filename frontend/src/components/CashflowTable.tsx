@@ -105,10 +105,18 @@ export function CashflowSchedule({
       flow.payment_date && flow.payment_date !== flow.due_date
         ? `Contractual due date: ${calendarDate(flow.due_date)}`
         : undefined;
+    // Dim per cell rather than on the row: CSS opacity is compositional, so a
+    // row-level fade would drag the "excluded" tag down with it - and that tag
+    // is the one thing telling a new buyer this payment is not theirs.
+    const muted = dimSection || Boolean(excluded);
+    const mutedText = muted ? "text-zinc-500" : "";
+    // A lost receipt is struck through; an optional exit scenario and a past
+    // (already received) payment are merely dimmed.
+    const struck = Boolean(excluded) && !flow.optional && !dimSection;
     return (
       <Fragment key={`${key}:${index}`}>
-        <tr className={dimSection || excluded ? "opacity-60" : ""}>
-          <td className="px-3 py-2 whitespace-nowrap">
+        <tr>
+          <td className={`px-3 py-2 whitespace-nowrap ${mutedText}`}>
             {!chip ? (
               <span title={dateTitle}>{calendarDate(effective)}</span>
             ) : (
@@ -135,7 +143,7 @@ export function CashflowSchedule({
             )}
             {excluded && (
               <span
-                className="ml-1.5 rounded border border-zinc-800 px-1 text-[10px] text-zinc-500"
+                className="ml-1.5 rounded border border-zinc-700 px-1 text-[10px] leading-4 text-zinc-400"
                 title={excluded}
               >
                 {flow.optional ? "optional" : "excluded"}
@@ -144,7 +152,15 @@ export function CashflowSchedule({
           </td>
           <td className="px-3 py-2">
             <span
-              className={`text-xs px-1.5 py-0.5 rounded capitalize ${flow.event === "redemption" ? "bg-emerald-500/10 text-emerald-400" : "bg-zinc-500/10 text-zinc-400"}`}
+              className={`text-xs px-1.5 py-0.5 rounded capitalize ${
+                flow.event === "redemption"
+                  ? muted
+                    ? "bg-emerald-500/5 text-emerald-400/50"
+                    : "bg-emerald-500/10 text-emerald-400"
+                  : muted
+                    ? "bg-zinc-500/5 text-zinc-500"
+                    : "bg-zinc-500/10 text-zinc-400"
+              }`}
             >
               {flow.event}
             </span>
@@ -157,7 +173,9 @@ export function CashflowSchedule({
           >
             {calendarDate(flow.record_date)}
           </td>
-          <td className="px-3 py-2 text-right whitespace-nowrap">
+          <td
+            className={`px-3 py-2 text-right whitespace-nowrap ${mutedText} ${struck ? "line-through decoration-zinc-600" : ""}`}
+          >
             {fmt.inr(flow.amount)}
             <AmountProvenance flow={flow} />
           </td>
