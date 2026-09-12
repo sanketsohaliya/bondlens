@@ -512,9 +512,9 @@ export function Row({
           <CopyText
             value={b.nse_symbol ?? b.bse_scrip_id ?? b.isin}
             label="symbol"
-            className="font-medium text-zinc-200 shrink-0"
+            className="text-zinc-500 shrink-0"
           />
-          <CopyText value={b.isin} label="ISIN" className="font-medium font-mono text-zinc-200" />
+          <CopyText value={b.isin} label="ISIN" className="font-mono text-zinc-500" />
           <span className="flex items-center gap-3 shrink-0 opacity-0 group-hover/row:opacity-100 transition-opacity">
             <RowLink href={nsdlUrl(b.isin)} label="NSDL" tip={LINK_TIPS.nsdl} />
             {b.kite_url && <RowLink href={b.kite_url} label="Kite" tip={LINK_TIPS.kite} />}

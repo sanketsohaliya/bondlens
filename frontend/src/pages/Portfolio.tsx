@@ -113,26 +113,35 @@ export default function Portfolio({
 
   return (
     <div className="space-y-6">
-      {/* Row 1 is money (where it stands), row 2 is outlook (where it is
-          going). Received / still-to-come come from the same month buckets
-          the cashflow chart draws, so the two views cannot disagree. */}
+      {/* Each row reads left to right as the money's journey. Row 1: what
+          went in and where it stands now. Row 2: what comes back out and
+          when. Received / still-to-come share the cashflow chart's month
+          buckets, so the two views cannot disagree. */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
         <StatBox label="Total invested" value={fmt.inr(summary.invested)} />
         <StatBox label="Current value" value={fmt.inr(summary.value)} accent />
         <GainBox gain={summary.gain} invested={summary.invested} />
         <StatBox
+          label="Portfolio YTM"
+          value={fmt.pct(summary.weighted_ytm)}
+          tip="Value-weighted average of each holding's YTM @ LTP."
+        />
+        <StatBox
           label="Received so far"
           value={fmt.inr(income.received_interest + income.received_principal)}
           tip={`Interest ${fmt.inr(income.received_interest)} · Principal ${fmt.inr(income.received_principal)}. Per schedule to date; not confirmation of bank receipt. Optional exits excluded.`}
         />
-        <StatBox label="Weighted avg YTM" value={fmt.pct(summary.weighted_ytm)} />
         <StatBox
           label="Still to come"
           value={fmt.inr(income.projected_interest + income.projected_principal)}
           accent
           tip={`Interest ${fmt.inr(income.projected_interest)} · Principal ${fmt.inr(income.projected_principal)}. Scheduled to maturity; optional exits excluded.`}
         />
-        <StatBox label="Weighted avg maturity" value={fmt.yearsMonths(summary.weighted_years)} />
+        <StatBox
+          label="Avg maturity"
+          value={fmt.yearsMonths(summary.weighted_years)}
+          tip="Value-weighted average time to maturity across holdings."
+        />
         <StatBox
           label="Diversification"
           value={`${summary.issuers} issuer${summary.issuers === 1 ? "" : "s"} · ${summary.bonds} bond${summary.bonds === 1 ? "" : "s"}`}
@@ -480,10 +489,8 @@ function PositionRow({
             {p.issuer_name ?? p.isin}
           </button>
           <div className="flex items-center gap-3 text-[11px]">
-            {p.symbol && (
-              <CopyText value={p.symbol} label="symbol" className="font-medium text-zinc-200" />
-            )}
-            <CopyText value={p.isin} label="ISIN" className="font-medium font-mono text-zinc-200" />
+            {p.symbol && <CopyText value={p.symbol} label="symbol" className="text-zinc-500" />}
+            <CopyText value={p.isin} label="ISIN" className="font-mono text-zinc-500" />
           </div>
         </td>
         {/* Same treatment as the explorer's rating cell: full rating with
