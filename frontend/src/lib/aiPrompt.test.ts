@@ -112,7 +112,9 @@ describe("buildBondPrompt", () => {
     expect(p).toContain("TEST FINCORP LIMITED");
     expect(p).toContain("Coupon: 13.00% monthly, face value ₹10,000");
     expect(p).toContain("Matures: 19 Dec 2028 (2y 5m)");
-    expect(p).toContain("YTM: 14.17% (exact, from published cashflows)");
+    expect(p).toContain(
+      "YTM: 14.17% (cashflow calculation from normalized source data; not independently validated)",
+    );
     expect(p).toContain("Duration: 1y 9m");
     expect(p).toContain("OTC institutional benchmark: 99.49% of face @ 14.11%");
     expect(p).toContain("Secured: yes | Tax-free: no");
@@ -139,7 +141,8 @@ describe("buildBondPrompt", () => {
 
   it("anchors the data with today's date", () => {
     const p = buildBondPrompt(mk(), { today: new Date("2026-08-10") });
-    expect(p).toContain("Today: 10 Aug 2026");
+    expect(p).toContain("Export date: 10 Aug 2026");
+    expect(p).toContain("Valuation date: unknown");
   });
 
   it("carries the verification and framing instructions", () => {
@@ -191,10 +194,10 @@ describe("buildBondPrompt", () => {
       ytm_at_ask: [{ price: 9987, ytm: 13.9 }],
     } as OrderBook;
     const p = buildBondPrompt(mk(), { depth });
-    expect(p).toContain("Order book now (BSE): best bid ₹9,750 × 51, best ask ₹9,987 × 200");
+    expect(p).toContain("Order book snapshot (BSE): best bid ₹9,750 × 51, best ask ₹9,987 × 200");
     expect(p).toContain("(total bid 177 / ask 250)");
     expect(p).toContain("YTM at best ask 13.90%");
-    expect(buildBondPrompt(mk(), { depth: null })).not.toContain("Order book now");
+    expect(buildBondPrompt(mk(), { depth: null })).not.toContain("Order book snapshot");
   });
 
   it("never leaks null/undefined and omits empty fields", () => {
@@ -221,8 +224,9 @@ describe("buildBondPrompt", () => {
         terms: {},
       }),
     );
-    expect(p).not.toMatch(/null|undefined|NaN/);
-    expect(p).toContain("Never traded on-exchange");
+    expect(p).not.toMatch(/undefined|NaN/);
+    expect(p).toContain('"displayed_price": null');
+    expect(p).toContain("No usable exchange price");
     expect(p).toContain("Rating: unrated / none on record");
     expect(p).not.toContain("Duration:");
     expect(p).not.toContain("-- Same issuer --");
@@ -266,7 +270,7 @@ describe("buildBondPrompt", () => {
     expect(p).toContain("amounts marked ≈ are estimated");
   });
 
-  it("caps long schedules but always keeps the redemptions", () => {
+  it("retains every interest and redemption row in long schedules", () => {
     const flows: Cashflow[] = [
       ...Array.from({ length: 60 }, (_, i) => ({
         event: "interest" as const,
@@ -286,10 +290,10 @@ describe("buildBondPrompt", () => {
       },
     ];
     const p = buildBondPrompt(mk({ cashflows: flows }));
-    expect(p).toContain("more interest payments");
+    expect(p).not.toContain("more interest payments");
     expect(p).toContain("19 Dec 2032  redemption  ₹10,000");
-    // 38 interest rows kept (40 cap - 1 redemption - 1 ellipsis line)
-    expect(p.match(/ {2}interest {2}/g)?.length).toBe(38);
+    // Every coupon remains available for repricing, regardless of URL size.
+    expect(p.match(/ {2}interest {2}/g)?.length).toBe(60);
   });
 
   it("lists rating-rationale and document links, capped at 5 each", () => {
@@ -313,7 +317,7 @@ describe("buildBondPrompt", () => {
     expect(p.match(/Document: Prospectus/g)?.length).toBe(5);
     // Most recent release first
     expect(p).toContain("https://crisil.com/pr/7");
-    expect(p).not.toContain("https://crisil.com/pr/0");
+    expect(p).toContain("https://crisil.com/pr/0");
   });
 
   it("includes the issue date in the terms section", () => {
@@ -345,7 +349,73 @@ describe("buildBondPrompt", () => {
     expect(buildBondPrompt(mk())).not.toContain("hypothetical");
   });
 
-  it("stays paste-friendly in size", () => {
-    expect(buildBondPrompt(mk()).length).toBeLessThan(5000);
+  it("includes complete machine-readable evidence instead of enforcing a URL budget", () => {
+    const prompt = buildBondPrompt(mk());
+    expect(prompt).toContain("Complete calculation evidence");
+    expect(prompt).toContain('"normalized_cashflows"');
+    expect(prompt).toContain('"parsed_source_inputs"');
+    expect(prompt).toContain('"selected_scenario_cashflows": null');
+    expect(prompt).toContain("cannot independently verify");
+  });
+
+  it("uses the valuation date and adjusted payment date, retaining unknown amounts and provenance", () => {
+    const flows: Cashflow[] = [
+      {
+        event: "interest",
+        due_date: "2027-01-01",
+        payment_date: "2027-01-04",
+        record_date: "2026-12-28",
+        amount: null,
+        estimated: false,
+        future: true,
+        adjustments: [
+          { kind: "example", previous_amount: 50, amount: null, reason: "Source unresolved" },
+        ],
+      },
+    ];
+    const prompt = buildBondPrompt(
+      mk({ as_of: "2026-09-11", cashflows: flows, pricing_cashflows: flows }),
+      { today: new Date("2026-09-12T12:00:00Z") },
+    );
+    expect(prompt).toMatch(/Valuation date: 11 Sept? 2026/);
+    expect(prompt).toContain('"valuation_date": "2026-09-11"');
+    expect(prompt).toContain("04 Jan 2027  interest  amount unknown");
+    expect(prompt).toContain("contractual due 01 Jan 2027");
+    expect(prompt).toContain('"previous_amount": 50');
+    expect(prompt).toContain('"record_date": "2026-12-28"');
+  });
+
+  it("does not use the full perpetual schedule as the pricing scenario", () => {
+    const selected: Cashflow[] = [
+      {
+        event: "redemption",
+        due_date: "2027-01-01",
+        record_date: null,
+        amount: 10000,
+        estimated: false,
+        future: true,
+      },
+    ];
+    const prompt = buildBondPrompt(
+      mk({
+        as_of: "2026-09-11",
+        maturity_date: null,
+        ytm_exact: null,
+        ytm_approx: null,
+        call_dates: ["2027-01-01"],
+        pricing_cashflows: selected,
+      }),
+    );
+    expect(prompt).toContain("01 Jan 2027  redemption  ₹10,000");
+    expect(prompt).not.toContain("19 Dec 2028  redemption  ₹10,000");
+    expect(prompt).toContain('"due_date": "2028-12-19"');
+  });
+
+  it("recognizes variable basis even when coupon type is simple", () => {
+    expect(
+      buildBondPrompt(
+        mk({ terms: { coupon_type: "Simple", coupon_basis: "Variable - Repo linked" } }),
+      ),
+    ).toContain("FLOATING RATE");
   });
 });

@@ -21,6 +21,7 @@ import type {
   TradesResponse,
   User,
   Watchlist,
+  YtmAtPrice,
 } from "./types";
 
 /** Fired when any API call returns 401 — AuthProvider flips to the
@@ -64,6 +65,8 @@ export const api = {
     params?: { from?: string; to?: string; exchange?: string; segment?: string },
   ) => get<TradesResponse>(`/api/bonds/${isin}/trades`, params),
   depth: (isin: string) => get<OrderBook>(`/api/bonds/${isin}/depth`),
+  valuation: (isin: string, price: number) =>
+    get<YtmAtPrice>(`/api/bonds/${isin}/valuation`, { price }),
   status: () => get<Status>("/api/status"),
   filters: () => get<Filters>("/api/filters"),
   auth: {
@@ -96,8 +99,16 @@ export const api = {
     askYtm: (isins: string[]) => request<AskYtmResponse>("POST", "/api/kite/ask-ytm", { isins }),
   },
   notifications: {
-    get: () => get<NotificationsResponse>("/api/notifications"),
-    markRead: () => request<{ ok: boolean }>("POST", "/api/notifications/read"),
+    get: (limit?: number, offset?: number) =>
+      get<NotificationsResponse>("/api/notifications", { limit, offset }),
+    markRead: async (ids: number[]) => {
+      for (let start = 0; start < ids.length; start += 200) {
+        await request<{ ok: boolean }>("POST", "/api/notifications/read", {
+          ids: ids.slice(start, start + 200),
+        });
+      }
+      return { ok: true };
+    },
   },
   watchlists: {
     create: (name: string) => request<Watchlist>("POST", "/api/watchlists", { name }),

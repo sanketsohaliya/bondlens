@@ -29,6 +29,32 @@ jobs:
       # python -m puts the repo root on sys.path (needed to import `backend`)
       - run: uv run python -m pytest tests/ -q
 
+  test-postgres:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18.4
+        env:
+          POSTGRES_USER: release_test
+          POSTGRES_PASSWORD: release_test_only
+          POSTGRES_DB: bondlens_release_test
+        ports:
+          - 55432:5432
+        options: >-
+          --memory=768m --cpus=2
+          --health-cmd="pg_isready -U release_test -d bondlens_release_test"
+          --health-interval=5s --health-timeout=3s --health-retries=20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v7
+        with:
+          python-version: "3.14"
+      - run: uv sync --locked
+      - name: Verify native PostgreSQL transactions and migrations
+        env:
+          RELEASE_TEST_DATABASE_URL: postgresql://release_test:release_test_only@127.0.0.1:55432/bondlens_release_test
+        run: uv run python -m pytest -m e2e tests/test_release_postgres.py -v
+
   test-frontend:
     runs-on: ubuntu-latest
     defaults:
@@ -47,7 +73,7 @@ jobs:
       - run: npm run build
 
   deploy:
-    needs: [test-backend, test-frontend]
+    needs: [test-backend, test-frontend, test-postgres]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -87,3 +113,11 @@ jobs:
           done
           echo "Smoke test failed after 60s"
           exit 1
+
+      - name: Refresh derived analytics and verify deployed calculations
+        run: |
+          ssh -i ~/.ssh/deploy_key root@162.35.184.182 \
+            'cd /opt/bondlens && docker compose -f docker-compose.yml -f docker-compose.prod.yml exec -T api python scripts/verify_deployment.py --wait-migration && docker compose -f docker-compose.yml -f docker-compose.prod.yml exec -T api python scripts/compute_analytics.py && docker compose -f docker-compose.yml -f docker-compose.prod.yml exec -T api python scripts/verify_deployment.py'
+
+      - name: Verify deployed frontend features
+        run: python3 scripts/verify_deployment.py --public-only

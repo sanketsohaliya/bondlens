@@ -12,6 +12,36 @@ from pydantic import BaseModel, Field
 YtmMethod = Literal["exact", "estimated", "approx", "ytc"]
 
 
+class YieldWarning(BaseModel):
+    code: str
+    message: str
+    severity: Literal["info", "caution", "error"]
+
+
+class YieldValuation(BaseModel):
+    price: float | None = None
+    ytm: float | None = None
+    ytm_method: YtmMethod | None = None
+    ytm_reliable: bool | None = None
+    yield_type: Literal["ytm", "ytc"] = "ytm"
+    as_of: date | None = None
+    calculation_version: str | None = None
+    calculated_at: datetime | None = None
+    schedule_version: str | None = None
+    target_date: date | None = None
+    estimated: bool = False
+    day_count: str | None = None
+    periods_per_year: int | None = None
+    price_basis: str | None = None
+    settlement_assumption: str | None = None
+    cashflows_complete: bool = False
+    cashflow_count: int = 0
+    gross_payout: float | None = None
+    gross_gain: float | None = None
+    holding_period_return: float | None = None
+    warnings: list[YieldWarning] = Field(default_factory=list)
+
+
 class Bond(BaseModel):
     """One explorer row (bond_analytics + read-time derived fields)."""
     isin: str
@@ -53,6 +83,7 @@ class Bond(BaseModel):
     ytm: float | None
     ytm_method: YtmMethod | None
     ytm_reliable: bool | None
+    valuation: YieldValuation | None = None
     # Normalized schedule counts ("20/32 left" in the Payout column).
     # Defaulted so rows predating migration 0017 still validate.
     future_flows: int | None = None
@@ -272,6 +303,7 @@ class BondDetail(BaseModel):
     ytm_approx: float | None
     ytm: float | None
     ytm_reliable: bool | None
+    valuation: YieldValuation | None = None
     yield_to_worst: float | None
     call_dates: list[date]
     current_yield: float | None
@@ -286,6 +318,8 @@ class BondDetail(BaseModel):
     rating_timeline: dict[str, list[RatingEvent]]
     # Cashflows
     cashflows: list[Cashflow]
+    pricing_cashflows: list[Cashflow] = Field(default_factory=list)
+    input_cashflows: list[dict[str, Any]] = Field(default_factory=list)
     future_total_per_unit: float | None
     next_payment: Cashflow | None
     # Related records (ragged NSDL shapes stay untyped)
@@ -469,6 +503,11 @@ class Notification(BaseModel):
     body: str
     created_at: datetime
     read_at: datetime | None
+    legacy: bool = False
+
+
+class NotificationsReadRequest(BaseModel):
+    ids: list[int] = Field(default_factory=list, max_length=200)
 
 
 class NotificationsResponse(BaseModel):
@@ -514,11 +553,14 @@ class DepthSide(BaseModel):
     total_ask_qty: float | None
     as_of: str | None
     source: Literal["kite", "exchange"] | None = None
+    fetched_at: str | None = None
+    quote_at: str | None = None
+    expires_at: str | None = None
+    warnings: list[YieldWarning] = Field(default_factory=list)
 
 
-class YtmAtPrice(BaseModel):
-    price: float
-    ytm: float | None
+class YtmAtPrice(YieldValuation):
+    pass
 
 
 class OrderBook(BaseModel):
@@ -561,11 +603,14 @@ class AskYtmRequest(BaseModel):
     isins: list[str]
 
 
-class AskYtm(BaseModel):
+class AskYtm(YieldValuation):
     isin: str
     ask_price: float
     ask_qty: float | None
-    ytm: float | None
+    exchange: str | None = None
+    fetched_at: str | None = None
+    quote_at: str | None = None
+    expires_at: str | None = None
 
 
 class AskYtmResponse(BaseModel):
@@ -593,6 +638,7 @@ class KiteOrder(BaseModel):
 
 
 class KiteOrdersResponse(BaseModel):
+    reconciliation_pending: bool = False
     orders: list[KiteOrder]
     # Lots auto-created from freshly filled bond BUYs during this fetch —
     # the UI refreshes the portfolio only when > 0.

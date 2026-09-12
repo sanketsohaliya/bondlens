@@ -3,12 +3,20 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { api, fmt } from "../api/client";
 import type { AskYtm, Bond } from "../api/types";
+import { useAuth } from "../lib/auth";
 import { askTicketText, payoutDisplay, usePayoutDay } from "../lib/exploreAmounts";
 import { nextListName, useHeldIsins, useWatchlists } from "../lib/lists";
+import {
+  isQuoteFresh,
+  useQuoteClock,
+  valuationIsCurrent,
+  valuationTooltip,
+} from "../lib/quoteValuation";
 import { useColumnWidths } from "../lib/useColumnWidths";
 import AddLotPopover from "./AddLotPopover";
 import CopyBtn from "./CopyBtn";
 import RatingBadge from "./RatingBadge";
+import YieldQuote from "./YieldQuote";
 
 const monthYear = (d: string | null) =>
   d ? new Date(d).toLocaleDateString("en-IN", { month: "short", year: "numeric" }) : null;
@@ -125,12 +133,14 @@ export function PayoutCell({
 
 export function AskQuoteCell({ ask, onOpen }: { ask: AskYtm | null; onOpen: () => void }) {
   const ticket = askTicketText(ask);
+  const fresh = isQuoteFresh(ask) && valuationIsCurrent(ask);
+  const detail = `${ticket.detail}\n${valuationTooltip(ask)}`;
   return (
     <button
       type="button"
       className="block w-full min-w-0 overflow-hidden text-left"
-      title={ticket.detail}
-      aria-label={`Open Order Book. ${ticket.detail}`}
+      title={detail}
+      aria-label={`Open Order Book. ${detail}`}
       onClick={(e) => {
         e.stopPropagation();
         onOpen();
@@ -139,7 +149,10 @@ export function AskQuoteCell({ ask, onOpen }: { ask: AskYtm | null; onOpen: () =
       <div
         className={`truncate ${ask?.ytm != null ? "text-zinc-200 font-medium" : "text-zinc-500"} group-hover/ask:underline decoration-zinc-600 underline-offset-2`}
       >
-        {ask?.ytm != null ? fmt.pct(ask.ytm) : "–"}
+        <YieldQuote
+          value={ask}
+          stale={ask != null && (!fresh || !(ask.ask_qty && ask.ask_qty > 0))}
+        />
       </div>
       {ask && <div className="truncate text-[11px] text-zinc-400">{ticket.label}</div>}
     </button>
@@ -176,32 +189,39 @@ const KITE_COLS: Col[] = [
 const COLUMN_WIDTHS_KEY = "explore-col-widths";
 const LEGACY_COLUMN_WIDTHS_KEY = "screener-col-widths";
 
-/* Last-known asks, so reloads paint straight into the live order instead
-   of reordering when the fetch lands. 30 min: fresh enough to predict
-   the current order, expired by the next session (no stale-ask sorting,
-   no snapshot→ytm re-shift after hours). */
+/* Recent per-user asks bridge reloads without silently extending their
+   original quote or calculation lifetimes. Each entry expires separately;
+   a fresh subset cannot rejuvenate older entries or revive a missing ask.
+   Legacy snapshots without freshness metadata are never reused. */
 const ASK_SNAPSHOT_KEY = "ask-ytm-snapshot";
-const ASK_SNAPSHOT_TTL = 30 * 60 * 1000;
+const ASK_SNAPSHOT_TTL = 90 * 1000;
 const ASK_SNAPSHOT_CAP = 2000;
 
-function loadAskSnapshot(): Map<string, AskYtm> | null {
+export function loadAskSnapshot(userId: number): Map<string, AskYtm> | null {
   try {
-    const raw = localStorage.getItem(ASK_SNAPSHOT_KEY);
+    const raw = localStorage.getItem(`${ASK_SNAPSHOT_KEY}:${userId}`);
     if (!raw) return null;
     const { ts, items } = JSON.parse(raw) as { ts: number; items: AskYtm[] };
-    if (Date.now() - ts > ASK_SNAPSHOT_TTL) return null;
-    return new Map(items.map((i) => [i.isin, i]));
+    if (!Number.isFinite(ts) || ts > Date.now() + 30_000 || Date.now() - ts > ASK_SNAPSHOT_TTL)
+      return null;
+    const current = items.filter((item) => isQuoteFresh(item) && valuationIsCurrent(item));
+    return current.length ? new Map(current.map((item) => [item.isin, item])) : null;
   } catch {
     return null;
   }
 }
 
-function saveAskSnapshot(fresh: AskYtm[]) {
+export function saveAskSnapshot(userId: number, fresh: AskYtm[], requested: string[]) {
   try {
-    const merged = loadAskSnapshot() ?? new Map<string, AskYtm>();
-    for (const item of fresh) merged.set(item.isin, item);
+    const merged = loadAskSnapshot(userId) ?? new Map<string, AskYtm>();
+    for (const isin of requested) merged.delete(isin);
+    for (const item of fresh)
+      if (isQuoteFresh(item) && valuationIsCurrent(item)) merged.set(item.isin, item);
     const items = [...merged.values()].slice(-ASK_SNAPSHOT_CAP);
-    localStorage.setItem(ASK_SNAPSHOT_KEY, JSON.stringify({ ts: Date.now(), items }));
+    localStorage.setItem(
+      `${ASK_SNAPSHOT_KEY}:${userId}`,
+      JSON.stringify({ ts: Date.now(), items }),
+    );
   } catch {
     /* storage full/unavailable — snapshot is only an optimization */
   }
@@ -225,6 +245,8 @@ export default function ExploreTable({
   onSortChange?: (s: SortState) => void;
 }) {
   const today = usePayoutDay();
+  const now = useQuoteClock();
+  const { user } = useAuth();
   const [sort, setSortState] = useState<SortState>(initialSort ?? { key: "ask_ytm", dir: -1 });
   const setSort = (update: (s: SortState) => SortState) =>
     setSortState((s) => {
@@ -237,8 +259,9 @@ export default function ExploreTable({
   const { data: kite } = useQuery({
     queryKey: ["kite-status"],
     queryFn: api.kite.status,
-    staleTime: 120_000,
-    refetchOnWindowFocus: false,
+    staleTime: 60_000,
+    refetchInterval: 60_000,
+    refetchOnWindowFocus: true,
   });
   const kiteConnected = kite?.connected ?? false;
   // Kite quote calls are the one genuinely bounded resource (500
@@ -253,26 +276,27 @@ export default function ExploreTable({
     [bonds],
   );
   const askYtm = useQuery({
-    queryKey: ["ask-ytm", isins.join(",")],
+    queryKey: ["ask-ytm", user.id, today, isins.join(",")],
     queryFn: () => api.kite.askYtm(isins),
     enabled: kiteConnected && isins.length > 0,
     staleTime: 55_000, // just under the server's 60s per-user cache
-    refetchOnWindowFocus: false,
+    refetchInterval: 60_000,
+    refetchOnWindowFocus: true,
   });
-  const [snapshot] = useState(loadAskSnapshot);
+  const snapshot = useMemo(() => loadAskSnapshot(user.id), [user.id]);
   useEffect(() => {
-    if (askYtm.data?.items?.length) saveAskSnapshot(askYtm.data.items);
-  }, [askYtm.data]);
+    if (askYtm.data) saveAskSnapshot(user.id, askYtm.data.items, isins);
+  }, [askYtm.data, isins, user.id]);
   const askMap = useMemo(() => {
     // Fresh data wins outright (even empty ⇒ the ytm fallback below);
     // the snapshot only bridges the seconds before the first fetch lands.
-    if (askYtm.data) {
-      const m = new Map<string, AskYtm>();
-      for (const item of askYtm.data.items) m.set(item.isin, item);
-      return m;
-    }
-    return snapshot ?? new Map<string, AskYtm>();
-  }, [askYtm.data, snapshot]);
+    const items = askYtm.data ? askYtm.data.items : [...(snapshot?.values() ?? [])];
+    return new Map(
+      items
+        .filter((item) => isQuoteFresh(item, now) && valuationIsCurrent(item, now))
+        .map((item) => [item.isin, item]),
+    );
+  }, [askYtm.data, snapshot, now]);
 
   // Painting before the asks arrive would order by LTP-YTM and then
   // visibly reorder — hold the loading state for the one first fetch
@@ -333,6 +357,14 @@ export default function ExploreTable({
 
   return (
     <div className="overflow-x-auto scroll-slim">
+      {kiteConnected && askYtm.isError && (
+        <div className="p-3 text-xs text-amber-400">
+          Ask quotes could not be refreshed; expired snapshots are hidden.{" "}
+          <button type="button" onClick={() => askYtm.refetch()} className="underline">
+            Retry
+          </button>
+        </div>
+      )}
       <table
         ref={tableRef}
         className={`w-full text-sm ${widths && widths.length === cols.length ? "table-fixed" : ""}`}
@@ -453,28 +485,19 @@ function Row({
         <div>
           <span
             className={b.ytm != null ? "text-zinc-200 font-medium" : "text-zinc-500"}
-            title={
-              b.ytm_method === "exact"
-                ? "From the actual payment schedule"
-                : b.ytm_method
-                  ? "Estimated"
-                  : undefined
-            }
+            title={valuationTooltip(b.valuation)}
           >
             {fmt.pct(b.ytm)}
           </span>
-          {b.ytm != null && b.ytm_reliable === false && (
-            <span
-              className="ml-1 text-[10px] text-amber-500/80 align-middle"
-              title={
-                b.coupon_basis?.startsWith("Variable")
-                  ? "Floating / market-linked coupon — YTM assumes the current rate holds; indicative only"
-                  : "Caution — near maturity, out of band, or differs from recent OTC prints; verify before acting"
-              }
-            >
-              ⚠
-            </span>
-          )}
+          {b.ytm != null &&
+            (b.ytm_reliable === false || (b.valuation?.warnings?.length ?? 0) > 0) && (
+              <span
+                className="ml-1 text-[10px] text-amber-500/80 align-middle"
+                title={valuationTooltip(b.valuation)}
+              >
+                ⚠
+              </span>
+            )}
           {b.ytm_method === "ytc" && (
             <span
               className="ml-1 text-[10px] text-zinc-500"
@@ -529,8 +552,8 @@ function Row({
           </div>
         )}
       </td>
-      {/* YTM @ Ask (only when Kite is connected): the yield locked buying
-          at the best resting ask across NSE/BSE, from the user's session.
+      {/* YTM @ Ask (only when Kite is connected): indicative gross yield
+          at a usable best-ask snapshot across NSE/BSE, from the user's session.
           Clicking jumps to the order book to act on it. */}
       {ask !== undefined && (
         <td

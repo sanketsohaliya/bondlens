@@ -38,9 +38,10 @@ from . import (
     kite_ticker,
     models,
     queries,
+    quote_time,
 )
-from .analytics import compute, ratings, schedule, yields
 from .analytics import portfolio as pf
+from .analytics import ratings, schedule, valuation, yields
 from .analytics.compute import STALE_AFTER_DAYS
 
 # redirect_slashes builds its 307 from the proxied (http) scheme, which
@@ -232,17 +233,18 @@ def portfolio(user_id: int = Depends(auth.require_user)):
 # --------------------------------------------------------------------------
 
 @router.get("/api/notifications", response_model=models.NotificationsResponse)
-def notifications(limit: int = Query(50, ge=1, le=200),
+def notifications(limit: int = Query(50, ge=1, le=200), offset: int = Query(0, ge=0),
                   user_id: int = Depends(auth.require_user)):
     """Newest-first portfolio notification feed with the unread count.
     Rows are produced by the scheduled generator, not this API."""
-    return db.get_notifications(user_id, limit)
+    return db.get_notifications(user_id, limit, offset)
 
 
 @router.post("/api/notifications/read", response_model=models.Ok)
-def notifications_read(user_id: int = Depends(auth.require_user)):
-    """Mark every notification read (the bell panel calls this on open)."""
-    db.mark_notifications_read(user_id)
+def notifications_read(body: models.NotificationsReadRequest | None = None,
+                       user_id: int = Depends(auth.require_user)):
+    """Mark only the notification IDs explicitly acknowledged by the user."""
+    db.mark_notifications_read(user_id, body.ids if body else [])
     return {"ok": True}
 
 
@@ -336,7 +338,7 @@ def filters():
 # --------------------------------------------------------------------------
 
 @router.get("/api/bonds/{isin}", response_model=models.BondDetail)
-def bond_detail(isin: str, price: float | None = Query(None, gt=0)):
+def bond_detail(isin: str, price: float | None = Query(None, gt=0, allow_inf_nan=False)):
     """Everything known about one bond. ``price`` reprices every
     price-derived figure for what-if analysis."""
     isin = isin.strip().upper()
@@ -354,10 +356,8 @@ def bond_detail(isin: str, price: float | None = Query(None, gt=0)):
     core = queries.analytics_row(isin, STALE_AFTER_DAYS) or {}
     custom_price = price is not None
     ltp = price if custom_price else core.get("ltp")
-    coupon = core.get("coupon") or (
-        float(terms["coupon_rate"]) if terms and terms.get("coupon_rate") else None)
-    face = core.get("face_value") or (
-        float(terms["face_value"]) if terms and terms.get("face_value") else None)
+    coupon = sched.coupon_rate
+    face = sched.face_value
 
     red_date = terms.get("redemption_date") if terms else None
     perpetual = bool(terms and terms.get("perpetual")) or (
@@ -365,17 +365,19 @@ def bond_detail(isin: str, price: float | None = Query(None, gt=0)):
     if perpetual:
         red_date = None
     call_dates = yields.parse_call_dates(terms)
+    priced = valuation.calculate(ltp, sched, terms, today, allow_approx=True,
+                                 otc_yield=core.get("otc_yield"), otc_trade_date=core.get("otc_trade_date"),
+                                 price_date=None if custom_price else core.get("trade_date"))
     if perpetual:
         # A maturity-based YTM against a perpetual (9999 sentinel) is
         # spurious — yield-to-call is the meaningful figure.
         exact = approx = None
-        best = (yields.yield_to_call(ltp, sched, call_dates, today)
-                if ltp else None)
+        best = priced["ytm"]
         ytw = None
     else:
-        exact = yields.exact_ytm(ltp, sched, today) if ltp else None
-        approx = yields.fallback_ytm(ltp, sched, terms, today) if ltp else None
-        best = exact if exact is not None else approx
+        best = priced["ytm"]
+        exact = best if priced["ytm_method"] in ("exact", "estimated") else None
+        approx = best if priced["ytm_method"] == "approx" else None
         ytw = (yields.yield_to_worst(ltp, sched, call_dates, today)
                if ltp and call_dates else None)
     future_calls = [d for d in call_dates if d > today]
@@ -443,23 +445,22 @@ def bond_detail(isin: str, price: float | None = Query(None, gt=0)):
         "ytm_exact": exact,
         "ytm_approx": approx,
         "ytm": best,
-        "ytm_reliable": compute.ytm_reliability(
-            best, red_date, today,
-            terms.get("coupon_basis") if terms else None,
-            otc_yield=None if custom_price else core.get("otc_yield"),
-            otc_trade_date=None if custom_price else core.get("otc_trade_date")),
+        "ytm_reliable": priced["ytm_reliable"],
+        "valuation": priced,
         "yield_to_worst": ytw,
         "call_dates": call_dates,
         "current_yield": yields.current_yield(ltp, coupon, face),
         "accrued": accrued,
         "clean_price": yields.clean_price(ltp, sched, today) if ltp else None,
-        "duration": yields.modified_duration(ltp, sched, best, today),
+        "duration": yields.modified_duration(ltp, sched, best, today) if priced["ytm_method"] in ("exact", "estimated") else None,
         "credit_rating": ratings.composite(cur),
         "rating_rank": ratings.best_rank(cur),
         "in_default": ratings.in_default(cur) or bool(extras["defaults"]),
         "tech_delay": bool(extras["technical_defaults"]),
         "rating_timeline": ratings.timeline(hist),
         "cashflows": flows_out,
+        "pricing_cashflows": [valuation.flow_data(f, today) for f in valuation.scenario_flows(sched, terms, today) or []],
+        "input_cashflows": raw_flows,
         "future_total_per_unit": (round(future_total, 2) if sched.usable and not perpetual
                                   and not sched.pricing_issues(today, check_convention=False) else None),
         "next_payment": next_payment,
@@ -515,26 +516,29 @@ def bond_trades(
 # Order book
 # --------------------------------------------------------------------------
 
-def _annotate_ytm(book: dict, isin: str) -> None:
-    """Fill book['ytm_at_ask'] with the YTM a buyer would lock at each
-    resting ask price (dirty)."""
-    if book["ytm_at_ask"]:
-        return
-    ask_prices = sorted({
-        lv["price"]
-        for side in (book.get("nse"), book.get("bse")) if side
-        for lv in side["asks"] if lv["price"]
-    })
-    if not ask_prices:
-        return
+@router.get("/api/bonds/{isin}/valuation", response_model=models.YtmAtPrice)
+def bond_valuation(isin: str, price: float = Query(gt=0, allow_inf_nan=False)):
+    isin = isin.strip().upper()
+    if queries.bond_row(isin) is None:
+        raise HTTPException(status_code=404, detail="Unknown ISIN")
     today = date.today()
-    sched = schedule.build(isin, queries.bond_cashflows(isin),
-                           queries.bond_terms(isin), today=today)
-    if sched.usable:
-        book["ytm_at_ask"] = [
-            {"price": p, "ytm": yields.exact_ytm(p, sched, today)}
-            for p in ask_prices
-        ]
+    terms = queries.bond_terms(isin)
+    sched = schedule.build(isin, queries.bond_cashflows(isin), terms, today=today)
+    core = queries.analytics_row(isin, STALE_AFTER_DAYS) or {}
+    return valuation.calculate(price, sched, terms, today, otc_yield=core.get("otc_yield"),
+                               otc_trade_date=core.get("otc_trade_date"))
+
+
+def _annotate_ytm(book: dict, isin: str) -> None:
+    """Attach indicative gross valuations, including their assumptions,
+    to positive-size resting ask prices (dirty)."""
+    sides = [book.get("nse"), book.get("bse")]
+    for side in sides:
+        if side is not None:
+            side.update(quote_time.metadata(side.get("fetched_at") or book.get("fetched_at"),
+                                            side.get("quote_at") or side.get("as_of")))
+    prices = ask_ytm.ask_prices(sides)
+    book["ytm_at_ask"] = ask_ytm.PriceCalculator(isin).values(prices, date.today()) if prices else []
 
 
 @router.get("/api/bonds/{isin}/depth", response_model=models.OrderBook)
@@ -542,7 +546,7 @@ def bond_depth(isin: str, user_id: int = Depends(auth.require_user)):
     """Live top-5 bid/ask depth from both exchanges — via the user's
     own Kite session when connected, exchange scrapers otherwise —
     fetched on demand (30s cache). Ask levels are annotated with the
-    YTM a buyer would lock at that dirty price."""
+    indicative gross YTM or conditional YTC at that modeled dirty price."""
     isin = isin.strip().upper()
     row = queries.bond_row(isin)
     if row is None:
@@ -661,11 +665,12 @@ def kite_orders(user_id: int = Depends(auth.require_user)):
                          o.get("tradingsymbol") or ""))
         o["isin"] = hit["isin"] if hit else None
         o["issuer_name"] = hit["issuer_name"] if hit else None
+    pending = False
     try:
         new_lots = fills.process_orders(user_id, orders)
     except Exception:  # noqa: BLE001 - reconciliation must never break the list
-        new_lots = 0
-    return {"orders": orders, "new_lots": new_lots}
+        new_lots, pending = 0, True
+    return {"orders": orders, "new_lots": new_lots, "reconciliation_pending": pending}
 
 
 @router.put("/api/kite/orders/{order_id}", response_model=models.KiteOrderId)
@@ -693,9 +698,9 @@ def kite_margins(user_id: int = Depends(auth.require_user)):
 @router.post("/api/kite/ask-ytm", response_model=models.AskYtmResponse)
 def kite_ask_ytm(body: models.AskYtmRequest,
                  user_id: int = Depends(auth.require_user)):
-    """Best-ask price/qty and the YTM locked buying at it, for the
-    explorer's YTM @ Ask column — fetched under the user's own Kite
-    session. Empty when Kite isn't connected."""
+    """Positive-size best-ask snapshots with indicative gross valuations
+    and their assumptions, dates and expiry, under the user's Kite
+    session. Empty when Kite isn't connected or no usable ask is available."""
     if not kite_connect.configured() or kite_connect.token_for(user_id) is None:
         return {"items": []}
     return {"items": ask_ytm.compute(user_id, body.isins)}
@@ -727,12 +732,9 @@ async def kite_depth_stream(ws: WebSocket, isin: str):
         return
 
     await ws.accept()
-    today = date.today()
-    sched = await run_in_threadpool(
-        lambda: schedule.build(isin, queries.bond_cashflows(isin),
-                               queries.bond_terms(isin), today=today))
-    ytm_memo: dict[float, float | None] = {}
+    calculator = ask_ytm.PriceCalculator(isin)
     sides: dict[str, dict | None] = {"nse": None, "bse": None}
+    fetched_at = datetime.now(UTC).isoformat()
     conn, queue = await kite_ticker.manager.attach(user_id, access_token,
                                                    set(tokens))
     recv_task = asyncio.create_task(ws.receive())  # detect client close
@@ -740,30 +742,29 @@ async def kite_depth_stream(ws: WebSocket, isin: str):
         while True:
             queue_task = asyncio.create_task(queue.get())
             done, _ = await asyncio.wait(
-                {recv_task, queue_task}, return_when=asyncio.FIRST_COMPLETED)
+                {recv_task, queue_task}, timeout=30, return_when=asyncio.FIRST_COMPLETED)
             if recv_task in done:  # client closed (or sent something)
                 queue_task.cancel()
                 break
-            tick = queue_task.result()
-            if tick is None:  # Kite connection died; frontend falls back
-                break
-            sides[tokens[tick["token"]]] = kite_ticker.tick_to_side(tick)
-            ask_prices = sorted({
-                lv["price"] for side in sides.values() if side
-                for lv in side["asks"] if lv["price"]
-            })
-            if sched.usable:
-                for p in ask_prices:
-                    if p not in ytm_memo:
-                        ytm_memo[p] = yields.exact_ytm(p, sched, today)
-            await ws.send_json({
-                "isin": isin,
-                "fetched_at": datetime.now(UTC).isoformat(),
-                "nse": sides["nse"],
-                "bse": sides["bse"],
-                "ytm_at_ask": [{"price": p, "ytm": ytm_memo.get(p)}
-                               for p in ask_prices],
-            })
+            if queue_task in done:
+                tick = queue_task.result()
+                if tick is None:  # Kite connection died; frontend falls back
+                    break
+                fetched_at = datetime.now(UTC).isoformat()
+                side = kite_ticker.tick_to_side(tick)
+                if side is not None:
+                    side.update(quote_time.metadata(fetched_at, side.get("as_of")))
+                sides[tokens[tick["token"]]] = side
+            else:
+                queue_task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await queue_task
+            for side in sides.values():
+                if side is not None:
+                    side.update(quote_time.metadata(side.get("fetched_at"), side.get("quote_at")))
+            priced = await run_in_threadpool(calculator.values, ask_ytm.ask_prices(sides.values()), date.today())
+            await ws.send_json({"isin": isin, "fetched_at": fetched_at,
+                                "nse": sides["nse"], "bse": sides["bse"], "ytm_at_ask": priced})
     except (WebSocketDisconnect, RuntimeError):
         pass
     finally:

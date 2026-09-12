@@ -43,6 +43,8 @@ export type {
   TradesResponse,
   User,
   Watchlist,
+  YieldValuation,
+  YieldWarning,
   YtmAtPrice,
 } from "./generated";
 

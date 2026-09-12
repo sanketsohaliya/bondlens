@@ -11,7 +11,7 @@ import gzip
 import hashlib
 import os
 from collections.abc import Iterator
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from datetime import UTC, datetime
 from typing import Any
 
@@ -250,9 +250,11 @@ def _validate_lot(units: float, price: float | None, purchase_date: Any,
 
 
 def add_lot(user_id: int, isin: str, units: float, price: float,
-            purchase_date: Any, platform: str | None) -> dict[str, Any]:
+            purchase_date: Any, platform: str | None, *,
+            conn: Connection[DictRow] | None = None) -> dict[str, Any]:
     _validate_lot(units, price, purchase_date, platform)
-    with _conn() as conn:
+    with (nullcontext(conn) if conn is not None else _conn()) as conn:
+        conn.execute("SELECT id FROM users WHERE id = %s FOR UPDATE", (user_id,))
         known = conn.execute("SELECT 1 FROM bonds WHERE isin = %s",
                              (isin,)).fetchone()
         if known is None:
@@ -330,6 +332,15 @@ def delete_kite_token(user_id: int) -> None:
 
 # --- Kite fill ledger (orders reconciled into the portfolio) ----------------
 
+@contextmanager
+def fill_transaction(user_id: int, order_id: str) -> Iterator[Connection[DictRow] | None]:
+    with _conn() as conn:
+        user = conn.execute("SELECT id FROM users WHERE id = %s FOR UPDATE", (user_id,)).fetchone()
+        done = conn.execute("SELECT 1 FROM kite_fills WHERE user_id = %s AND order_id = %s",
+                            (user_id, order_id)).fetchone()
+        yield conn if user is not None and done is None else None
+
+
 def get_processed_order_ids(user_id: int) -> set[str]:
     with _conn() as conn:
         rows = conn.execute(
@@ -338,9 +349,10 @@ def get_processed_order_ids(user_id: int) -> set[str]:
     return {r["order_id"] for r in rows}
 
 
-def record_fill(user_id: int, order_id: str, lot_id: int | None) -> None:
+def record_fill(user_id: int, order_id: str, lot_id: int | None, *,
+                conn: Connection[DictRow] | None = None) -> None:
     """Mark an order as reconciled (idempotent on re-runs)."""
-    with _conn() as conn:
+    with (nullcontext(conn) if conn is not None else _conn()) as conn:
         conn.execute(
             "INSERT INTO kite_fills (user_id, order_id, lot_id) "
             "VALUES (%s, %s, %s) ON CONFLICT (user_id, order_id) DO NOTHING",
@@ -350,10 +362,11 @@ def record_fill(user_id: int, order_id: str, lot_id: int | None) -> None:
 # --- Notifications ----------------------------------------------------------
 
 def add_notification(user_id: int, kind: str, severity: str, isin: str,
-                     title: str, body: str, dedupe_key: str) -> bool:
+                     title: str, body: str, dedupe_key: str, *,
+                     conn: Connection[DictRow] | None = None) -> bool:
     """Insert one notification; the (user_id, dedupe_key) constraint makes
     repeats no-ops. Returns True when a row was actually inserted."""
-    with _conn() as conn:
+    with (nullcontext(conn) if conn is not None else _conn()) as conn:
         cur = conn.execute(
             "INSERT INTO user_notifications "
             "(user_id, kind, severity, isin, title, body, dedupe_key) "
@@ -363,31 +376,33 @@ def add_notification(user_id: int, kind: str, severity: str, isin: str,
         return cur.rowcount > 0
 
 
-def get_notifications(user_id: int, limit: int = 50) -> dict[str, Any]:
+def get_notifications(user_id: int, limit: int = 50, offset: int = 0) -> dict[str, Any]:
     """Newest-first notification feed plus the unread count."""
     with _conn() as conn:
         items = conn.execute(
             "SELECT id, kind, severity, isin, title, body, created_at, "
-            "read_at FROM user_notifications WHERE user_id = %s "
-            "ORDER BY created_at DESC, id DESC LIMIT %s",
-            (user_id, limit),
+            "read_at, dedupe_key FROM user_notifications WHERE user_id = %s "
+            "ORDER BY created_at DESC, id DESC LIMIT %s OFFSET %s",
+            (user_id, limit, offset),
         ).fetchall()
         unread = conn.execute(
             "SELECT count(*) AS n FROM user_notifications "
             "WHERE user_id = %s AND read_at IS NULL",
             (user_id,),
         ).fetchone()
-    return {"items": [dict(r) for r in items],
+    return {"items": [{**dict(r), "legacy": r["kind"].startswith("pay_") and not r["dedupe_key"].startswith("payment:v2:")} for r in items],
             "unread": unread["n"] if unread else 0}
 
 
-def mark_notifications_read(user_id: int) -> int:
-    """Mark every unread notification read; returns how many flipped."""
+def mark_notifications_read(user_id: int, ids: list[int] | None = None) -> int:
+    """Mark selected unread notifications read; return how many changed."""
+    if not ids:
+        return 0
     with _conn() as conn:
         cur = conn.execute(
             "UPDATE user_notifications SET read_at = now() "
-            "WHERE user_id = %s AND read_at IS NULL",
-            (user_id,),
+            "WHERE user_id = %s AND id = ANY(%s) AND read_at IS NULL",
+            (user_id, list(set(ids))),
         )
         return cur.rowcount
 

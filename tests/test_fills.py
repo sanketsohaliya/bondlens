@@ -1,4 +1,8 @@
 """Kite fill -> portfolio lot reconciliation tests (no network, no DB)."""
+from contextlib import contextmanager
+from copy import deepcopy
+from datetime import date
+from threading import RLock
 from typing import Any
 
 import pytest
@@ -36,7 +40,32 @@ def env(monkeypatch):
         "add_lot_error": None,
     }
 
-    def fake_add_lot(user_id, isin, units, price, purchase_date, platform):
+    lock = RLock()
+
+    @contextmanager
+    def transaction(uid, oid):
+        with lock:
+            keys = ("processed", "fills", "lots", "notifications", "next_lot_id")
+            before = deepcopy({key: state[key] for key in keys})
+            try:
+                yield None if (uid, oid) in state["processed"] else object()
+            except Exception:
+                state.update(before)
+                raise
+
+    def record(uid, oid, lot_id, **kwargs):
+        if state.get("fail_stage") == "ledger":
+            raise RuntimeError("simulated ledger failure")
+        state["processed"].add((uid, oid))
+        state["fills"].append((uid, oid, lot_id))
+
+    def notify(*args, **kwargs):
+        if state.get("fail_stage") == "notification":
+            raise RuntimeError("simulated notification failure")
+        state["notifications"].append(args)
+        return True
+
+    def fake_add_lot(user_id, isin, units, price, purchase_date, platform, **kwargs):
         if state["add_lot_error"]:
             raise state["add_lot_error"]
         lot_id = state["next_lot_id"]
@@ -48,14 +77,11 @@ def env(monkeypatch):
         return {"id": lot_id}
 
     monkeypatch.setattr(db, "get_processed_order_ids",
-                        lambda uid: set(state["processed"]))
-    monkeypatch.setattr(db, "record_fill",
-                        lambda uid, oid, lot_id: (
-                            state["processed"].add(oid),
-                            state["fills"].append((uid, oid, lot_id))))
+                        lambda uid: {oid for user, oid in state["processed"] if user == uid})
+    monkeypatch.setattr(db, "fill_transaction", transaction, raising=False)
+    monkeypatch.setattr(db, "record_fill", record)
     monkeypatch.setattr(db, "add_lot", fake_add_lot)
-    monkeypatch.setattr(db, "add_notification",
-                        lambda *a: (state["notifications"].append(a), True)[1])
+    monkeypatch.setattr(db, "add_notification", notify)
     return state
 
 
@@ -107,11 +133,78 @@ def test_rejected_and_open_orders(env):
     assert env["fills"] == [(1, "1001", None)]
 
 
-def test_add_lot_failure_still_ledgers(env):
+def test_add_lot_failure_is_reported_and_remains_retryable(env):
     env["add_lot_error"] = db.WatchlistError(400, "At most 500 lots")
     assert fills.process_orders(1, [order()]) == 0
-    assert env["fills"] == [(1, "1001", None)]
-    assert env["notifications"] == []
+    assert env["fills"] == []
+    assert env["notifications"][0][1] == "order_import_failed"
+    env["add_lot_error"] = None
+    assert fills.process_orders(1, [order()]) == 1
+
+
+@pytest.mark.parametrize("stage", ["ledger", "notification"])
+def test_failed_reconciliation_rolls_back_lot_and_retry_creates_one(env, stage):
+    env["fail_stage"] = stage
+    with pytest.raises(RuntimeError):
+        fills.process_orders(1, [order()])
+    assert env["lots"] == [] and env["fills"] == [] and env["notifications"] == []
+    env["fail_stage"] = None
+    assert fills.process_orders(1, [order(), order()]) == 1
+    assert len(env["lots"]) == 1
+
+
+def test_fill_uses_the_execution_date_and_describes_partial_terminal_fill(env):
+    fills.process_orders(1, [order(status="CANCELLED", filled_quantity=4)])
+    assert env["lots"][0]["purchase_date"] == date(2026, 8, 11)
+    assert "4 of 51" in env["notifications"][0][4]
+    assert "CANCELLED" in env["notifications"][0][5]
+
+
+def test_exchange_date_takes_precedence_for_after_market_orders(env):
+    fills.process_orders(1, [order(variety="amo", exchange_timestamp="2026-08-12 09:15:00")])
+    assert env["lots"][0]["purchase_date"] == date(2026, 8, 12)
+
+
+@pytest.mark.parametrize("changes", [
+    {"variety": "amo"}, {"average_price": float("nan")},
+    {"filled_quantity": -1}, {"order_timestamp": None},
+    {"order_timestamp": "2999-01-01 10:00:00"},
+])
+def test_untrustworthy_fill_inputs_are_not_silently_ledgered(env, changes):
+    assert fills.process_orders(1, [order(**changes)]) == 0
+    assert not env["lots"] and not env["fills"]
+    assert env["notifications"][0][1] == "order_import_failed"
+
+
+def test_database_locks_user_before_rechecking_order(monkeypatch):
+    calls = []
+
+    class Cursor:
+        def fetchone(self):
+            return {"id": 1} if len(calls) == 1 else None
+
+    class Connection:
+        def execute(self, sql, params):
+            calls.append((sql, params))
+            return Cursor()
+
+    conn = Connection()
+
+    @contextmanager
+    def connection():
+        yield conn
+
+    monkeypatch.setattr(db, "_conn", connection)
+    with db.fill_transaction(7, "123") as actual:
+        assert actual is conn
+    assert "FOR UPDATE" in calls[0][0] and calls[0][1] == (7,)
+    assert "kite_fills" in calls[1][0] and calls[1][1] == (7, "123")
+
+
+def test_same_order_id_is_scoped_to_user(env):
+    assert fills.process_orders(1, [order()]) == 1
+    assert fills.process_orders(2, [order()]) == 1
+    assert len(env["lots"]) == 2
 
 
 def test_orders_endpoint_reports_new_lots(monkeypatch):

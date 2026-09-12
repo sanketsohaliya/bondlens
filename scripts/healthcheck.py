@@ -12,7 +12,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from backend import db, health  # noqa: E402
+from backend import db, health, operational_alerts, safe_errors  # noqa: E402
 
 
 def main() -> int:
@@ -28,14 +28,20 @@ def main() -> int:
             print("ping sent" if sent else "ping skipped (no NTFY_TOPIC)")
             return 0
 
-        problems = health.check()
+        try:
+            problems = health.check()
+        except Exception as exc:
+            problems = [f"Healthcheck could not complete: {safe_errors.error_summary(exc)}"]
         if problems:
             body = "\n".join(f"- {p}" for p in problems)
             print(f"UNHEALTHY:\n{body}")
-            health.notify(f"BondLens: {len(problems)} problem(s)", body)
         else:
             print("healthy")
-        return 0
+        operational_alerts.report("health", problems, health.notify)
+        return 1 if problems else 0
+    except Exception as exc:
+        print(f"Healthcheck alert failed: {safe_errors.error_summary(exc)}")
+        return 1
     finally:
         db.close_pool()
 

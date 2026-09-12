@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { api } from "../api/client";
 import type { Notification } from "../api/types";
@@ -10,6 +10,14 @@ function kindIcon(n: Notification): { glyph: string; className: string } {
       return n.severity === "warn"
         ? { glyph: "▼", className: "text-red-400" }
         : { glyph: "▲", className: "text-emerald-400" };
+    case "rating_watch":
+    case "rating_outlook":
+    case "rating_withdrawn":
+      return { glyph: "R", className: n.severity === "warn" ? "text-amber-400" : "text-zinc-400" };
+    case "order_import_failed":
+      return { glyph: "!", className: "text-amber-400" };
+    case "order_filled":
+      return { glyph: "B", className: "text-sky-400" };
     case "pay_confirmed":
       return { glyph: "✓", className: "text-emerald-400" };
     case "pay_overdue":
@@ -49,9 +57,11 @@ export default function NotificationsBell({ onSelect }: { onSelect: (isin: strin
   const [freshIds, setFreshIds] = useState<Set<number>>(new Set());
   const queryClient = useQueryClient();
 
-  const feed = useQuery({
+  const feed = useInfiniteQuery({
     queryKey: ["notifications"],
-    queryFn: api.notifications.get,
+    initialPageParam: 0,
+    queryFn: ({ pageParam }) => api.notifications.get(50, pageParam),
+    getNextPageParam: (last, pages) => (last.items.length === 50 ? pages.length * 50 : undefined),
     refetchInterval: 60_000,
   });
 
@@ -60,14 +70,17 @@ export default function NotificationsBell({ onSelect }: { onSelect: (isin: strin
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["notifications"] }),
   });
 
-  const items = feed.data?.items ?? [];
-  const unread = feed.data?.unread ?? 0;
+  const items = [
+    ...new Map(
+      (feed.data?.pages.flatMap((page) => page.items) ?? []).map((item) => [item.id, item]),
+    ).values(),
+  ];
+  const unread = feed.data?.pages[0]?.unread ?? 0;
   const hasAlert = items.some((n) => n.read_at === null && n.severity !== "info");
 
   const toggle = () => {
     if (!open) {
       setFreshIds(new Set(items.filter((n) => n.read_at === null).map((n) => n.id)));
-      if (unread > 0) markRead.mutate();
     } else {
       setFreshIds(new Set());
     }
@@ -112,9 +125,37 @@ export default function NotificationsBell({ onSelect }: { onSelect: (isin: strin
           <div className="absolute right-0 top-full mt-2 z-30 w-96 rounded-lg border border-zinc-700 bg-zinc-900 shadow-xl overflow-hidden">
             <div className="px-3 py-2 border-b border-zinc-800 text-xs font-bold text-zinc-200 uppercase tracking-wider">
               Notifications
+              <button
+                type="button"
+                className="ml-3 font-normal normal-case text-zinc-400 hover:text-zinc-200"
+                disabled={markRead.isPending || !items.some((item) => item.read_at === null)}
+                onClick={() =>
+                  markRead.mutate(
+                    items.filter((item) => item.read_at === null).map((item) => item.id),
+                  )
+                }
+              >
+                Mark loaded as read
+              </button>
             </div>
+            {feed.isError && (
+              <div className="p-3 text-xs text-amber-400">
+                Could not refresh notifications.{" "}
+                <button type="button" onClick={() => feed.refetch()} className="underline">
+                  Retry
+                </button>
+              </div>
+            )}
+            {markRead.isError && (
+              <div className="p-3 text-xs text-amber-400">
+                Read status could not be saved. Please retry.
+              </div>
+            )}
+            {feed.isPending && (
+              <div className="p-3 text-xs text-zinc-500">Loading notifications…</div>
+            )}
             <div className="max-h-96 overflow-y-auto divide-y divide-zinc-800/60">
-              {items.length === 0 && (
+              {items.length === 0 && !feed.isPending && !feed.isError && (
                 <div className="px-3 py-6 text-center text-xs text-zinc-500">
                   No notifications yet
                 </div>
@@ -127,6 +168,7 @@ export default function NotificationsBell({ onSelect }: { onSelect: (isin: strin
                     key={n.id}
                     type="button"
                     onClick={() => {
+                      if (n.read_at === null) markRead.mutate([n.id]);
                       onSelect(n.isin);
                       toggle();
                     }}
@@ -141,6 +183,11 @@ export default function NotificationsBell({ onSelect }: { onSelect: (isin: strin
                       {icon.glyph}
                     </span>
                     <span className="flex-1 min-w-0">
+                      {n.legacy && (
+                        <span className="block text-[11px] text-amber-400">
+                          Legacy payment alert — verify against the current source and bank credit.
+                        </span>
+                      )}
                       <span className="block text-xs text-zinc-200 leading-snug">{n.title}</span>
                       {n.body && (
                         <span className="block mt-0.5 text-[11px] text-zinc-500 leading-snug">
@@ -154,6 +201,16 @@ export default function NotificationsBell({ onSelect }: { onSelect: (isin: strin
                   </button>
                 );
               })}
+              {feed.hasNextPage && (
+                <button
+                  type="button"
+                  disabled={feed.isFetchingNextPage}
+                  onClick={() => feed.fetchNextPage()}
+                  className="w-full p-3 text-xs text-zinc-400 hover:text-zinc-200"
+                >
+                  {feed.isFetchingNextPage ? "Loading…" : "Load older notifications"}
+                </button>
+              )}
             </div>
           </div>
         </>

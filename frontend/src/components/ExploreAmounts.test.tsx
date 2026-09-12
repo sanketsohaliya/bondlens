@@ -1,6 +1,15 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
+import { calendarAsOf } from "../lib/cashflowEvidence";
 import { AskQuoteCell, PayoutCell } from "./ExploreTable";
+
+const freshness = {
+  as_of: calendarAsOf(undefined),
+  calculation_version: "test",
+  calculated_at: new Date().toISOString(),
+  fetched_at: new Date().toISOString(),
+  expires_at: new Date(Date.now() + 60_000).toISOString(),
+};
 
 const bond = {
   schedule_shape: "staggered",
@@ -80,7 +89,7 @@ describe("explore amount cells", () => {
   it("shows ticket value below ask yield and retains exact arithmetic in details", () => {
     const html = renderToStaticMarkup(
       <AskQuoteCell
-        ask={{ isin: "TEST", ask_price: 10025, ask_qty: 10, ytm: 12.34 }}
+        ask={{ ...freshness, isin: "TEST", ask_price: 10025, ask_qty: 10, ytm: 12.34 }}
         onOpen={() => {}}
       />,
     );

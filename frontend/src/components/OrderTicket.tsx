@@ -1,7 +1,15 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { api, fmt } from "../api/client";
 import type { YtmAtPrice } from "../api/types";
+import { calendarAsOf } from "../lib/cashflowEvidence";
+import {
+  useQuoteClock,
+  valuationIsCurrent,
+  valuationLabel,
+  valuationTooltip,
+} from "../lib/quoteValuation";
+import YieldQuote from "./YieldQuote";
 
 /** Kite-style order dialog: LIMIT/CNC/DAY only (market orders on
  * illiquid bond books are dangerous). Real money — an explicit confirm
@@ -38,11 +46,37 @@ export default function OrderTicket({
   const [confirming, setConfirming] = useState(false);
   const qc = useQueryClient();
 
-  const quantity = Math.floor(Number(qty));
+  const quantity = Number(qty);
   const limitPrice = Number(price);
-  const valid = quantity > 0 && Number.isFinite(limitPrice) && limitPrice > 0;
+  const valid =
+    Number.isSafeInteger(quantity) &&
+    quantity > 0 &&
+    Number.isFinite(limitPrice) &&
+    limitPrice > 0 &&
+    Number.isFinite(quantity * limitPrice);
   const outlay = valid ? quantity * limitPrice : null;
-  const ytm = ytmAtAsk.find((y) => y.price === limitPrice)?.ytm ?? null;
+  const now = useQuoteClock();
+  const today = calendarAsOf(undefined, new Date(now));
+  const [pricedInput, setPricedInput] = useState(limitPrice);
+  useEffect(() => {
+    const timer = setTimeout(() => setPricedInput(limitPrice), 300);
+    return () => clearTimeout(timer);
+  }, [limitPrice]);
+  const calculation = useQuery({
+    queryKey: ["price-valuation", isin, pricedInput, today],
+    queryFn: () => api.valuation(isin, pricedInput),
+    enabled: Boolean(isin) && valid && side === "BUY" && pricedInput === limitPrice,
+    staleTime: 30_000,
+    refetchInterval: 60_000,
+    refetchOnWindowFocus: true,
+  });
+  const current =
+    calculation.data?.price === limitPrice && valuationIsCurrent(calculation.data, now)
+      ? calculation.data
+      : null;
+  const ytm =
+    current ??
+    ytmAtAsk.find((value) => value.price === limitPrice && valuationIsCurrent(value, now));
 
   const { data: funds } = useQuery({
     queryKey: ["kite-margins"],
@@ -78,7 +112,7 @@ export default function OrderTicket({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       <div className="absolute inset-0 bg-black/70" onClick={onClose} />
-      <div className="relative w-96 max-w-[95vw] bg-zinc-950 border border-zinc-700 rounded-lg shadow-xl">
+      <div className="relative w-96 max-w-[95vw] max-h-[90vh] overflow-y-auto bg-zinc-950 border border-zinc-700 rounded-lg shadow-xl">
         <div
           className={`px-4 py-3 rounded-t-lg flex items-center justify-between ${buy ? "bg-emerald-500/15" : "bg-red-500/15"}`}
         >
@@ -198,10 +232,39 @@ export default function OrderTicket({
                   </span>
                 </div>
               )}
-              {buy && ytm != null && (
-                <div className="flex justify-between">
-                  <span>YTM locked at this price</span>
-                  <span className="text-zinc-200">{fmt.pct(ytm)}</span>
+              {buy && (
+                <div className="space-y-1">
+                  <div className="flex justify-between" title={valuationTooltip(ytm)}>
+                    <span>Indicative {valuationLabel(ytm)} at this limit</span>
+                    <span className="text-zinc-200">
+                      {!ytm && (calculation.isFetching || pricedInput !== limitPrice) ? (
+                        "Calculating…"
+                      ) : (
+                        <YieldQuote value={ytm} />
+                      )}
+                    </span>
+                  </div>
+                  {calculation.isError && (
+                    <p className="text-amber-400">
+                      Fresh valuation unavailable; no yield is guaranteed.
+                    </p>
+                  )}
+                  {ytm?.gross_gain != null && (
+                    <p>
+                      Modeled gross cash gain: {fmt.inrFull(ytm.gross_gain)} per unit, before fees
+                      and taxes.
+                    </p>
+                  )}
+                  {(ytm?.warnings?.length ?? 0) > 0 && (
+                    <details className="text-amber-400">
+                      <summary className="cursor-pointer">Calculation cautions</summary>
+                      <ul className="list-disc pl-4 space-y-1">
+                        {ytm?.warnings?.map((warning, index) => (
+                          <li key={`${warning.code}:${index}`}>{warning.message}</li>
+                        ))}
+                      </ul>
+                    </details>
+                  )}
                 </div>
               )}
               <div className="flex justify-between text-zinc-600">

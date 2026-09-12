@@ -187,7 +187,7 @@ def parse_kite_depth(quote: dict[str, Any]) -> dict[str, Any] | None:
         "asks": asks[:5],
         "total_bid_qty": float(q) if (q := quote.get("buy_quantity")) else None,
         "total_ask_qty": float(q) if (q := quote.get("sell_quantity")) else None,
-        "as_of": quote.get("last_trade_time") or quote.get("timestamp"),
+        "as_of": quote.get("timestamp"),
         "source": "kite",
     }
 
@@ -249,7 +249,8 @@ def margins(user_id: int) -> dict[str, Any]:
 
 _ORDER_FIELDS = ("order_id", "tradingsymbol", "exchange", "transaction_type",
                  "quantity", "filled_quantity", "price", "average_price",
-                 "status", "status_message", "order_timestamp")
+                 "status", "status_message", "order_timestamp", "exchange_timestamp",
+                 "exchange_update_timestamp", "variety")
 
 
 def list_orders(user_id: int) -> list[dict[str, Any]]:

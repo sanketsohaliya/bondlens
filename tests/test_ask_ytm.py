@@ -1,10 +1,13 @@
 """YTM @ Ask computation tests (no network, no DB)."""
+from datetime import UTC, date, datetime, timedelta
+
 import pytest
 
 from backend import ask_ytm
+from backend.analytics.schedule import Flow, Schedule
 
 
-def _quote(ask_price, ask_qty):
+def _quote(ask_price, ask_qty) -> dict:
     return {"depth": {"sell": [{"price": ask_price, "quantity": ask_qty,
                                 "orders": 1}]}}
 
@@ -45,21 +48,22 @@ def env(monkeypatch):
     monkeypatch.setattr(ask_ytm.queries, "cashflows_for", lambda isins: {})
     monkeypatch.setattr(ask_ytm.queries, "terms_for", lambda isins: {})
 
-    class FakeSched:
-        usable = True
+    def fake_schedule(isin, flows, terms, today):
+        end = today + timedelta(days=365)
+        return Schedule(isin, "plain", [Flow("interest", end, amount=120), Flow("redemption", end, amount=1000)],
+                        face_value=1000, redemption_matches_face=True, periods_per_year=1, day_count="act/365")
 
-    monkeypatch.setattr(ask_ytm.schedule, "build",
-                        lambda isin, flows, terms, today: FakeSched())
-    monkeypatch.setattr(ask_ytm.yields, "exact_ytm",
-                        lambda price, sched, today: round(1000 / price * 12, 2))
+    monkeypatch.setattr(ask_ytm.schedule, "build", fake_schedule)
     yield calls
     ask_ytm._cache.clear()
 
 
 def test_best_ask_across_exchanges(env):
-    items = ask_ytm.compute(1, ["INE000TEST01"])
-    assert items == [{"isin": "INE000TEST01", "ask_price": 1005.0,
-                      "ask_qty": 10.0, "ytm": round(1000 / 1005 * 12, 2)}]
+    [item] = ask_ytm.compute(1, ["INE000TEST01"])
+    assert item["ask_price"] == 1005 and item["ask_qty"] == 10
+    assert item["ytm"] == 11.44 and item["exchange"] == "BSE"
+    assert item["ytm_method"] == "exact" and item["as_of"] == str(date.today())
+    assert item["expires_at"] and item["fetched_at"] and item["calculation_version"]
 
 
 def test_no_ask_is_cached_and_omitted(env):
@@ -91,13 +95,53 @@ def test_isin_cap_and_dedupe(env, monkeypatch):
 
 
 def test_unusable_schedule_gives_null_ytm(env, monkeypatch):
-    class Unusable:
-        usable = False
-
     monkeypatch.setattr(ask_ytm.schedule, "build",
-                        lambda isin, flows, terms, today: Unusable())
+                        lambda isin, flows, terms, today: Schedule(isin, "empty"))
     [item] = ask_ytm.compute(1, ["INE000TEST03"])
     assert item["ask_price"] == 990.0 and item["ytm"] is None
+
+
+def test_zero_size_and_expired_quotes_do_not_win_the_best_ask():
+    quotes = {"NSE:T": _quote(900, 0), "BSE:T": _quote(1000, 5)}
+    best = ask_ytm._best_ask(quotes, list(quotes))
+    assert best is not None and best["ask_price"] == 1000
+    quotes["NSE:T"] = {**_quote(900, 5), "timestamp": (datetime.now(UTC) - timedelta(minutes=5)).isoformat()}
+    best = ask_ytm._best_ask(quotes, list(quotes))
+    assert best is not None and best["ask_price"] == 1000
+
+
+def test_cache_rejects_old_calculation_date_or_version(env):
+    ask_ytm.compute(1, ["INE000TEST01"])
+    ts, entry = ask_ytm._cache[(1, "INE000TEST01")]
+    assert entry is not None
+    ask_ytm._cache[(1, "INE000TEST01")] = (ts, {**entry, "as_of": "2000-01-01"})
+    ask_ytm.compute(1, ["INE000TEST01"])
+    assert len(env["quotes"]) == 2
+    ts, entry = ask_ytm._cache[(1, "INE000TEST01")]
+    assert entry is not None
+    ask_ytm._cache[(1, "INE000TEST01")] = (ts, {**entry, "calculation_version": "obsolete"})
+    ask_ytm.compute(1, ["INE000TEST01"])
+    assert len(env["quotes"]) == 3
+
+
+def test_steady_price_is_repriced_after_date_or_source_change(monkeypatch):
+    today = date(2026, 7, 12)
+    end = today + timedelta(days=365)
+    source = [{"event": "Interest", "due_date": end, "amount_payable": 100},
+              {"event": "Redemption", "due_date": end, "amount_redeem": 1000}]
+    monkeypatch.setattr(ask_ytm.queries, "bond_cashflows", lambda _: source)
+    monkeypatch.setattr(ask_ytm.queries, "bond_terms", lambda _: {"face_value": 1000, "redemption_date": end,
+                        "interest_payment_frequency": "Annual", "day_count_convention": "Actual/365"})
+    monkeypatch.setattr(ask_ytm.queries, "analytics_row", lambda *args: {})
+    calculator = ask_ytm.PriceCalculator("TEST")
+    [first] = calculator.values([1000], today)
+    [next_day] = calculator.values([1000], today + timedelta(days=1))
+    assert first["ytm"] != next_day["ytm"]
+    source[0]["amount_payable"] = 120
+    calculator.loaded_at -= 61
+    [updated] = calculator.values([1000], today + timedelta(days=1))
+    assert updated["ytm"] > next_day["ytm"]
+    assert updated["schedule_version"] != next_day["schedule_version"]
 
 
 def test_endpoint_empty_when_not_connected(monkeypatch):

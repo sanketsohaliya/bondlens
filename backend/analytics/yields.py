@@ -114,7 +114,16 @@ def yield_to_call(price: float | None, sched: Schedule,
     deliberately NOT considered — this is for perpetuals, where a
     maturity-based YTM is meaningless."""
     today = today or date.today()
-    if not price or not sched.face_value or not sched.flows or sched.call_price_unsupported:
+    flows = call_cashflows(sched, call_dates, today)
+    if not price or flows is None:
+        return None
+    tv = _times_amounts(flows, today, sched.day_count)
+    y = _solve(price, tv, sched.periods_per_year or 1)
+    return round(y, 2) if y is not None else None
+
+
+def call_cashflows(sched: Schedule, call_dates: list[date], today: date) -> list[Flow] | None:
+    if not sched.face_value or not sched.flows or sched.call_price_unsupported:
         return None
     cd = next((d for d in sorted(set(call_dates)) if today < d and d.year < 2500), None)
     if cd is None:
@@ -142,10 +151,10 @@ def yield_to_call(price: float | None, sched: Schedule,
         if len(payment_dates) != 1:
             return None
         payment_date = next(iter(payment_dates))
-    flows.append(Flow(event="redemption", due_date=cd, amount=outstanding, payment_date=payment_date))
-    tv = _times_amounts(flows, today, sched.day_count)
-    y = _solve(price, tv, sched.periods_per_year or 1)
-    return round(y, 2) if y is not None else None
+    flows.append(Flow(event="redemption", due_date=cd, amount=outstanding, payment_date=payment_date,
+                      adjustments=[{"kind": "call_scenario", "previous_amount": None, "amount": outstanding,
+                                    "reason": "Conditional call scenario: outstanding principal redeemed at par; verify exercise and contractual call price"}]))
+    return flows
 
 
 def implied_coupon(sched: Schedule,

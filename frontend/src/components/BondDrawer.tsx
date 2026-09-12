@@ -5,6 +5,7 @@ import type { BondDetail } from "../api/types";
 import { buildBondPrompt } from "../lib/aiPrompt";
 import { replaceNumberWords } from "../lib/numberWords";
 import { usePortfolio } from "../lib/portfolio";
+import { valuationTooltip } from "../lib/quoteValuation";
 import { firstFutureCall, isYieldToCall, yieldLabel } from "../lib/yieldDisplay";
 import CashflowTable from "./CashflowTable";
 import CopyBtn from "./CopyBtn";
@@ -236,42 +237,81 @@ export default function BondDrawer({
 
 function AiBriefBtn({ bond }: { bond: BondDetail }) {
   const [copied, setCopied] = useState(false);
-  // Depth loads alongside the drawer (same query key as the Order Book
-  // tab, server caches 30s) so the click handler stays synchronous —
-  // popup blockers require a direct user gesture. If it hasn't landed
-  // yet the prompt simply omits the order-book snapshot.
+  const [manual, setManual] = useState("");
+  // Depth loads alongside the drawer using the Order Book query key.
+  // The exported snapshot retains its own capture and valuation dates;
+  // copying never silently treats it as a newly executable offer.
+  // If depth is unavailable the complete bond evidence still exports.
   const { data: depth } = useQuery({
     queryKey: ["depth", bond.isin],
     queryFn: () => api.depth(bond.isin),
     staleTime: 25_000,
-    refetchOnWindowFocus: false,
+    refetchInterval: 60_000,
+    refetchOnWindowFocus: true,
   });
   return (
-    <Tip text="Opens ChatGPT with this bond's analysis prompt (also copied — paste into Gemini/Claude if you prefer)">
+    <div className="relative flex items-center gap-2">
+      <Tip text="Copy the complete evidence prompt, then paste it into your preferred AI. No payments are truncated to fit a URL.">
+        <button
+          type="button"
+          onClick={async () => {
+            const prompt = buildBondPrompt(bond, { depth: depth ?? null });
+            setCopied(false);
+            setManual("");
+            // Report copy success only after the clipboard operation succeeds.
+            try {
+              await navigator.clipboard.writeText(prompt);
+              setCopied(true);
+              setTimeout(() => setCopied(false), 2000);
+            } catch {
+              setManual(prompt);
+            }
+          }}
+          className="text-xs px-3 py-1.5 rounded-md border border-zinc-700 text-zinc-300 hover:border-zinc-500"
+        >
+          {copied ? "Prompt copied" : "Copy AI prompt"}
+        </button>
+      </Tip>
       <button
         type="button"
+        className="text-xs text-zinc-400 hover:text-zinc-200"
         onClick={() => {
           const prompt = buildBondPrompt(bond, { depth: depth ?? null });
-          navigator.clipboard.writeText(prompt);
-          // Synchronous open so popup blockers treat it as user-initiated.
-          window.open(
-            `https://chatgpt.com/?q=${encodeURIComponent(prompt)}`,
-            "_blank",
-            "noreferrer",
-          );
-          setCopied(true);
-          setTimeout(() => setCopied(false), 1500);
+          const url = URL.createObjectURL(new Blob([prompt], { type: "text/plain;charset=utf-8" }));
+          const link = document.createElement("a");
+          link.href = url;
+          link.download = `BondLens-${bond.isin}-${bond.as_of ?? "snapshot"}.txt`;
+          link.click();
+          setTimeout(() => URL.revokeObjectURL(url), 0);
         }}
-        className={
-          "text-xs px-3 py-1.5 rounded-md border transition-colors " +
-          (copied
-            ? "border-emerald-500/50 text-emerald-400"
-            : "border-zinc-700 text-zinc-300 hover:border-zinc-500 hover:text-zinc-100")
-        }
       >
-        {copied ? "Copied ✓" : "AI brief ↗"}
+        Download
       </button>
-    </Tip>
+      <a
+        href="https://chatgpt.com/"
+        target="_blank"
+        rel="noopener noreferrer"
+        className="text-xs text-zinc-400 hover:text-zinc-200"
+        title="Open a new chat, then paste the copied prompt or attach the downloaded text"
+      >
+        Open ChatGPT
+      </a>
+      {manual && (
+        <div className="absolute right-0 top-full z-50 mt-2 w-96 rounded border border-amber-500/40 bg-zinc-950 p-3 text-xs text-amber-300">
+          Clipboard access failed. Select and copy the complete prompt below, or use Download.
+          <textarea
+            readOnly
+            value={manual}
+            aria-label="Complete AI review prompt"
+            className="mt-2 h-48 w-full bg-zinc-900 text-zinc-300"
+            onFocus={(event) => event.currentTarget.select()}
+          />
+          <button type="button" onClick={() => setManual("")}>
+            Close
+          </button>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -526,15 +566,19 @@ function Overview({
           label={`${yieldLabel(b)}${b.ytm_reliable === false ? " ⚠" : ""}`}
           value={fmt.pct(b.ytm)}
           accent
-          tip={
-            b.ytm_reliable === false
-              ? `Caution — near maturity, out of band, or differs from recent OTC prints; verify before acting. ${ytmTip(b) ?? ""}`
-              : ytmTip(b)
-          }
+          tip={`${valuationTooltip(b.valuation)}\n${ytmTip(b) ?? ""}`}
         />
         {b.yield_to_worst != null && b.yield_to_worst !== b.ytm && (
           <Stat label="Yield to worst" value={fmt.pct(b.yield_to_worst)} />
         )}
+        {b.valuation?.warnings?.some((warning) => warning.code === "short_horizon") && (
+          <Stat
+            label="Gross cash gain / unit"
+            value={fmt.inrFull(b.valuation.gross_gain)}
+            tip="Undiscounted modeled receipts minus price, before fees and taxes; not guaranteed profit."
+          />
+        )}
+        {b.valuation?.as_of && <Stat label="Valuation date" value={fmt.date(b.valuation.as_of)} />}
         <Stat label="Current yield" value={fmt.pct(b.current_yield)} />
         <Stat label="LTP (dirty)" value={fmt.inrFull(b.ltp)} />
         <Stat label="Clean price" value={fmt.inrFull(b.clean_price)} />
@@ -555,6 +599,19 @@ function Overview({
           value={b.trade_date ? `${fmt.date(b.trade_date)} (${b.exchange})` : "never"}
         />
       </StatSection>
+
+      {(b.valuation?.warnings?.length ?? 0) > 0 && (
+        <details className="rounded border border-amber-500/30 p-3 text-xs text-amber-300">
+          <summary className="cursor-pointer">
+            Yield review notes ({b.valuation?.warnings?.length})
+          </summary>
+          <ul className="mt-2 list-disc pl-4 space-y-1">
+            {b.valuation?.warnings?.map((warning, index) => (
+              <li key={`${warning.code}:${index}`}>{warning.message}</li>
+            ))}
+          </ul>
+        </details>
+      )}
 
       <StatSection title="Coupon & Payments">
         <Stat

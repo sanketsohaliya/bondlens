@@ -19,6 +19,7 @@ import asyncio
 import contextlib
 import json
 import struct
+from datetime import UTC, datetime
 from typing import Any
 
 import websockets
@@ -61,7 +62,9 @@ def parse_ticks(frame: bytes) -> list[dict[str, Any]]:
                      "qty": float(qty) if qty else None,
                      "orders": orders or None}
             (bids if i < 5 else asks).append(level)
+        exchange_time = struct.unpack_from(">I", packet, 60)[0]
         ticks.append({
+            "exchange_timestamp": datetime.fromtimestamp(exchange_time, UTC).isoformat() if exchange_time else None,
             "token": token,
             "ltp": ltp / 100 if ltp else None,
             "total_bid_qty": float(total_buy) if total_buy else None,
@@ -79,7 +82,7 @@ def tick_to_side(tick: dict[str, Any]) -> dict[str, Any] | None:
     return {"bids": tick["bids"], "asks": tick["asks"],
             "total_bid_qty": tick["total_bid_qty"],
             "total_ask_qty": tick["total_ask_qty"],
-            "as_of": None, "source": "kite"}
+            "as_of": tick.get("exchange_timestamp"), "source": "kite"}
 
 
 class _UserConn:

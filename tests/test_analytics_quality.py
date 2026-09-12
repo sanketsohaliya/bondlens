@@ -212,7 +212,7 @@ def pricing_case(monkeypatch):
         row = compute.build_rows(TODAY)[0]
         monkeypatch.setattr(queries, "analytics_row", lambda *args: row)
         detail = api_module.bond_detail(isin, price=None)
-        book = {"nse": {"asks": [{"price": 1000}]}, "bse": None, "ytm_at_ask": []}
+        book = {"nse": {"asks": [{"price": 1000, "qty": 1}]}, "bse": None, "ytm_at_ask": []}
         api_module._annotate_ytm(book, isin)
         portfolio = api_module.portfolio(user_id=1)
         return row, detail, book, portfolio
@@ -272,7 +272,9 @@ def test_perpetual_ytc_is_not_presented_as_maturity_ytm_or_full_ytw(pricing_case
         "call_indicator": "Yes", "call_specified_dates": end.strftime("%d %B, %Y")})
     assert row["ytm"] == detail["ytm"] == 10.0 and row["ytm_method"] == "ytc"
     assert detail["ytm_exact"] is None and detail["yield_to_worst"] is None
-    assert all(entry["ytm"] is None for entry in book["ytm_at_ask"])
+    assert len(book["ytm_at_ask"]) == 1
+    assert book["ytm_at_ask"][0]["ytm"] == 10
+    assert book["ytm_at_ask"][0]["yield_type"] == "ytc"
     assert portfolio["positions"][0]["yield_on_cost"] is None
 
 

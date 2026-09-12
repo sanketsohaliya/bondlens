@@ -13,8 +13,10 @@ import math
 from datetime import UTC, date, datetime
 from typing import LiteralString
 
+from psycopg.types.json import Jsonb
+
 from .. import db, queries
-from . import ratings, schedule, yields
+from . import ratings, schedule, valuation, yields
 
 STALE_AFTER_DAYS = 7  # retail price older than this is flagged stale
 
@@ -29,7 +31,7 @@ _COLS: list[LiteralString] = [
     "volume", "turnover", "num_trades", "nse_turnover", "bse_turnover",
     "prev_turnover", "prev_ltp",
     "otc_price_pct", "otc_yield",
-    "otc_trade_date", "otc_turnover", "ytm", "ytm_method", "ytm_reliable",
+    "otc_trade_date", "otc_turnover", "ytm", "ytm_method", "ytm_reliable", "valuation",
     "current_yield", "duration",
     "credit_rating", "rating_rank", "rating_change", "rating_prev",
     "rating_changed_at", "in_default", "tech_delay", "computed_at",
@@ -48,15 +50,15 @@ def _yn(v: str | None) -> bool | None:
             else None)
 
 
-# YTM values outside these bands are almost always annualization artifacts
-# (tiny price gaps on bonds days from maturity), not tradable yields.
-_RELIABLE = (-1.0, 50.0)
-_RELIABLE_NEAR = (0.0, 20.0)
-_NEAR_DAYS = 90
-# Institutional OTC prints are a strong sanity anchor: a fresh OTC yield
-# disagreeing with our computed YTM by more than this flags data trouble.
-_OTC_CHECK_MAX_GAP = 3.0
-_OTC_CHECK_MAX_AGE_DAYS = 14
+# These ranges prompt review, not a verdict that the calculation is wrong.
+# Near payment dates, small price gaps can produce extreme annualization.
+_RELIABLE = valuation.RELIABLE
+_RELIABLE_NEAR = valuation.RELIABLE_NEAR
+_NEAR_DAYS = valuation.NEAR_DAYS
+# OTC comparisons are contextual: dates, prices and quotation conventions
+# may differ. Only bounded, non-future prints participate in the comparison.
+_OTC_CHECK_MAX_GAP = valuation.OTC_MAX_GAP
+_OTC_CHECK_MAX_AGE_DAYS = valuation.OTC_MAX_AGE
 
 
 def ytm_reliability(ytm: float | None, maturity: date | None,
@@ -68,21 +70,9 @@ def ytm_reliability(ytm: float | None, maturity: date | None,
         return None
     # Floating / market-linked coupons: published future flows assume the
     # current rate holds, so any YTM is indicative at best.
-    if (coupon_basis or "").strip().lower().startswith("variable"):
-        return False
-    lo, hi = _RELIABLE
-    if not lo <= ytm <= hi:
-        return False
-    if maturity is not None and (maturity - today).days < _NEAR_DAYS:
-        lo, hi = _RELIABLE_NEAR
-        if not lo <= ytm <= hi:
-            return False
     # Cross-check against a fresh institutional OTC print.
-    if (otc_yield is not None and otc_trade_date is not None
-            and (today - otc_trade_date).days <= _OTC_CHECK_MAX_AGE_DAYS
-            and abs(ytm - otc_yield) > _OTC_CHECK_MAX_GAP):
-        return False
-    return True
+    return all(w["severity"] == "info" for w in valuation.cautions(
+        ytm, maturity, today, coupon_basis, otc_yield, otc_trade_date))
 
 
 def _f(v) -> float | None:
@@ -162,24 +152,13 @@ def build_rows(today: date | None = None) -> list[dict]:
         if perpetual:
             red_date = None  # the 9999 sentinel is not a maturity
 
-        ytm = ytm_method = None
-        if price and perpetual:
-            # Maturity-based YTM is meaningless for perpetuals; price to
-            # the earliest call when one is published.
-            ytc = yields.yield_to_call(
-                price, sched, yields.parse_call_dates(terms_map.get(isin)),
-                today)
-            if ytc is not None:
-                ytm, ytm_method = ytc, "ytc"
-        elif price:
-            exact = yields.exact_ytm(price, sched, today)
-            if exact is not None:
-                ytm, ytm_method = exact, (
-                    "estimated" if sched.yield_amounts_estimated(today) else "exact")
-            else:
-                approx = yields.fallback_ytm(price, sched, terms_map.get(isin), today)
-                if approx is not None:
-                    ytm, ytm_method = approx, "approx"
+        # Maturity-based YTM is meaningless for perpetuals; price to
+        # the earliest call when one is published.
+        priced = valuation.calculate(price, sched, terms_map.get(isin), today, allow_approx=True,
+                                     otc_yield=_f(otc and (otc.get("wap_yield") or otc.get("last_yield"))),
+                                     otc_trade_date=otc["trade_date"] if otc else None,
+                                     price_date=retail["trade_date"] if retail else None)
+        ytm, ytm_method = priced["ytm"], priced["ytm_method"]
 
         change = ratings.latest_change(history.get(isin, []))
 
@@ -221,11 +200,8 @@ def build_rows(today: date | None = None) -> list[dict]:
             "otc_turnover": _f(otc and otc.get("turnover")),
             "ytm": ytm,
             "ytm_method": ytm_method,
-            "ytm_reliable": ytm_reliability(
-                ytm, red_date, today, r.get("coupon_basis"),
-                otc_yield=_f(otc and (otc.get("wap_yield")
-                                      or otc.get("last_yield"))),
-                otc_trade_date=otc["trade_date"] if otc else None),
+            "ytm_reliable": priced["ytm_reliable"],
+            "valuation": priced,
             "current_yield": yields.current_yield(price, coupon, face),
             "duration": yields.modified_duration(price, sched, ytm, today)
                         if ytm_method in ("exact", "estimated") else None,
@@ -253,7 +229,7 @@ def refresh() -> int:
             conn.execute("DELETE FROM bond_analytics")
             conn.cursor().executemany(
                 f"INSERT INTO bond_analytics ({cols}) VALUES ({placeholders})",
-                rows)
+                [{**row, "valuation": Jsonb(row["valuation"])} for row in rows])
     return len(rows)
 
 

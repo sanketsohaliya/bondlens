@@ -2,8 +2,10 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { api, fmt } from "../api/client";
 import type { DepthSide, KiteOrder, YtmAtPrice } from "../api/types";
+import { isQuoteFresh, useQuoteClock, valuationIsCurrent } from "../lib/quoteValuation";
 import { useDepthStream } from "../lib/useDepthStream";
 import OrderTicket from "./OrderTicket";
+import YieldQuote from "./YieldQuote";
 
 function nseQuoteUrl(symbol: string, series: string | null | undefined): string {
   const qs = new URLSearchParams({ symbol });
@@ -36,8 +38,9 @@ export default function OrderBook({
   const { data: kite } = useQuery({
     queryKey: ["kite-status"],
     queryFn: api.kite.status,
-    staleTime: 120_000,
-    refetchOnWindowFocus: false,
+    staleTime: 60_000,
+    refetchInterval: 60_000,
+    refetchOnWindowFocus: true,
   });
   const connected = kite?.connected ?? false;
 
@@ -46,20 +49,26 @@ export default function OrderBook({
     isLoading,
     isFetching,
     refetch,
-    dataUpdatedAt,
   } = useQuery({
     queryKey: ["depth", isin],
     queryFn: () => api.depth(isin),
     staleTime: 25_000,
-    refetchOnWindowFocus: false,
+    refetchInterval: 60_000,
+    refetchOnWindowFocus: true,
   });
+  const now = useQuoteClock();
   const stream = useDepthStream(isin, connected);
-  const data = stream.book ?? rest;
-  // LIVE as soon as the socket is open (the ladder shows the REST
-  // snapshot until the first tick); Refresh belongs only to the states
-  // that genuinely need manual refetching — no Kite, or a dead stream.
-  const live = stream.status === "live";
-  const showRefresh = !connected || stream.status === "closed";
+  const streamAge = now - Date.parse(stream.book?.fetched_at ?? "");
+  const recentStream = streamAge >= -30_000 && streamAge < 90_000;
+  const data = recentStream ? stream.book : (rest ?? stream.book);
+  // A connected socket alone is not live depth: require a recent tick
+  // with a usable snapshot. Each exchange keeps its own capture time,
+  // so a tick on one venue cannot rejuvenate stale depth on the other.
+  const live =
+    stream.status === "live" &&
+    recentStream &&
+    [stream.book?.nse, stream.book?.bse].some((side) => isQuoteFresh(side, now));
+  const showRefresh = !live;
 
   const [ticket, setTicket] = useState<TicketState | null>(null);
 
@@ -88,8 +97,9 @@ export default function OrderBook({
             </>
           ) : (
             <span>
-              As of {new Date(dataUpdatedAt).toLocaleTimeString("en-IN")} · fetched live on open,
-              not streaming
+              Snapshot captured{" "}
+              {new Date(data.fetched_at).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })} IST
+              · not a guaranteed executable offer
             </span>
           )}
         </div>
@@ -119,13 +129,11 @@ export default function OrderBook({
 
       {empty ? (
         <div className="text-zinc-500 py-8 text-center">
-          No resting orders on either exchange.
-          {!marketOpenNow() && (
-            <div className="text-xs mt-1 text-zinc-600">
-              Market is closed (NSE/BSE trade 09:15–15:30 IST, Mon–Fri) — order books empty out
-              after hours.
-            </div>
-          )}
+          No usable depth returned by either source.
+          <div className="text-xs mt-1 text-zinc-600">
+            This can reflect an empty book, a closed session or unavailable data. Check the exchange
+            calendar and broker.
+          </div>
         </div>
       ) : (
         <div className="space-y-4">
@@ -146,6 +154,7 @@ export default function OrderBook({
                 name={x.name}
                 side={x.side}
                 ytmAtAsk={data.ytm_at_ask}
+                now={now}
                 fallbackUrl={x.fallbackUrl}
                 onOrder={connected ? (t) => setTicket({ ...t, exchange: x.name }) : undefined}
               />
@@ -157,8 +166,9 @@ export default function OrderBook({
 
       <p className="text-[11px] text-zinc-600">
         Exchange order books are anonymous — no broker/app identity is published. Ask rows show the
-        YTM locked if bought at that price. Quantities are units; Ticket = price × quantity at that
-        level.
+        indicative gross YTM or conditional YTC at that price, before fees and taxes. Quantities are
+        units; Ticket = price × quantity at that level. Neither the quote nor the modeled payments
+        are guaranteed.
       </p>
 
       {ticket && (
@@ -198,13 +208,6 @@ function KiteConnectedBadge() {
   );
 }
 
-function marketOpenNow(): boolean {
-  const ist = new Date(Date.now() + (330 + new Date().getTimezoneOffset()) * 60_000);
-  const day = ist.getDay();
-  const mins = ist.getHours() * 60 + ist.getMinutes();
-  return day >= 1 && day <= 5 && mins >= 555 && mins <= 930;
-}
-
 /** Rupee outlay to fully take a depth level: price × qty. */
 function ticket(level: { price: number | null; qty: number | null } | undefined): string {
   if (level?.price == null || level.qty == null) return "";
@@ -215,17 +218,26 @@ function Ladder({
   name,
   side,
   ytmAtAsk,
+  now,
   fallbackUrl,
   onOrder,
 }: {
   name: "NSE" | "BSE";
   side: DepthSide | null;
   ytmAtAsk: YtmAtPrice[];
+  now: number;
   fallbackUrl?: string;
   onOrder?: (t: { side: "BUY" | "SELL"; price?: number | null; qty?: number | null }) => void;
 }) {
+  const fresh = isQuoteFresh(side, now);
   const ytmFor = (price: number | null) =>
-    price == null ? null : (ytmAtAsk.find((y) => y.price === price)?.ytm ?? null);
+    price == null ? null : ytmAtAsk.find((value) => value.price === price);
+  const bestAsk = fresh
+    ? side?.asks.find((level) => (level.price ?? 0) > 0 && (level.qty ?? 0) > 0)
+    : undefined;
+  const bestBid = fresh
+    ? side?.bids.find((level) => (level.price ?? 0) > 0 && (level.qty ?? 0) > 0)
+    : undefined;
 
   return (
     <div className="border border-zinc-800 rounded-lg overflow-hidden">
@@ -243,25 +255,29 @@ function Ladder({
             <>
               <button
                 type="button"
-                onClick={() =>
-                  onOrder({ side: "BUY", price: side.asks[0]?.price, qty: side.asks[0]?.qty })
-                }
+                onClick={() => onOrder({ side: "BUY", price: bestAsk?.price, qty: bestAsk?.qty })}
                 className="text-[11px] px-2 py-0.5 rounded border border-emerald-500/50 text-emerald-400 hover:bg-emerald-500/10"
               >
                 Buy
               </button>
               <button
                 type="button"
-                onClick={() =>
-                  onOrder({ side: "SELL", price: side.bids[0]?.price, qty: side.bids[0]?.qty })
-                }
+                onClick={() => onOrder({ side: "SELL", price: bestBid?.price, qty: bestBid?.qty })}
                 className="text-[11px] px-2 py-0.5 rounded border border-red-500/50 text-red-400 hover:bg-red-500/10"
               >
                 Sell
               </button>
             </>
           )}
-          {side?.as_of && <span className="text-[10px] text-zinc-500">{side.as_of}</span>}
+          {side && (
+            <span
+              className="text-[10px] text-zinc-500"
+              title={(side.warnings ?? []).map((warning) => warning.message).join("\n")}
+            >
+              {fresh ? "Snapshot" : "Expired snapshot"} ·{" "}
+              {side.quote_at ?? side.fetched_at ?? "time unknown"}
+            </span>
+          )}
         </span>
       </div>
       {!side ? (
@@ -297,7 +313,7 @@ function Ladder({
             {Array.from({ length: Math.max(5, side.bids.length, side.asks.length) }).map((_, i) => {
               const bid = side.bids[i];
               const ask = side.asks[i];
-              const ytm = ask ? ytmFor(ask.price) : null;
+              const ytm = ask && (ask.qty ?? 0) > 0 ? ytmFor(ask.price) : null;
               return (
                 <tr key={i} className="border-b border-zinc-900">
                   <td
@@ -308,6 +324,8 @@ function Ladder({
                     title={onOrder && bid?.price != null ? "Sell at this bid" : undefined}
                     onClick={() =>
                       onOrder &&
+                      fresh &&
+                      (bid?.qty ?? 0) > 0 &&
                       bid?.price != null &&
                       onOrder({ side: "SELL", price: bid.price, qty: bid.qty })
                     }
@@ -328,6 +346,8 @@ function Ladder({
                     title={onOrder && ask?.price != null ? "Buy at this ask" : undefined}
                     onClick={() =>
                       onOrder &&
+                      fresh &&
+                      (ask?.qty ?? 0) > 0 &&
                       ask?.price != null &&
                       onOrder({ side: "BUY", price: ask.price, qty: ask.qty })
                     }
@@ -341,7 +361,9 @@ function Ladder({
                   </td>
                   <td className="px-2 py-1.5 text-right text-zinc-500">{ticket(ask) || "₹0"}</td>
                   <td className="px-2 py-1.5 text-right text-zinc-300">
-                    {ytm != null ? fmt.pct(ytm) : ""}
+                    {ytm && (
+                      <YieldQuote value={ytm} stale={!fresh || !valuationIsCurrent(ytm, now)} />
+                    )}
                   </td>
                 </tr>
               );
@@ -366,7 +388,7 @@ function Ladder({
  * their own Zerodha account; Kite is the system of record). */
 function OrdersStrip({ isin, onModify }: { isin: string; onModify: (t: TicketState) => void }) {
   const qc = useQueryClient();
-  const { data } = useQuery({
+  const { data, isError, dataUpdatedAt } = useQuery({
     queryKey: ["kite-orders"],
     queryFn: api.kite.orders,
     refetchInterval: 15_000,
@@ -379,19 +401,26 @@ function OrdersStrip({ isin, onModify }: { isin: string; onModify: (t: TicketSta
       qc.invalidateQueries({ queryKey: ["kite-margins"] });
     },
   });
-  // Filled bond BUYs become portfolio lots server-side; refresh the
-  // portfolio-derived caches only when something was actually created.
+  // Refresh after imports and partial reconciliation failures: earlier
+  // orders in a failed batch may already have committed their own lots.
   const newLots = data?.new_lots ?? 0;
+  const pending = data?.reconciliation_pending ?? false;
   useEffect(() => {
-    if (newLots > 0) {
+    if (dataUpdatedAt > 0 && (newLots > 0 || pending)) {
       qc.invalidateQueries({ queryKey: ["portfolio"] });
       qc.invalidateQueries({ queryKey: ["lists"] });
       qc.invalidateQueries({ queryKey: ["notifications"] });
     }
-  }, [newLots, qc]);
+  }, [newLots, pending, dataUpdatedAt, qc]);
 
   // The server resolves each order's tradingsymbol back to its ISIN.
   const mine = (data?.orders ?? []).filter((o) => o.isin === isin);
+  if (isError)
+    return (
+      <div className="text-xs text-amber-400">
+        Orders could not be refreshed. Check your broker before retrying an order.
+      </div>
+    );
   if (mine.length === 0) return null;
 
   const cancellable = (o: KiteOrder) =>
@@ -400,6 +429,12 @@ function OrdersStrip({ isin, onModify }: { isin: string; onModify: (t: TicketSta
   return (
     <div className="border border-zinc-800 rounded-lg overflow-hidden">
       <div className="px-3 py-2 bg-zinc-900 text-sm font-semibold">Your orders today</div>
+      {data?.reconciliation_pending && (
+        <div className="p-3 text-xs text-amber-400">
+          Portfolio reconciliation is pending and will retry. Check holdings before adding fills
+          manually.
+        </div>
+      )}
       <table className="w-full text-xs">
         <thead>
           <tr className="text-zinc-500 border-b border-zinc-800">

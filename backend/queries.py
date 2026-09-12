@@ -130,7 +130,7 @@ def rating_history(isin: str | None = None) -> dict[str, list[dict]]:
     out: dict[str, list[dict]] = {}
     q = ("SELECT isin, agency, rating, outlook, rating_action, "
          "COALESCE(rating_change_date, rating_date) AS rating_date, "
-         "press_release_link AS press_release, is_current FROM bond_ratings ")
+         "watch, press_release_link AS press_release, is_current FROM bond_ratings ")
     order = "COALESCE(rating_change_date, rating_date)"
     with db._conn() as conn:
         rows = (conn.execute(q + f"WHERE isin = %s ORDER BY {order}", (isin,))
@@ -475,7 +475,7 @@ def bonds_symbols(isins: list[str]) -> dict[str, dict]:
     (the fields needed to resolve Kite tradingsymbols), in one query."""
     with db._conn() as conn:
         rows = conn.execute(
-            "SELECT isin, nse_symbol, nse_series, bse_scrip_id "
+            "SELECT isin, nse_symbol, nse_series, bse_scrip_id, otc_yield, otc_trade_date "
             "FROM bond_analytics WHERE isin = ANY(%s)", (isins,)).fetchall()
     return {r["isin"]: dict(r) for r in rows}
 

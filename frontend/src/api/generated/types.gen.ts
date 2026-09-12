@@ -9,6 +9,90 @@ export type ClientOptions = {
  */
 export type AskYtm = {
     /**
+     * Price
+     */
+    price?: number | null;
+    /**
+     * Ytm
+     */
+    ytm?: number | null;
+    /**
+     * Ytm Method
+     */
+    ytm_method?: 'exact' | 'estimated' | 'approx' | 'ytc' | null;
+    /**
+     * Ytm Reliable
+     */
+    ytm_reliable?: boolean | null;
+    /**
+     * Yield Type
+     */
+    yield_type?: 'ytm' | 'ytc';
+    /**
+     * As Of
+     */
+    as_of?: string | null;
+    /**
+     * Calculation Version
+     */
+    calculation_version?: string | null;
+    /**
+     * Calculated At
+     */
+    calculated_at?: string | null;
+    /**
+     * Schedule Version
+     */
+    schedule_version?: string | null;
+    /**
+     * Target Date
+     */
+    target_date?: string | null;
+    /**
+     * Estimated
+     */
+    estimated?: boolean;
+    /**
+     * Day Count
+     */
+    day_count?: string | null;
+    /**
+     * Periods Per Year
+     */
+    periods_per_year?: number | null;
+    /**
+     * Price Basis
+     */
+    price_basis?: string | null;
+    /**
+     * Settlement Assumption
+     */
+    settlement_assumption?: string | null;
+    /**
+     * Cashflows Complete
+     */
+    cashflows_complete?: boolean;
+    /**
+     * Cashflow Count
+     */
+    cashflow_count?: number;
+    /**
+     * Gross Payout
+     */
+    gross_payout?: number | null;
+    /**
+     * Gross Gain
+     */
+    gross_gain?: number | null;
+    /**
+     * Holding Period Return
+     */
+    holding_period_return?: number | null;
+    /**
+     * Warnings
+     */
+    warnings?: Array<YieldWarning>;
+    /**
      * Isin
      */
     isin: string;
@@ -21,9 +105,21 @@ export type AskYtm = {
      */
     ask_qty: number | null;
     /**
-     * Ytm
+     * Exchange
      */
-    ytm: number | null;
+    exchange?: string | null;
+    /**
+     * Fetched At
+     */
+    fetched_at?: string | null;
+    /**
+     * Quote At
+     */
+    quote_at?: string | null;
+    /**
+     * Expires At
+     */
+    expires_at?: string | null;
 };
 
 /**
@@ -218,6 +314,7 @@ export type Bond = {
      * Ytm Reliable
      */
     ytm_reliable: boolean | null;
+    valuation?: YieldValuation | null;
     /**
      * Future Flows
      */
@@ -494,6 +591,7 @@ export type BondDetail = {
      * Ytm Reliable
      */
     ytm_reliable: boolean | null;
+    valuation?: YieldValuation | null;
     /**
      * Yield To Worst
      */
@@ -544,6 +642,16 @@ export type BondDetail = {
      * Cashflows
      */
     cashflows: Array<Cashflow>;
+    /**
+     * Pricing Cashflows
+     */
+    pricing_cashflows?: Array<Cashflow>;
+    /**
+     * Input Cashflows
+     */
+    input_cashflows?: Array<{
+        [key: string]: unknown;
+    }>;
     /**
      * Future Total Per Unit
      */
@@ -764,6 +872,22 @@ export type DepthSide = {
      * Source
      */
     source?: 'kite' | 'exchange' | null;
+    /**
+     * Fetched At
+     */
+    fetched_at?: string | null;
+    /**
+     * Quote At
+     */
+    quote_at?: string | null;
+    /**
+     * Expires At
+     */
+    expires_at?: string | null;
+    /**
+     * Warnings
+     */
+    warnings?: Array<YieldWarning>;
 };
 
 /**
@@ -1245,6 +1369,10 @@ export type KiteOrderRequest = {
  */
 export type KiteOrdersResponse = {
     /**
+     * Reconciliation Pending
+     */
+    reconciliation_pending?: boolean;
+    /**
      * Orders
      */
     orders: Array<KiteOrder>;
@@ -1372,6 +1500,20 @@ export type Notification = {
      * Read At
      */
     read_at: string | null;
+    /**
+     * Legacy
+     */
+    legacy?: boolean;
+};
+
+/**
+ * NotificationsReadRequest
+ */
+export type NotificationsReadRequest = {
+    /**
+     * Ids
+     */
+    ids?: Array<number>;
 };
 
 /**
@@ -2000,17 +2142,201 @@ export type WatchlistToggle = {
 };
 
 /**
+ * YieldValuation
+ */
+export type YieldValuation = {
+    /**
+     * Price
+     */
+    price?: number | null;
+    /**
+     * Ytm
+     */
+    ytm?: number | null;
+    /**
+     * Ytm Method
+     */
+    ytm_method?: 'exact' | 'estimated' | 'approx' | 'ytc' | null;
+    /**
+     * Ytm Reliable
+     */
+    ytm_reliable?: boolean | null;
+    /**
+     * Yield Type
+     */
+    yield_type?: 'ytm' | 'ytc';
+    /**
+     * As Of
+     */
+    as_of?: string | null;
+    /**
+     * Calculation Version
+     */
+    calculation_version?: string | null;
+    /**
+     * Calculated At
+     */
+    calculated_at?: string | null;
+    /**
+     * Schedule Version
+     */
+    schedule_version?: string | null;
+    /**
+     * Target Date
+     */
+    target_date?: string | null;
+    /**
+     * Estimated
+     */
+    estimated?: boolean;
+    /**
+     * Day Count
+     */
+    day_count?: string | null;
+    /**
+     * Periods Per Year
+     */
+    periods_per_year?: number | null;
+    /**
+     * Price Basis
+     */
+    price_basis?: string | null;
+    /**
+     * Settlement Assumption
+     */
+    settlement_assumption?: string | null;
+    /**
+     * Cashflows Complete
+     */
+    cashflows_complete?: boolean;
+    /**
+     * Cashflow Count
+     */
+    cashflow_count?: number;
+    /**
+     * Gross Payout
+     */
+    gross_payout?: number | null;
+    /**
+     * Gross Gain
+     */
+    gross_gain?: number | null;
+    /**
+     * Holding Period Return
+     */
+    holding_period_return?: number | null;
+    /**
+     * Warnings
+     */
+    warnings?: Array<YieldWarning>;
+};
+
+/**
+ * YieldWarning
+ */
+export type YieldWarning = {
+    /**
+     * Code
+     */
+    code: string;
+    /**
+     * Message
+     */
+    message: string;
+    /**
+     * Severity
+     */
+    severity: 'info' | 'caution' | 'error';
+};
+
+/**
  * YtmAtPrice
  */
 export type YtmAtPrice = {
     /**
      * Price
      */
-    price: number;
+    price?: number | null;
     /**
      * Ytm
      */
-    ytm: number | null;
+    ytm?: number | null;
+    /**
+     * Ytm Method
+     */
+    ytm_method?: 'exact' | 'estimated' | 'approx' | 'ytc' | null;
+    /**
+     * Ytm Reliable
+     */
+    ytm_reliable?: boolean | null;
+    /**
+     * Yield Type
+     */
+    yield_type?: 'ytm' | 'ytc';
+    /**
+     * As Of
+     */
+    as_of?: string | null;
+    /**
+     * Calculation Version
+     */
+    calculation_version?: string | null;
+    /**
+     * Calculated At
+     */
+    calculated_at?: string | null;
+    /**
+     * Schedule Version
+     */
+    schedule_version?: string | null;
+    /**
+     * Target Date
+     */
+    target_date?: string | null;
+    /**
+     * Estimated
+     */
+    estimated?: boolean;
+    /**
+     * Day Count
+     */
+    day_count?: string | null;
+    /**
+     * Periods Per Year
+     */
+    periods_per_year?: number | null;
+    /**
+     * Price Basis
+     */
+    price_basis?: string | null;
+    /**
+     * Settlement Assumption
+     */
+    settlement_assumption?: string | null;
+    /**
+     * Cashflows Complete
+     */
+    cashflows_complete?: boolean;
+    /**
+     * Cashflow Count
+     */
+    cashflow_count?: number;
+    /**
+     * Gross Payout
+     */
+    gross_payout?: number | null;
+    /**
+     * Gross Gain
+     */
+    gross_gain?: number | null;
+    /**
+     * Holding Period Return
+     */
+    holding_period_return?: number | null;
+    /**
+     * Warnings
+     */
+    warnings?: Array<YieldWarning>;
 };
 
 export type AuthGoogleApiAuthGooglePostData = {
@@ -2431,6 +2757,10 @@ export type NotificationsApiNotificationsGetData = {
          * Limit
          */
         limit?: number;
+        /**
+         * Offset
+         */
+        offset?: number;
     };
     url: '/api/notifications';
 };
@@ -2454,7 +2784,10 @@ export type NotificationsApiNotificationsGetResponses = {
 export type NotificationsApiNotificationsGetResponse = NotificationsApiNotificationsGetResponses[keyof NotificationsApiNotificationsGetResponses];
 
 export type NotificationsReadApiNotificationsReadPostData = {
-    body?: never;
+    /**
+     * Body
+     */
+    body?: NotificationsReadRequest | null;
     path?: never;
     query?: never;
     url: '/api/notifications/read';
@@ -2807,6 +3140,41 @@ export type BondTradesApiBondsIsinTradesGetResponses = {
 };
 
 export type BondTradesApiBondsIsinTradesGetResponse = BondTradesApiBondsIsinTradesGetResponses[keyof BondTradesApiBondsIsinTradesGetResponses];
+
+export type BondValuationApiBondsIsinValuationGetData = {
+    body?: never;
+    path: {
+        /**
+         * Isin
+         */
+        isin: string;
+    };
+    query: {
+        /**
+         * Price
+         */
+        price: number;
+    };
+    url: '/api/bonds/{isin}/valuation';
+};
+
+export type BondValuationApiBondsIsinValuationGetErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type BondValuationApiBondsIsinValuationGetError = BondValuationApiBondsIsinValuationGetErrors[keyof BondValuationApiBondsIsinValuationGetErrors];
+
+export type BondValuationApiBondsIsinValuationGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: YtmAtPrice;
+};
+
+export type BondValuationApiBondsIsinValuationGetResponse = BondValuationApiBondsIsinValuationGetResponses[keyof BondValuationApiBondsIsinValuationGetResponses];
 
 export type BondDepthApiBondsIsinDepthGetData = {
     body?: never;

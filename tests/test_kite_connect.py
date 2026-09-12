@@ -236,6 +236,7 @@ def test_list_and_cancel_orders(kite_env, monkeypatch):
         "transaction_type": "BUY", "quantity": 10, "filled_quantity": 0,
         "price": 1010.0, "average_price": 0, "status": "OPEN",
         "status_message": None, "order_timestamp": "2026-08-08 11:00:00",
+        "exchange_timestamp": None, "exchange_update_timestamp": None, "variety": None,
     }]
     kite_connect.cancel_order(1, "1")
     assert calls[-1] == ("DELETE", "https://api.kite.trade/orders/regular/1")
@@ -253,7 +254,7 @@ def test_parse_kite_depth_levels():
                  {"price": 0, "quantity": 0, "orders": 0}],
          "sell": [{"price": 1010.0, "quantity": 10, "orders": 1}]},
         buy_quantity=25, sell_quantity=10,
-        last_trade_time="2026-08-08 11:04:00")
+        last_trade_time="2026-08-07 11:04:00", timestamp="2026-08-08 11:04:00")
     side = kite_connect.parse_kite_depth(q)
     assert side is not None
     assert side["bids"] == [{"price": 1003.0, "qty": 25.0, "orders": 2}]
@@ -262,6 +263,12 @@ def test_parse_kite_depth_levels():
     assert side["total_ask_qty"] == 10.0
     assert side["as_of"] == "2026-08-08 11:04:00"
     assert side["source"] == "kite"
+
+
+def test_last_trade_time_is_not_used_as_quote_freshness():
+    side = kite_connect.parse_kite_depth(_quote({"sell": [{"price": 1000, "quantity": 10}]},
+                                               last_trade_time="2026-08-01 10:00:00"))
+    assert side is not None and side["as_of"] is None
 
 
 def test_parse_kite_depth_empty_is_none():
