@@ -418,6 +418,7 @@ class PortfolioPosition(BaseModel):
     isin: str
     avg_price: float | None  # units-weighted paid price
     issuer_name: str | None
+    symbol: str | None = None
     credit_rating: str | None
     rating_rank: int | None
     rating_grade: str | None

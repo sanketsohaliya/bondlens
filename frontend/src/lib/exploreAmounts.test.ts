@@ -96,10 +96,8 @@ describe("explore amounts", () => {
     expect(payoutDisplay({}, "2026-09-11").showCount).toBe(true);
   });
 
-  it("shows the OTC yield and clean price, amber only for a recent wide gap", () => {
-    const TODAY = "2026-09-12";
+  it("shows OTC turnover, yield and clean price on one calm line", () => {
     const b = {
-      ytm: 18.26,
       otc_yield: 12.26,
       otc_price_pct: 99.99,
       otc_trade_date: "2026-09-11",
@@ -109,27 +107,17 @@ describe("explore amounts", () => {
       nse_turnover: 27550,
       bse_turnover: null,
     };
-    const line = otcLine(b, TODAY);
-    expect(line?.text).toBe("OTC 12.26% @ 99.99");
-    expect(line?.attention).toBe(true);
+    const line = otcLine(b);
+    expect(line?.text).toBe("OTC ₹1.90 L · 12.26% @ 99.99");
+    expect(line).not.toHaveProperty("attention");
     expect(line?.title).toContain("Retail turnover ₹27,550 (prev ₹21,300)");
     expect(line?.title).toContain("OTC ₹1.90 L on 11 Sept 2026 at 99.99% of face, 12.26% yield");
-    expect(line?.title).toContain("6.0 pts above the retail YTM");
-    // Exactly at the 3-pt threshold is not flagged; just over is.
-    expect(otcLine({ ...b, ytm: 15.26 }, TODAY)?.attention).toBe(false);
-    expect(otcLine({ ...b, ytm: 15.27 }, TODAY)?.attention).toBe(true);
-    // A stale OTC print (>14 days) is never amber, whatever the gap.
-    expect(otcLine({ ...b, otc_trade_date: "2026-08-20" }, TODAY)?.attention).toBe(false);
-    // No retail YTM → nothing to compare → not amber.
-    expect(otcLine({ ...b, ytm: null }, TODAY)?.attention).toBe(false);
-    // Yield without price.
-    expect(otcLine({ ...b, otc_price_pct: null }, TODAY)?.text).toBe("OTC 12.26%");
-    // Turnover-only fallback.
-    const only = otcLine({ ...b, otc_yield: null, otc_price_pct: null }, TODAY);
-    expect(only?.text).toBe("OTC ₹1.90 L");
-    expect(only?.attention).toBe(false);
-    // Nothing at all.
-    expect(otcLine({ ...b, otc_yield: null, otc_turnover: null }, TODAY)).toBeNull();
+    expect(line?.title).not.toMatch(/pts (above|below)/);
+    // Each part is optional.
+    expect(otcLine({ ...b, otc_price_pct: null })?.text).toBe("OTC ₹1.90 L · 12.26%");
+    expect(otcLine({ ...b, otc_turnover: null })?.text).toBe("OTC 12.26% @ 99.99");
+    expect(otcLine({ ...b, otc_yield: null, otc_price_pct: null })?.text).toBe("OTC ₹1.90 L");
+    expect(otcLine({ ...b, otc_yield: null, otc_turnover: null })).toBeNull();
   });
 
   it("does not open the drawer when the click follows a text selection", () => {

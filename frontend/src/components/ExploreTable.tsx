@@ -23,6 +23,7 @@ import {
 import { useColumnWidths } from "../lib/useColumnWidths";
 import AddLotPopover from "./AddLotPopover";
 import AiPromptBtn from "./AiPromptBtn";
+import CopyText from "./CopyText";
 import RatingBadge from "./RatingBadge";
 import YieldQuote from "./YieldQuote";
 
@@ -508,13 +509,12 @@ export function Row({
           )}
         </div>
         <div className="flex items-center gap-3 text-[11px] min-w-0">
-          <span className="text-zinc-400 shrink-0">{b.nse_symbol ?? b.bse_scrip_id ?? b.isin}</span>
-          <span
-            className="font-mono text-[10px] text-zinc-500 select-text cursor-text truncate"
-            title="ISIN"
-          >
-            {b.isin}
-          </span>
+          <CopyText
+            value={b.nse_symbol ?? b.bse_scrip_id ?? b.isin}
+            label="symbol"
+            className="font-medium text-zinc-200 shrink-0"
+          />
+          <CopyText value={b.isin} label="ISIN" className="font-medium font-mono text-zinc-200" />
           <span className="flex items-center gap-3 shrink-0 opacity-0 group-hover/row:opacity-100 transition-opacity">
             <RowLink href={nsdlUrl(b.isin)} label="NSDL" tip={LINK_TIPS.nsdl} />
             {b.kite_url && <RowLink href={b.kite_url} label="Kite" tip={LINK_TIPS.kite} />}
@@ -636,12 +636,9 @@ export function Row({
           </>
         )}
         {(() => {
-          const otc = otcLine(b, today);
+          const otc = otcLine(b);
           return otc ? (
-            <div
-              className={`text-[11px] ${otc.attention ? "text-amber-400/80" : "text-zinc-500"}`}
-              title={otc.title}
-            >
+            <div className="text-[11px] text-zinc-500" title={otc.title}>
               {otc.text}
             </div>
           ) : null;

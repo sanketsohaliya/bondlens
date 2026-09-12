@@ -62,6 +62,7 @@ def build_positions(lots: list[dict[str, Any]],
             "isin": isin,
             "avg_price": round(paid, 2) if paid is not None else None,
             "issuer_name": core.get("issuer_name"),
+            "symbol": core.get("nse_symbol") or core.get("bse_scrip_id"),
             "credit_rating": core.get("credit_rating"),
             "rating_rank": rank,
             "rating_grade": ratings.RATING_ORDER[rank]

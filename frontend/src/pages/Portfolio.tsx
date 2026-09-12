@@ -6,21 +6,16 @@ import {
 } from "lightweight-charts";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { fmt } from "../api/client";
-import type {
-  PortfolioIncome,
-  PortfolioMonth,
-  PortfolioNews,
-  PortfolioPosition,
-} from "../api/types";
+import type { PortfolioMonth, PortfolioNews, PortfolioPosition } from "../api/types";
 import AddLotSearch from "../components/AddLotSearch";
 import type { Tab as DrawerTab } from "../components/BondDrawer";
 import CopyBtn from "../components/CopyBtn";
+import CopyText from "../components/CopyText";
 import Donut from "../components/Donut";
 import { BookmarkIcon } from "../components/ExploreTable";
 import LotsPanel from "../components/LotsPanel";
 import RatingBadge from "../components/RatingBadge";
 import StatBox from "../components/StatBox";
-import Tip from "../components/Tooltip";
 import { fuzzyMatch } from "../lib/fuzzy";
 import {
   allDatesPast,
@@ -118,11 +113,25 @@ export default function Portfolio({
 
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2">
+      {/* Row 1 is money (where it stands), row 2 is outlook (where it is
+          going). Received / still-to-come come from the same month buckets
+          the cashflow chart draws, so the two views cannot disagree. */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
         <StatBox label="Total invested" value={fmt.inr(summary.invested)} />
         <StatBox label="Current value" value={fmt.inr(summary.value)} accent />
         <GainBox gain={summary.gain} invested={summary.invested} />
+        <StatBox
+          label="Received so far"
+          value={fmt.inr(income.received_interest + income.received_principal)}
+          tip={`Interest ${fmt.inr(income.received_interest)} · Principal ${fmt.inr(income.received_principal)}. Per schedule to date; not confirmation of bank receipt. Optional exits excluded.`}
+        />
         <StatBox label="Weighted avg YTM" value={fmt.pct(summary.weighted_ytm)} />
+        <StatBox
+          label="Still to come"
+          value={fmt.inr(income.projected_interest + income.projected_principal)}
+          accent
+          tip={`Interest ${fmt.inr(income.projected_interest)} · Principal ${fmt.inr(income.projected_principal)}. Scheduled to maturity; optional exits excluded.`}
+        />
         <StatBox label="Weighted avg maturity" value={fmt.yearsMonths(summary.weighted_years)} />
         <StatBox
           label="Diversification"
@@ -179,7 +188,6 @@ export default function Portfolio({
           {tab === "cashflow" &&
             (cashflows.length > 0 ? (
               <>
-                <IncomeBanner income={income} />
                 <CashflowChart cashflows={cashflows} onSelect={onSelect} />
                 <CashflowGrid cashflows={cashflows} onSelect={onSelect} />
               </>
@@ -284,7 +292,15 @@ const HOLDINGS_ACCESSORS: Record<
   next_payment: (p) => p.next_payment?.payment_date ?? p.next_payment?.due_date,
 };
 
-const HOLDINGS_COLS: Array<{ label: string; key: HoldingsSortKey | null; right?: boolean }> = [
+const XIRR_TIP =
+  "Return locked in on what you actually paid, across your dated purchases (XIRR), assuming scheduled cashflows to maturity. Compare with YTM @ LTP — what a buyer today would get.";
+
+const HOLDINGS_COLS: Array<{
+  label: string;
+  key: HoldingsSortKey | null;
+  right?: boolean;
+  tip?: string;
+}> = [
   { label: "", key: null }, // expand chevron
   { label: "Issuer", key: "issuer" },
   { label: "Rating", key: "rating" },
@@ -293,10 +309,10 @@ const HOLDINGS_COLS: Array<{ label: string; key: HoldingsSortKey | null; right?:
   { label: "Invested", key: "invested", right: true },
   { label: "Value", key: "value", right: true },
   { label: "P&L", key: "gain", right: true },
-  { label: "Projected XIRR", key: "yield_on_cost", right: true },
+  { label: "Projected XIRR", key: "yield_on_cost", right: true, tip: XIRR_TIP },
   { label: "YTM @ LTP", key: "ytm", right: true },
-  { label: "Maturity", key: "maturity" },
   { label: "Next payment", key: "next_payment" },
+  { label: "Maturity", key: "maturity" },
 ];
 
 function HoldingsTable({
@@ -345,6 +361,7 @@ function HoldingsTable({
             {HOLDINGS_COLS.map((c, i) => (
               <th
                 key={c.label || i}
+                title={c.tip}
                 className={`relative ${TH} ${c.right ? "text-right" : ""} ${
                   c.key ? "cursor-pointer select-none hover:text-zinc-300" : ""
                 }`}
@@ -356,7 +373,10 @@ function HoldingsTable({
                   }))
                 }
               >
-                <span className={c.key === sort.key ? "text-zinc-200" : undefined}>{c.label}</span>
+                <span className={c.key === sort.key ? "text-zinc-200" : undefined}>
+                  {c.label}
+                  {c.tip && <span className="ml-1 text-zinc-600">ⓘ</span>}
+                </span>
                 {c.key === sort.key && (
                   <span className="ml-1 text-emerald-500/80">{sort.dir === -1 ? "▼" : "▲"}</span>
                 )}
@@ -459,7 +479,12 @@ function PositionRow({
           >
             {p.issuer_name ?? p.isin}
           </button>
-          <div className="text-[10px] text-zinc-600">{p.isin}</div>
+          <div className="flex items-center gap-3 text-[11px]">
+            {p.symbol && (
+              <CopyText value={p.symbol} label="symbol" className="font-medium text-zinc-200" />
+            )}
+            <CopyText value={p.isin} label="ISIN" className="font-medium font-mono text-zinc-200" />
+          </div>
         </td>
         {/* Same treatment as the explorer's rating cell: full rating with
             agency sub-line and the recent up/downgrade arrow; clicking
@@ -521,10 +546,7 @@ function PositionRow({
             optional exit payouts are not assumed to have been received. */}
         <td
           className={`${TD} text-right tabular-nums`}
-          title={
-            p.yield_on_cost_notes?.join("; ") ||
-            "Projected effective-annual XIRR from scheduled cashflows, not verified receipts"
-          }
+          title={p.yield_on_cost_notes?.join("; ") || XIRR_TIP}
         >
           {fmt.pct(p.yield_on_cost)}
         </td>
@@ -541,23 +563,11 @@ function PositionRow({
           {spread != null && Math.abs(spread) > 0.05 && (
             <div
               className="text-[10px] text-zinc-500"
-              title="Effective-annual market yield minus projected cost XIRR. Dates, day-count conventions and cashflows can differ; not a buy/sell signal."
+              title="Difference between today's YTM @ LTP and your locked-in return (Projected XIRR)."
             >
               {spread > 0 ? "+" : "−"}
               {Math.abs(spread).toFixed(2)}pp effective
             </div>
-          )}
-        </td>
-        <td className={TD}>
-          {p.years_to_maturity != null ? (
-            <>
-              <div className="text-zinc-200 font-medium">
-                {fmt.yearsMonths(p.years_to_maturity)}
-              </div>
-              <div className="text-[10px] text-zinc-500">{monthYear(p.maturity_date)}</div>
-            </>
-          ) : (
-            monthYear(p.maturity_date)
           )}
         </td>
         <td className={TD}>
@@ -575,6 +585,18 @@ function PositionRow({
             <span className="text-zinc-600">–</span>
           )}
         </td>
+        <td className={TD}>
+          {p.years_to_maturity != null ? (
+            <>
+              <div className="text-zinc-200 font-medium">
+                {fmt.yearsMonths(p.years_to_maturity)}
+              </div>
+              <div className="text-[10px] text-zinc-500">{monthYear(p.maturity_date)}</div>
+            </>
+          ) : (
+            monthYear(p.maturity_date)
+          )}
+        </td>
       </tr>
       {open && (
         <tr className="border-b border-zinc-800/60 bg-zinc-900/40">
@@ -588,77 +610,6 @@ function PositionRow({
 }
 
 // --- Cashflow chart + grid --------------------------------------------------
-
-/** Received-so-far vs projected, from the same month buckets the chart
- * draws — the numbers cannot disagree. Always shown: "₹0 received" is
- * information, not noise. */
-function IncomeBanner({ income }: { income: PortfolioIncome }) {
-  const received = income.received_interest + income.received_principal;
-  const projected = income.projected_interest + income.projected_principal;
-  return (
-    <div className="flex flex-wrap items-center gap-x-6 gap-y-2 border-b border-zinc-800 bg-zinc-900/30 px-4 py-2">
-      <IncomeItem
-        label="Past scheduled"
-        value={fmt.inr(received)}
-        valueClass="text-zinc-100"
-        tip={`Scheduled interest ${fmt.inr(income.received_interest)} · Principal ${fmt.inr(income.received_principal)}. Excludes optional exits; not confirmation of bank receipt.`}
-      />
-      {/* The split only earns its place when both parts are non-zero;
-          "principal ₹0" is noise. Colours match the chart legend. */}
-      {income.received_principal > 0 && income.received_interest > 0 && (
-        <>
-          <IncomeItem
-            label="Interest"
-            value={fmt.inr(income.received_interest)}
-            valueClass="text-sky-400"
-          />
-          <IncomeItem
-            label="Principal"
-            value={fmt.inr(income.received_principal)}
-            valueClass="text-emerald-400"
-          />
-        </>
-      )}
-      <span className="self-stretch w-px bg-zinc-800" />
-      <IncomeItem
-        label="Projected"
-        value={fmt.inr(projected)}
-        valueClass="text-emerald-400"
-        tip={`Interest ${fmt.inr(income.projected_interest)} · Principal ${fmt.inr(income.projected_principal)}`}
-      />
-    </div>
-  );
-}
-
-function IncomeItem({
-  label,
-  value,
-  valueClass,
-  tip,
-}: {
-  label: string;
-  value: string;
-  valueClass: string;
-  /** Hover card with the interest/principal split; renders an ⓘ hint. */
-  tip?: string;
-}) {
-  const item = (
-    <div>
-      <div className="text-[10px] uppercase tracking-wider text-zinc-500">
-        {label}
-        {tip && <span className="ml-1 text-zinc-600">ⓘ</span>}
-      </div>
-      <div className={`text-xs font-semibold tabular-nums ${valueClass}`}>{value}</div>
-    </div>
-  );
-  return tip ? (
-    <Tip text={tip} className="contents">
-      {item}
-    </Tip>
-  ) : (
-    item
-  );
-}
 
 const CF_RANGES = [
   ["1y", 1],

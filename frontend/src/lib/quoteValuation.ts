@@ -53,6 +53,20 @@ export function hasYieldReview(
 export const OTC_MAX_GAP = 3.0;
 export const OTC_MAX_AGE_DAYS = 14;
 
+/** Magnitude for prose: whole points once the gap is large, one decimal below that. */
+export function gapText(gap: number): string {
+  const g = Math.abs(gap);
+  return g >= 10 ? g.toFixed(0) : g.toFixed(1);
+}
+
+/** The judgement a reader should draw from an OTC gap, plus what to do about it. */
+export function otcJudgement(gap: number): string {
+  const g = gapText(gap);
+  return gap > 0
+    ? `Looks too good: ${g} pts above what institutions paid — the retail price is probably stale. Check the order book.`
+    : `You'd get ${g} pts less yield than institutions did — check the ask before buying.`;
+}
+
 export type ComparisonText = {
   headline: string;
   action: string | null;
@@ -74,11 +88,7 @@ export function comparisonText(
   const direction = gap > 0 ? "above" : "below";
   const when = date ? ` (${fmt.date(date)})` : "";
   const headline = `Retail ${fmt.pct(retailYtm)} vs OTC ${fmt.pct(otc)}${when} — ${Math.abs(gap).toFixed(1)} pts ${direction} institutional.`;
-  const action =
-    gap > 0
-      ? "The retail price may be stale or thin; check the order book before trusting this yield."
-      : "You would be paying more than institutions did; compare the order book ask.";
-  return { headline, action, tone: "attention" };
+  return { headline, action: otcJudgement(gap), tone: "attention" };
 }
 
 const SHORT_CAVEATS: Record<string, string> = {
@@ -117,11 +127,8 @@ export function valuationTooltip(value: YieldValuation | null | undefined): stri
   for (const code of CAVEAT_PRIORITY) {
     const note = warnings.find((w) => w.code === code);
     if (!note) continue;
-    if (code === "otc_difference" && note.gap != null) {
-      lines.push(
-        `⚠ ${Math.abs(note.gap).toFixed(1)} pts ${note.gap > 0 ? "above" : "below"} OTC — verify the price.`,
-      );
-    } else lines.push(`⚠ ${SHORT_CAVEATS[code] ?? note.message}`);
+    if (code === "otc_difference" && note.gap != null) lines.push(`⚠ ${otcJudgement(note.gap)}`);
+    else lines.push(`⚠ ${SHORT_CAVEATS[code] ?? note.message}`);
     break;
   }
   return lines.join("\n");

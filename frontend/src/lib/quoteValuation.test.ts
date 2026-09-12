@@ -132,8 +132,9 @@ describe("quote valuation", () => {
     expect(above.headline).toBe(
       "Retail 18.26% vs OTC 12.26% (11 Sept 2026) — 6.0 pts above institutional.",
     );
-    expect(above.action).toContain("stale or thin");
-    expect(above.action).toContain("order book");
+    expect(above.action).toBe(
+      "Looks too good: 6.0 pts above what institutions paid — the retail price is probably stale. Check the order book.",
+    );
     expect(above.tone).toBe("attention");
     const below = comparisonText(
       {
@@ -149,7 +150,9 @@ describe("quote valuation", () => {
     expect(below.headline).toBe(
       "Retail 9.10% vs OTC 12.26% (11 Sept 2026) — 3.2 pts below institutional.",
     );
-    expect(below.action).toContain("paying more than institutions");
+    expect(below.action).toBe(
+      "You'd get 3.2 pts less yield than institutions did — check the ask before buying.",
+    );
     expect(below.tone).toBe("attention");
     // Old snapshot without structured fields: fall back to the stored sentence.
     const legacy = comparisonText(
@@ -190,7 +193,26 @@ describe("quote valuation", () => {
       ],
     }).split("\n");
     expect(withOtc).toHaveLength(2);
-    expect(withOtc[1]).toBe("⚠ 6.0 pts above OTC — verify the price.");
+    expect(withOtc[1]).toBe(
+      "⚠ Looks too good: 6.0 pts above what institutions paid — the retail price is probably stale. Check the order book.",
+    );
+    // Large gaps read as whole points; the row hover and the drawer share one sentence.
+    const big = valuationTooltip({
+      ...base,
+      warnings: [
+        {
+          code: "otc_difference",
+          severity: "info",
+          message: "x",
+          otc_yield: 5,
+          otc_trade_date: "2026-09-11",
+          gap: 12.4,
+        },
+      ],
+    }).split("\n");
+    expect(big[1]).toBe(
+      "⚠ Looks too good: 12 pts above what institutions paid — the retail price is probably stale. Check the order book.",
+    );
     const variable = valuationTooltip({
       ...base,
       warnings: [{ code: "variable_coupon", severity: "caution", message: "long text" }],

@@ -1733,6 +1733,10 @@ export type PortfolioPosition = {
      */
     issuer_name: string | null;
     /**
+     * Symbol
+     */
+    symbol?: string | null;
+    /**
      * Credit Rating
      */
     credit_rating: string | null;
