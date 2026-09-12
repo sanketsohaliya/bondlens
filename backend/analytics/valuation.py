@@ -51,7 +51,7 @@ def cautions(value: float | None, horizon: date | None, today: date,
             f"Retail yield {value:.2f}% is {abs(gap):.2f} pts {direction} the recent OTC yield "
             f"{otc_yield:.2f}% ({otc_trade_date}). OTC and retail quotes can differ in price, "
             f"date and convention; treat as market context, not a calculation error.",
-            "info", otc_yield=otc_yield, otc_trade_date=otc_trade_date, gap=gap))
+            "info", otc_yield=otc_yield, otc_trade_date=otc_trade_date.isoformat(), gap=gap))
     return result
 
 

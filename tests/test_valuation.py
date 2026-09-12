@@ -1,3 +1,4 @@
+import json
 from datetime import date, timedelta
 
 import pytest
@@ -72,7 +73,9 @@ def test_otc_difference_carries_the_numbers_and_says_which_way(retail, otc, gap,
                                 otc_yield=otc, otc_trade_date=TODAY)
     assert note["code"] == "otc_difference"
     assert note["otc_yield"] == otc
-    assert note["otc_trade_date"] == TODAY
+    # Stored inside the JSONB valuation column, so it must already be JSON-safe.
+    assert note["otc_trade_date"] == TODAY.isoformat()
+    json.dumps(note)
     assert note["gap"] == gap
     # The sentence leads with direction so a reader does not have to infer it.
     assert note["message"].startswith(f"Retail yield {retail:.2f}% is {abs(gap):.2f} pts {direction}")
