@@ -1,7 +1,7 @@
 import { fmt } from "../api/client";
 import type { BondDetail, OrderBook, RatingEvent } from "../api/types";
 import { calendarDate } from "./cashflowEvidence";
-import { isQuoteFresh, valuationLabel } from "./quoteValuation";
+import { isMarketComparison, isQuoteFresh, valuationLabel } from "./quoteValuation";
 import { firstFutureCall, isYieldToCall } from "./yieldDisplay";
 
 /* Builds a self-contained prompt for an external AI (ChatGPT/Gemini/Claude)
@@ -45,7 +45,9 @@ Work in this order:
 3. RISK AUDIT AND INVESTMENT BRIEF — discuss credit, liquidity, structural risks,
    source age, and rupee gain before fees/taxes (especially short horizons).
    For a prospective purchase, prefer a fresh positive-size ask over historical
-   LTP; a snapshot is not a guaranteed fill. Do not combine quote/calculation
+   LTP; a snapshot is not a guaranteed fill. An OTC yield difference alone is
+   neutral market context, not a calculation defect or an unreliable yield.
+   Do not combine quote/calculation
    snapshots with different dates or schedule versions. Validate settlement,
    holiday and ex-date conventions from authoritative segment-specific evidence;
    do not assume a universal T+1 rule or turn a record date into an invented ex-date.
@@ -323,8 +325,10 @@ export function buildBondPrompt(
         b.days_since_traded != null ? `Days since last trade: ${b.days_since_traded}` : null,
         liquidityLine(b),
         ...depthLines(depth, today.getTime()),
-        ...(b.valuation?.warnings ?? []).map(
-          (warning) => `Yield note (${warning.code}): ${warning.message}`,
+        ...(b.valuation?.warnings ?? []).map((note) =>
+          isMarketComparison(note)
+            ? `Market comparison: ${note.message}`
+            : `Yield note (${note.code}): ${note.message}`,
         ),
         b.otc_price_pct != null
           ? `OTC institutional benchmark: ${fmt.pct(b.otc_price_pct)} of face` +

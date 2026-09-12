@@ -34,7 +34,7 @@ def verify_ui(site):
                if src.startswith("/assets/") and src.endswith(".js")]
     ensure(bool(bundles), "Frontend module bundle not found")
     bundle = "\n".join(fetch(urljoin(site, src)) for src in bundles)
-    for marker in ("Copy AI prompt", "Mark loaded as read", "calculation_version", "expires_at"):
+    for marker in ("Copy AI prompt", "Mark loaded as read", "calculation_version", "expires_at", "Market comparison"):
         ensure(marker in bundle, f"Frontend marker missing: {marker}")
     try:
         fetch(urljoin(site, "/api/auth/me"))
@@ -88,10 +88,18 @@ def verify_database(wait_migration=False):
             fresh = {row["isin"]: row for row in compute.build_rows(today=as_of)}
             ensure(stored.keys() == fresh.keys(), "Stored and fresh analytics cover different instruments")
             mismatches = []
+            otc_only = 0
             for isin, expected in fresh.items():
                 actual = stored[isin]
                 ensure((actual.get("valuation") or {}).get("calculation_version") == valuation.VERSION,
                        f"Stale calculation version: {isin}")
+                notes = actual["valuation"].get("warnings", [])
+                ensure(all(note["severity"] == "info" for note in notes if note["code"] == "otc_difference"),
+                       f"OTC comparison is not informational: {isin}")
+                if notes and all(note["code"] == "otc_difference" for note in notes):
+                    ensure(actual["ytm_reliable"] is True and actual["valuation"]["ytm_reliable"] is True,
+                           f"OTC-only comparison still marks yield unreliable: {isin}")
+                    otc_only += 1
                 for field in compute._COLS:
                     if field == "computed_at":
                         continue
@@ -122,7 +130,7 @@ def verify_database(wait_migration=False):
                 samples.append({"isin": isin, "ytm": detail["ytm"], "method": detail["valuation"]["ytm_method"]})
             ensure(bool(samples), "No representative service valuations could be checked")
             print(json.dumps({"stored_rows": len(stored), "mismatches": len(mismatches),
-                              "snapshot_date": str(as_of), "calculation_version": valuation.VERSION,
+                              "otc_only_without_caution": otc_only, "snapshot_date": str(as_of), "calculation_version": valuation.VERSION,
                               "service_samples": samples}))
     schema = json.loads(fetch("http://127.0.0.1:8000/openapi.json"))
     ensure("/api/bonds/{isin}/valuation" in schema["paths"], "Running API lacks price valuation route")

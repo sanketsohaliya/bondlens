@@ -9,7 +9,7 @@ import {
   valuationLabel,
   valuationTooltip,
 } from "../lib/quoteValuation";
-import YieldQuote from "./YieldQuote";
+import YieldQuote, { YieldNotes } from "./YieldQuote";
 
 /** Kite-style order dialog: LIMIT/CNC/DAY only (market orders on
  * illiquid bond books are dangerous). Real money — an explicit confirm
@@ -255,16 +255,7 @@ export default function OrderTicket({
                       and taxes.
                     </p>
                   )}
-                  {(ytm?.warnings?.length ?? 0) > 0 && (
-                    <details className="text-amber-400">
-                      <summary className="cursor-pointer">Calculation cautions</summary>
-                      <ul className="list-disc pl-4 space-y-1">
-                        {ytm?.warnings?.map((warning, index) => (
-                          <li key={`${warning.code}:${index}`}>{warning.message}</li>
-                        ))}
-                      </ul>
-                    </details>
-                  )}
+                  <YieldNotes value={ytm} reviewTitle="Calculation cautions" />
                 </div>
               )}
               <div className="flex justify-between text-zinc-600">

@@ -5,7 +5,7 @@ import type { BondDetail } from "../api/types";
 import { buildBondPrompt } from "../lib/aiPrompt";
 import { replaceNumberWords } from "../lib/numberWords";
 import { usePortfolio } from "../lib/portfolio";
-import { valuationTooltip } from "../lib/quoteValuation";
+import { hasYieldReview, valuationTooltip } from "../lib/quoteValuation";
 import { firstFutureCall, isYieldToCall, yieldLabel } from "../lib/yieldDisplay";
 import CashflowTable from "./CashflowTable";
 import CopyBtn from "./CopyBtn";
@@ -16,6 +16,7 @@ import RatingTimeline from "./RatingTimeline";
 import StatBox from "./StatBox";
 import Tip from "./Tooltip";
 import TradeChart from "./TradeChart";
+import { YieldNotes } from "./YieldQuote";
 
 export type Tab = "overview" | "chart" | "cashflows" | "order book" | "ratings" | "holding";
 
@@ -563,7 +564,7 @@ function Overview({
         }
       >
         <Stat
-          label={`${yieldLabel(b)}${b.ytm_reliable === false ? " ⚠" : ""}`}
+          label={`${yieldLabel(b)}${b.ytm_reliable === false && hasYieldReview(b.valuation, b.ytm_reliable) ? " ⚠" : ""}`}
           value={fmt.pct(b.ytm)}
           accent
           tip={`${valuationTooltip(b.valuation)}\n${ytmTip(b) ?? ""}`}
@@ -592,6 +593,7 @@ function Overview({
           <Stat
             label="OTC (clean %)"
             value={`${fmt.num(b.otc_price_pct)}% @ ${fmt.pct(b.otc_yield)}`}
+            tip={`OTC print date: ${b.otc_trade_date ? fmt.date(b.otc_trade_date) : "unknown"}. Market comparison only; price and quotation basis may differ.`}
           />
         )}
         <Stat
@@ -600,18 +602,7 @@ function Overview({
         />
       </StatSection>
 
-      {(b.valuation?.warnings?.length ?? 0) > 0 && (
-        <details className="rounded border border-amber-500/30 p-3 text-xs text-amber-300">
-          <summary className="cursor-pointer">
-            Yield review notes ({b.valuation?.warnings?.length})
-          </summary>
-          <ul className="mt-2 list-disc pl-4 space-y-1">
-            {b.valuation?.warnings?.map((warning, index) => (
-              <li key={`${warning.code}:${index}`}>{warning.message}</li>
-            ))}
-          </ul>
-        </details>
-      )}
+      <YieldNotes value={b.valuation} />
 
       <StatSection title="Coupon & Payments">
         <Stat

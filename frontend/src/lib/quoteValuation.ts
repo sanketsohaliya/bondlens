@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { fmt } from "../api/client";
-import type { YieldValuation } from "../api/types";
+import type { YieldValuation, YieldWarning } from "../api/types";
 import { calendarAsOf } from "./cashflowEvidence";
 
 export function isQuoteFresh(
@@ -34,6 +34,21 @@ export function valuationLabel(value: YieldValuation | null | undefined): string
   return value?.estimated || value?.ytm_method === "estimated" ? `${kind} (estimated)` : kind;
 }
 
+export function isMarketComparison(note: Pick<YieldWarning, "code">): boolean {
+  return note.code === "otc_difference";
+}
+
+export function yieldReviewWarnings(value: YieldValuation | null | undefined): YieldWarning[] {
+  return (value?.warnings ?? []).filter((note) => !isMarketComparison(note));
+}
+
+export function hasYieldReview(
+  value: YieldValuation | null | undefined,
+  reliable = value?.ytm_reliable,
+): boolean {
+  return yieldReviewWarnings(value).length > 0 || (!value?.warnings?.length && reliable === false);
+}
+
 export function valuationTooltip(value: YieldValuation | null | undefined): string {
   if (!value)
     return "Calculation metadata unavailable for this snapshot; refresh the valuation before relying on it.";
@@ -52,7 +67,11 @@ export function valuationTooltip(value: YieldValuation | null | undefined): stri
     lines.push(
       `Total modeled cash gain: ${fmt.inrFull(value.gross_gain)} per unit (${fmt.pct(value.holding_period_return)} of price), without reinvestment, fees or taxes.`,
     );
-  lines.push(...(value.warnings ?? []).map((warning) => warning.message));
+  lines.push(
+    ...(value.warnings ?? []).map((note) =>
+      isMarketComparison(note) ? `Market comparison: ${note.message}` : note.message,
+    ),
+  );
   if (value.settlement_assumption) lines.push(value.settlement_assumption);
   if (value.calculation_version) lines.push(`Calculator: ${value.calculation_version}.`);
   return lines.join("\n");

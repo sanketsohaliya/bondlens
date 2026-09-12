@@ -1,6 +1,10 @@
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { loadAskSnapshot, saveAskSnapshot } from "../components/ExploreTable";
+import YieldQuote, { YieldNotes } from "../components/YieldQuote";
 import {
+  hasYieldReview,
   isQuoteFresh,
   valuationIsCurrent,
   valuationLabel,
@@ -48,6 +52,69 @@ describe("quote valuation", () => {
     };
     expect(valuationLabel(value)).toBe("YTC (estimated)");
     expect(valuationTooltip(value)).toContain("Assumes exercise at par");
+  });
+
+  it.each([
+    "caution",
+    "info",
+  ] as const)("does not badge an OTC-only %s note, including old snapshots", (severity) => {
+    const value = {
+      ...quote(),
+      ytm_reliable: false,
+      warnings: [
+        {
+          code: "otc_difference",
+          severity,
+          message: "OTC 5.00% on 2026-09-11; different price basis",
+        },
+      ],
+    };
+    const html = renderToStaticMarkup(createElement(YieldQuote, { value }));
+    expect(html).toContain("10.00%");
+    expect(html).toContain("OTC 5.00%");
+    expect(html).not.toContain("text-amber");
+    expect(html).not.toContain(">review<");
+    expect(hasYieldReview(value, false)).toBe(false);
+    const notes = renderToStaticMarkup(createElement(YieldNotes, { value }));
+    expect(notes).toContain("Market comparison");
+    expect(notes).toContain("2026-09-11");
+    expect(notes).not.toContain("text-amber");
+    expect(notes).not.toContain("Yield review notes");
+  });
+
+  it.each([
+    ["estimated_payments", "caution"],
+    ["yield_range", "caution"],
+    ["future_otc_date", "caution"],
+    ["schedule_invalid", "error"],
+    ["short_horizon", "info"],
+  ] as const)("preserves %s beside an OTC comparison", (code, severity) => {
+    const value = {
+      ...quote(),
+      estimated: true,
+      warnings: [
+        { code: "otc_difference", severity: "info" as const, message: "OTC comparison data" },
+        { code, severity, message: "Actual review reason" },
+      ],
+    };
+    expect(hasYieldReview(value)).toBe(true);
+    const badge = renderToStaticMarkup(createElement(YieldQuote, { value }));
+    expect(badge).toContain("~10.00%");
+    expect(badge).toContain(">review<");
+    const notes = renderToStaticMarkup(createElement(YieldNotes, { value }));
+    const [review, comparison] = notes.split("</details>");
+    expect(review).toContain("Yield review notes (1)");
+    expect(review).toContain("Actual review reason");
+    expect(review).not.toContain("OTC comparison data");
+    expect(comparison).toContain("Market comparison");
+    expect(comparison).toContain("OTC comparison data");
+    expect(comparison).not.toContain("text-amber");
+  });
+
+  it("retains unexplained legacy caution flags rather than assuming they were OTC-only", () => {
+    expect(hasYieldReview(null, false)).toBe(true);
+    expect(hasYieldReview({ ...quote(), warnings: [] }, false)).toBe(true);
+    expect(hasYieldReview(null, true)).toBe(false);
   });
 
   it("does not rejuvenate old entries when a fresh subset is merged", () => {

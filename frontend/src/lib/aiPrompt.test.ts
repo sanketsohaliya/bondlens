@@ -155,6 +155,26 @@ describe("buildBondPrompt", () => {
     expect(p).toContain("do not invent numbers");
   });
 
+  it("retains OTC comparison evidence without presenting it as a yield warning", () => {
+    const p = buildBondPrompt(
+      mk({
+        valuation: {
+          warnings: [
+            {
+              code: "otc_difference",
+              severity: "info",
+              message: "Recent OTC yield 7.00% on 2026-09-11",
+            },
+          ],
+        },
+      }),
+    );
+    expect(p).toContain("Market comparison: Recent OTC yield 7.00% on 2026-09-11");
+    expect(p).not.toContain("Yield note (otc_difference)");
+    expect(p).toContain("neutral market context, not a calculation defect");
+    expect(p).toContain('"code": "otc_difference"');
+  });
+
   it("flags floating-rate coupons prominently", () => {
     const p = buildBondPrompt(
       mk({ terms: { coupon_type: "Floating", coupon_basis: "MIBOR + 250bps" } }),

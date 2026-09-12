@@ -8,7 +8,7 @@ from datetime import UTC, date, datetime
 from . import yields
 from .schedule import Flow, Schedule
 
-VERSION = "2026-09-12.1"
+VERSION = "2026-09-12.2"
 RELIABLE = (-1.0, 50.0)
 RELIABLE_NEAR = (0.0, 20.0)
 NEAR_DAYS = 90
@@ -40,7 +40,7 @@ def cautions(value: float | None, horizon: date | None, today: date,
     if (otc_yield is not None and math.isfinite(otc_yield) and otc_trade_date
           and 0 <= (today - otc_trade_date).days <= OTC_MAX_AGE
           and abs(value - otc_yield) > OTC_MAX_GAP):
-        result.append(warning("otc_difference", f"Yield differs by {abs(value - otc_yield):.2f} percentage points from OTC {otc_yield:.2f}% on {otc_trade_date}; different prices, dates, scenarios or quotation conventions can explain this"))
+        result.append(warning("otc_difference", f"Recent OTC yield {otc_yield:.2f}% on {otc_trade_date}; difference from this yield: {abs(value - otc_yield):.2f} percentage points. Prices, dates, scenarios and quotation conventions may differ; this comparison does not establish a calculation problem", "info"))
     return result
 
 

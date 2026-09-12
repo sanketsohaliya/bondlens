@@ -28,6 +28,25 @@ def test_price_carries_the_actual_warning_and_calculation_context():
     assert result["cashflows_complete"]
 
 
+@pytest.mark.parametrize("price", [1000, 950])
+def test_otc_difference_is_context_not_an_unreliable_yield(price):
+    baseline = valuation.calculate(price, schedule(), {}, TODAY)
+    compared = valuation.calculate(price, schedule(), {}, TODAY, otc_yield=5, otc_trade_date=TODAY)
+    assert compared["ytm"] == baseline["ytm"]
+    assert compared["ytm_method"] == baseline["ytm_method"]
+    assert compared["ytm_reliable"] is True
+    [note] = compared["warnings"]
+    assert note["code"] == "otc_difference" and note["severity"] == "info"
+    assert "5.00%" in note["message"] and str(TODAY) in note["message"]
+
+
+def test_otc_context_does_not_suppress_an_estimated_payment_caution():
+    result = valuation.calculate(1000, schedule(estimated=True), {}, TODAY,
+                                 otc_yield=5, otc_trade_date=TODAY)
+    assert result["ytm_reliable"] is False
+    assert {note["code"] for note in result["warnings"]} == {"otc_difference", "estimated_payments"}
+
+
 def test_estimates_are_not_lost_at_a_different_price():
     result = valuation.calculate(1000, schedule(estimated=True), {}, TODAY)
     assert result["ytm_method"] == "estimated" and result["estimated"]

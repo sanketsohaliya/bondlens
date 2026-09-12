@@ -7,6 +7,7 @@ import { useAuth } from "../lib/auth";
 import { askTicketText, payoutDisplay, usePayoutDay } from "../lib/exploreAmounts";
 import { nextListName, useHeldIsins, useWatchlists } from "../lib/lists";
 import {
+  hasYieldReview,
   isQuoteFresh,
   useQuoteClock,
   valuationIsCurrent,
@@ -489,15 +490,14 @@ function Row({
           >
             {fmt.pct(b.ytm)}
           </span>
-          {b.ytm != null &&
-            (b.ytm_reliable === false || (b.valuation?.warnings?.length ?? 0) > 0) && (
-              <span
-                className="ml-1 text-[10px] text-amber-500/80 align-middle"
-                title={valuationTooltip(b.valuation)}
-              >
-                ⚠
-              </span>
-            )}
+          {b.ytm != null && hasYieldReview(b.valuation, b.ytm_reliable) && (
+            <span
+              className="ml-1 text-[10px] text-amber-500/80 align-middle"
+              title={valuationTooltip(b.valuation)}
+            >
+              ⚠
+            </span>
+          )}
           {b.ytm_method === "ytc" && (
             <span
               className="ml-1 text-[10px] text-zinc-500"
