@@ -34,7 +34,7 @@ def verify_ui(site):
                if src.startswith("/assets/") and src.endswith(".js")]
     ensure(bool(bundles), "Frontend module bundle not found")
     bundle = "\n".join(fetch(urljoin(site, src)) for src in bundles)
-    for marker in ("Copy AI prompt", "Mark loaded as read", "calculation_version", "expires_at", "Market comparison"):
+    for marker in ("Ask AI", "Mark loaded as read", "calculation_version", "expires_at", "Market comparison"):
         ensure(marker in bundle, f"Frontend marker missing: {marker}")
     try:
         fetch(urljoin(site, "/api/auth/me"))
