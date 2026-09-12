@@ -4,9 +4,10 @@ type Phase = "idle" | "copied" | "select";
 
 /** Inline text that copies itself when clicked. Used for identifiers such as
  * the symbol and ISIN, which sit inside a clickable row: the click is
- * swallowed so the row never opens by accident. On success the text flashes
- * "✓ copied"; if the clipboard is unavailable the text is selected instead so
- * a manual Ctrl+C still works. */
+ * swallowed so the row never opens by accident. Turns emerald on hover, like
+ * the row's NSDL / Kite / Ask AI actions, so it reads as clickable. On success
+ * the text flashes "✓ copied"; if the clipboard is unavailable the text is
+ * selected instead so a manual Ctrl+C still works. */
 export default function CopyText({
   value,
   label,
@@ -50,7 +51,7 @@ export default function CopyText({
       onClick={onClick}
       title={`Click to copy ${label}`}
       aria-label={`Copy ${label} ${value}`}
-      className={`cursor-copy whitespace-nowrap ${phase === "copied" ? "text-emerald-400" : ""} ${className}`}
+      className={`cursor-copy whitespace-nowrap hover:text-emerald-400 transition-colors ${phase === "copied" ? "text-emerald-400" : ""} ${className}`}
     >
       {text}
     </button>
