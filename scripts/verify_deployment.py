@@ -79,7 +79,13 @@ def verify_database(wait_migration=False):
             value.pop("calculated_at", None)
             return value
 
-        with patch.object(db, "_conn", connect), patch.object(api_module.kite, "kite_url", return_value=None):
+        # kite_url is looked up from Kite's instrument list (network) in both
+        # bond_detail and compute.build_rows; patch both so verification is
+        # offline, and skip the field below: an external listing that may
+        # legitimately differ between the stored refresh and this run.
+        with patch.object(db, "_conn", connect), \
+                patch.object(api_module.kite, "kite_url", return_value=None), \
+                patch.object(compute.kite, "kite_url", return_value=None):
             stored = {row["isin"]: dict(row) for row in conn.execute("SELECT * FROM bond_analytics")}
             ensure(bool(stored), "Stored analytics are empty")
             dates = {row["payout_as_of"] for row in stored.values()}
@@ -101,7 +107,7 @@ def verify_database(wait_migration=False):
                            f"OTC-only comparison still marks yield unreliable: {isin}")
                     otc_only += 1
                 for field in compute._COLS:
-                    if field == "computed_at":
+                    if field in {"computed_at", "kite_url"}:
                         continue
                     left, right = actual[field], expected[field]
                     if field == "valuation":
