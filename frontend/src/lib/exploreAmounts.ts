@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { fmt } from "../api/client";
-import type { AskYtm, Bond } from "../api/types";
+import type { AskYtm, Bond, YieldValuation } from "../api/types";
 import { calendarAsOf, calendarDate } from "./cashflowEvidence";
 
 type PayoutData = Pick<
@@ -198,4 +198,22 @@ export function otcLine(b: OtcData): { text: string; title: string } | null {
  * must not open the drawer, or "select and copy" is impossible. */
 export function shouldOpenRow(selection: string | null | undefined): boolean {
   return !(selection ?? "").trim();
+}
+
+/** Total return to maturity as a plain percentage of price - what you would
+ * pocket, not annualised. Null when the schedule is incomplete (the backend
+ * withholds holding_period_return rather than guess), so an absent figure
+ * means "unknown". Three-digit values drop the decimal; negatives carry a
+ * true minus sign and nothing else - no colour, the number speaks. */
+export function absReturnText(
+  value: Pick<YieldValuation, "holding_period_return" | "yield_type"> | null | undefined,
+): { text: string; title: string } | null {
+  const v = value?.holding_period_return;
+  if (v == null || !Number.isFinite(v)) return null;
+  const magnitude = Math.abs(v) >= 100 ? Math.abs(v).toFixed(0) : Math.abs(v).toFixed(1);
+  const horizon = value?.yield_type === "ytc" ? "first call" : "maturity";
+  return {
+    text: `${v < 0 ? "\u2212" : ""}${magnitude}%`,
+    title: `Total return if held to ${horizon}, before tax; not annualised.`,
+  };
 }

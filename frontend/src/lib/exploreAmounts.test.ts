@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AskYtm } from "../api/types";
 import {
+  absReturnText,
   askTicket,
   askTicketText,
   otcLine,
@@ -175,6 +176,26 @@ describe("explore amounts", () => {
     expect(otcLine({ ...b, otc_turnover: null })?.text).toBe("OTC 12.26% @ 99.99");
     expect(otcLine({ ...b, otc_yield: null, otc_price_pct: null })?.text).toBe("OTC ₹1.90 L");
     expect(otcLine({ ...b, otc_yield: null, otc_turnover: null })).toBeNull();
+  });
+
+  it("formats the absolute return: one decimal, none at three digits, true minus when negative", () => {
+    const at = (v: number | null, yield_type: "ytm" | "ytc" = "ytm") =>
+      absReturnText({ holding_period_return: v, yield_type });
+    expect(at(16.34)?.text).toBe("16.3%");
+    expect(at(-12.4)?.text).toBe("\u221212.4%");
+    expect(at(488.8)?.text).toBe("489%");
+    expect(at(100)?.text).toBe("100%");
+    expect(at(-41.04)?.text).toBe("\u221241.0%");
+    expect(at(0)?.text).toBe("0.0%");
+    expect(at(null)).toBeNull();
+    expect(at(Number.NaN)).toBeNull();
+    expect(absReturnText(null)).toBeNull();
+    expect(at(16.34)?.title).toBe("Total return if held to maturity, before tax; not annualised.");
+    expect(at(16.34, "ytc")?.title).toBe(
+      "Total return if held to first call, before tax; not annualised.",
+    );
+    // Never a plus sign or a colour hint in the text itself.
+    expect(at(16.34)?.text).not.toContain("+");
   });
 
   it("does not open the drawer when the click follows a text selection", () => {

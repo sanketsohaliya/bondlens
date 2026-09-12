@@ -2,9 +2,10 @@ import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { api, fmt } from "../api/client";
-import type { AskYtm, Bond } from "../api/types";
+import type { AskYtm, Bond, YieldValuation } from "../api/types";
 import { useAuth } from "../lib/auth";
 import {
+  absReturnText,
   askTicketText,
   otcLine,
   paymentsLeftText,
@@ -75,6 +76,18 @@ type PayoutBond = Pick<
   | "payout_as_of"
   | "payout_valid_until"
 >;
+
+/** Total return to maturity, muted, leading the second line of both yield
+ * cells. Deliberately NOT inside the price's click target or its stale-amber
+ * colouring: the figure is about the return, not the price. */
+function AbsReturn({ value }: { value: YieldValuation | AskYtm | null | undefined }) {
+  const abs = absReturnText(value);
+  return abs ? (
+    <span className="shrink-0 text-[11px] text-zinc-500" title={abs.title}>
+      {abs.text}
+    </span>
+  ) : null;
+}
 
 /** Hover-revealed external link in the symbol cell. Stops propagation so the
  * row's own click (open drawer) does not fire. */
@@ -160,6 +173,7 @@ export function PayoutCell({
 export function AskQuoteCell({ ask, onOpen }: { ask: AskYtm | null; onOpen: () => void }) {
   const ticket = askTicketText(ask);
   const fresh = isQuoteFresh(ask) && valuationIsCurrent(ask);
+  const stale = ask != null && (!fresh || !(ask.ask_qty && ask.ask_qty > 0));
   const detail = `${ticket.detail}\n${valuationTooltip(ask)}`;
   return (
     <button
@@ -175,12 +189,14 @@ export function AskQuoteCell({ ask, onOpen }: { ask: AskYtm | null; onOpen: () =
       <div
         className={`truncate ${ask?.ytm != null ? "text-zinc-200 font-medium" : "text-zinc-500"} group-hover/ask:underline decoration-zinc-600 underline-offset-2`}
       >
-        <YieldQuote
-          value={ask}
-          stale={ask != null && (!fresh || !(ask.ask_qty && ask.ask_qty > 0))}
-        />
+        <YieldQuote value={ask} stale={stale} />
       </div>
-      {ask && <div className="truncate text-[11px] text-zinc-400">{ticket.label}</div>}
+      {ask && (
+        <div className="flex items-center gap-3 truncate text-[11px]">
+          {!stale && <AbsReturn value={ask} />}
+          <span className="truncate text-zinc-400">{ticket.label}</span>
+        </div>
+      )}
     </button>
   );
 }
@@ -192,12 +208,16 @@ type SortKey =
     >
   | "ask_ytm"; // client-side only — computed from the user's Kite session
 
-type Col = { key: SortKey | null; label: string; right?: boolean };
+type Col = { key: SortKey | null; label: string; right?: boolean; tip?: string };
 
 const BASE_COLS: Col[] = [
   { key: null, label: "" },
   { key: null, label: "Symbol" },
-  { key: "ytm", label: "YTM @ LTP" },
+  {
+    key: "ytm",
+    label: "YTM @ LTP",
+    tip: "Annualised yield at this price. The muted figure below is the total return to maturity, not annualised.",
+  },
   { key: "turnover", label: "Retail turnover" },
   { key: "rating_rank", label: "Rating" },
   { key: "coupon", label: "Payout" },
@@ -208,7 +228,11 @@ const BASE_COLS: Col[] = [
 /** With Kite connected, YTM @ Ask slots in right after YTM @ LTP. */
 const KITE_COLS: Col[] = [
   ...BASE_COLS.slice(0, 3),
-  { key: "ask_ytm", label: "YTM @ Ask" },
+  {
+    key: "ask_ytm",
+    label: "YTM @ Ask",
+    tip: "Annualised yield at this price. The muted figure below is the total return to maturity, not annualised.",
+  },
   ...BASE_COLS.slice(3),
 ];
 
@@ -407,6 +431,7 @@ export default function ExploreTable({
             {cols.map((c, i) => (
               <th
                 key={i}
+                title={c.tip}
                 className={`relative px-3 py-3 whitespace-nowrap ${c.right ? "text-right" : "text-left"} ${c.key ? "cursor-pointer select-none hover:text-zinc-300" : ""}`}
                 onClick={() =>
                   c.key &&
@@ -418,6 +443,7 @@ export default function ExploreTable({
               >
                 <span className={c.key === shownSortKey ? "text-zinc-200" : undefined}>
                   {c.label}
+                  {c.tip && <span className="ml-1 text-zinc-600">ⓘ</span>}
                 </span>
                 {c.key === shownSortKey && (
                   <span className="ml-1 text-emerald-500/80">{sort.dir === -1 ? "▼" : "▲"}</span>
@@ -557,40 +583,45 @@ export function Row({
             </span>
           )}
         </div>
-        {b.ltp != null && (
-          <div
-            className={`group/ltp text-[11px] font-normal ${
-              b.stale && (b.days_since_traded ?? 0) > 90 ? "text-amber-500/80" : "text-zinc-500"
-            }`}
-            onClick={(e) => {
-              e.stopPropagation();
-              onSelect(b.isin, "chart");
-            }}
-            title={
-              [
-                b.stale && b.days_since_traded != null
-                  ? `No trades seen for ${b.days_since_traded} days — this price and its YTM may be outdated`
-                  : null,
-                b.face_value != null && b.ltp < b.face_value ? "Below face value" : null,
-              ]
-                .filter(Boolean)
-                .join("\n") || undefined
-            }
-          >
-            <span className="group-hover/ltp:underline decoration-zinc-600 underline-offset-2 cursor-pointer">
-              {fmt.inrFull(b.ltp)}
-            </span>
-            {!b.stale && b.prev_ltp != null && b.ltp !== b.prev_ltp && (
-              <span
-                className={`ml-1 text-[10px] ${
-                  b.ltp > b.prev_ltp ? "text-emerald-500/80" : "text-red-400/70"
+        {(b.ltp != null || (b.ytm != null && absReturnText(b.valuation))) && (
+          <div className="flex items-center gap-3 text-[11px] font-normal">
+            {b.ytm != null && <AbsReturn value={b.valuation} />}
+            {b.ltp != null && (
+              <div
+                className={`group/ltp ${
+                  b.stale && (b.days_since_traded ?? 0) > 90 ? "text-amber-500/80" : "text-zinc-500"
                 }`}
-                title={`LTP on previous trading day: ${fmt.inrFull(b.prev_ltp)}`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onSelect(b.isin, "chart");
+                }}
+                title={
+                  [
+                    b.stale && b.days_since_traded != null
+                      ? `No trades seen for ${b.days_since_traded} days — this price and its YTM may be outdated`
+                      : null,
+                    b.face_value != null && b.ltp < b.face_value ? "Below face value" : null,
+                  ]
+                    .filter(Boolean)
+                    .join("\n") || undefined
+                }
               >
-                {b.ltp > b.prev_ltp ? "▲" : "▼"}
-              </span>
+                <span className="group-hover/ltp:underline decoration-zinc-600 underline-offset-2 cursor-pointer">
+                  {fmt.inrFull(b.ltp)}
+                </span>
+                {!b.stale && b.prev_ltp != null && b.ltp !== b.prev_ltp && (
+                  <span
+                    className={`ml-1 text-[10px] ${
+                      b.ltp > b.prev_ltp ? "text-emerald-500/80" : "text-red-400/70"
+                    }`}
+                    title={`LTP on previous trading day: ${fmt.inrFull(b.prev_ltp)}`}
+                  >
+                    {b.ltp > b.prev_ltp ? "▲" : "▼"}
+                  </span>
+                )}
+                {b.stale && <span className="ml-1 text-[10px] text-zinc-600 align-middle">⚠</span>}
+              </div>
             )}
-            {b.stale && <span className="ml-1 text-[10px] text-zinc-600 align-middle">⚠</span>}
           </div>
         )}
       </td>
