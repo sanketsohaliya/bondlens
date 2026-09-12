@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { fmt } from "../api/client";
 import type { AskYtm, Bond } from "../api/types";
 import { calendarAsOf, calendarDate } from "./cashflowEvidence";
+import { OTC_MAX_AGE_DAYS, OTC_MAX_GAP } from "./quoteValuation";
 
 type PayoutData = Pick<
   Bond,
@@ -110,4 +111,65 @@ export function usePayoutDay(): string {
   const [day, setDay] = useState(() => calendarAsOf(undefined));
   useEffect(() => watchPayoutDay(setDay), []);
   return day;
+}
+
+type OtcData = Pick<
+  Bond,
+  | "ytm"
+  | "otc_yield"
+  | "otc_price_pct"
+  | "otc_trade_date"
+  | "otc_turnover"
+  | "turnover"
+  | "prev_turnover"
+> & { nse_turnover?: number | null; bse_turnover?: number | null };
+
+/** Second line of the Retail turnover cell: the institutional (OTC) yield and
+ * clean price to compare against the retail YTM one column left. Amber when
+ * the two yields differ by more than OTC_MAX_GAP and the OTC print is recent.
+ * Falls back to the OTC turnover when no OTC yield exists. */
+export function otcLine(
+  b: OtcData,
+  today: string,
+): { text: string; attention: boolean; title: string } | null {
+  const retail = (b.nse_turnover ?? 0) + (b.bse_turnover ?? 0);
+  const parts: string[] = [];
+  if (b.nse_turnover != null || b.bse_turnover != null) {
+    parts.push(
+      `Retail turnover ${fmt.inr(retail)}${b.prev_turnover != null ? ` (prev ${fmt.inr(b.prev_turnover)})` : ""}.`,
+    );
+  }
+  if (b.otc_yield != null && Number.isFinite(b.otc_yield)) {
+    const ageDays = b.otc_trade_date
+      ? Math.round((Date.parse(today) - Date.parse(b.otc_trade_date)) / 86_400_000)
+      : Number.POSITIVE_INFINITY;
+    const recent = ageDays >= 0 && ageDays <= OTC_MAX_AGE_DAYS;
+    const attention =
+      recent &&
+      b.ytm != null &&
+      Number.isFinite(b.ytm) &&
+      Math.abs(b.ytm - b.otc_yield) > OTC_MAX_GAP;
+    const price = b.otc_price_pct != null ? ` @ ${fmt.num(Number(b.otc_price_pct))}` : "";
+    parts.push(
+      `OTC${b.otc_turnover != null ? ` ${fmt.inr(b.otc_turnover)}` : ""}${b.otc_trade_date ? ` on ${calendarDate(b.otc_trade_date)}` : ""}${b.otc_price_pct != null ? ` at ${fmt.num(Number(b.otc_price_pct))}% of face` : ""}, ${fmt.pct(b.otc_yield)} yield.`,
+    );
+    if (attention && b.ytm != null)
+      parts.push(
+        `${Math.abs(b.ytm - b.otc_yield).toFixed(1)} pts ${b.ytm > b.otc_yield ? "above" : "below"} the retail YTM.`,
+      );
+    return { text: `OTC ${fmt.pct(b.otc_yield)}${price}`, attention, title: parts.join(" ") };
+  }
+  if (b.otc_turnover != null) {
+    parts.push(
+      `OTC turnover ${fmt.inr(b.otc_turnover)}${b.otc_trade_date ? ` on ${calendarDate(b.otc_trade_date)}` : ""}.`,
+    );
+    return { text: `OTC ${fmt.inr(b.otc_turnover)}`, attention: false, title: parts.join(" ") };
+  }
+  return null;
+}
+
+/** A row click that lands after the user drag-selected text (e.g. the ISIN)
+ * must not open the drawer, or "select and copy" is impossible. */
+export function shouldOpenRow(selection: string | null | undefined): boolean {
+  return !(selection ?? "").trim();
 }

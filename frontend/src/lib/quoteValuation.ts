@@ -49,12 +49,88 @@ export function hasYieldReview(
   return yieldReviewWarnings(value).length > 0 || (!value?.warnings?.length && reliable === false);
 }
 
+/** Mirror of backend valuation.OTC_MAX_GAP / OTC_MAX_AGE (backend/analytics/valuation.py). */
+export const OTC_MAX_GAP = 3.0;
+export const OTC_MAX_AGE_DAYS = 14;
+
+export type ComparisonText = {
+  headline: string;
+  action: string | null;
+  tone: "attention" | "neutral";
+};
+
+/** Decision-oriented wording for an otc_difference note. Direction matters:
+ * retail yield ABOVE OTC means the retail price is below institutional (a
+ * stale or thin print, or a genuine bargain); BELOW means you would pay more
+ * than institutions did. Falls back to the stored sentence for old snapshots
+ * that predate the structured fields. */
+export function comparisonText(
+  note: YieldWarning,
+  retailYtm: number | null | undefined,
+): ComparisonText {
+  const { otc_yield: otc, otc_trade_date: date, gap } = note;
+  if (otc == null || gap == null || retailYtm == null)
+    return { headline: note.message, action: null, tone: "neutral" };
+  const direction = gap > 0 ? "above" : "below";
+  const when = date ? ` (${fmt.date(date)})` : "";
+  const headline = `Retail ${fmt.pct(retailYtm)} vs OTC ${fmt.pct(otc)}${when} — ${Math.abs(gap).toFixed(1)} pts ${direction} institutional.`;
+  const action =
+    gap > 0
+      ? "The retail price may be stale or thin; check the order book before trusting this yield."
+      : "You would be paying more than institutions did; compare the order book ask.";
+  return { headline, action, tone: "attention" };
+}
+
+const SHORT_CAVEATS: Record<string, string> = {
+  call_scenario: "Yield to call — assumes the issuer exercises the call at par.",
+  variable_coupon: "Floating coupon — yield assumes today's rate.",
+  yield_range: "Yield is outside the sanity range — verify the price.",
+  short_horizon_range: "Very short horizon — check the rupee gain, not the annualised rate.",
+  future_otc_date: "OTC print is future-dated — comparison unavailable.",
+  estimated_payments: "Some payments are estimated from the coupon rate.",
+  schedule_invalid: "Payment schedule could not be validated.",
+};
+const CAVEAT_PRIORITY = [
+  "otc_difference",
+  "schedule_invalid",
+  "yield_range",
+  "short_horizon_range",
+  "call_scenario",
+  "variable_coupon",
+  "estimated_payments",
+];
+
+/** Hover tooltip: what you would earn, plus at most one caveat. Everything
+ * else about how the number was produced lives in provenanceLines(). */
 export function valuationTooltip(value: YieldValuation | null | undefined): string {
   if (!value)
     return "Calculation metadata unavailable for this snapshot; refresh the valuation before relying on it.";
-  const lines = [
-    `Indicative gross ${valuationLabel(value)} at the displayed price; not a guaranteed return.`,
-  ];
+  const horizon =
+    value.yield_type === "ytc" || value.ytm_method === "ytc" ? "first call" : "maturity";
+  const lines =
+    value.gross_gain != null
+      ? [
+          `Earn ${fmt.inrFull(value.gross_gain)} per unit (${fmt.pct(value.holding_period_return)}) if held to ${horizon}, before tax.`,
+        ]
+      : [`Indicative ${valuationLabel(value)} at the displayed price.`];
+  const warnings = value.warnings ?? [];
+  for (const code of CAVEAT_PRIORITY) {
+    const note = warnings.find((w) => w.code === code);
+    if (!note) continue;
+    if (code === "otc_difference" && note.gap != null) {
+      lines.push(
+        `⚠ ${Math.abs(note.gap).toFixed(1)} pts ${note.gap > 0 ? "above" : "below"} OTC — verify the price.`,
+      );
+    } else lines.push(`⚠ ${SHORT_CAVEATS[code] ?? note.message}`);
+    break;
+  }
+  return lines.join("\n");
+}
+
+/** Full calculation provenance, for the drawer's ⓘ beside the yield. */
+export function provenanceLines(value: YieldValuation | null | undefined): string[] {
+  if (!value) return [];
+  const lines: string[] = [];
   if (value.as_of) lines.push(`Valuation date: ${value.as_of}.`);
   if (value.price_basis) lines.push(value.price_basis);
   if (value.periods_per_year)
@@ -65,16 +141,12 @@ export function valuationTooltip(value: YieldValuation | null | undefined): stri
     );
   if (value.gross_gain != null)
     lines.push(
-      `Total modeled cash gain: ${fmt.inrFull(value.gross_gain)} per unit (${fmt.pct(value.holding_period_return)} of price), without reinvestment, fees or taxes.`,
+      `Total modeled cash gain ${fmt.inrFull(value.gross_gain)} per unit (${fmt.pct(value.holding_period_return)} of price), without reinvestment, fees or taxes.`,
     );
-  lines.push(
-    ...(value.warnings ?? []).map((note) =>
-      isMarketComparison(note) ? `Market comparison: ${note.message}` : note.message,
-    ),
-  );
+  for (const note of value.warnings ?? []) if (!isMarketComparison(note)) lines.push(note.message);
   if (value.settlement_assumption) lines.push(value.settlement_assumption);
   if (value.calculation_version) lines.push(`Calculator: ${value.calculation_version}.`);
-  return lines.join("\n");
+  return lines;
 }
 
 export function useQuoteClock(): number {

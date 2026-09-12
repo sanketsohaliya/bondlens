@@ -8,7 +8,7 @@ from datetime import UTC, date, datetime
 from . import yields
 from .schedule import Flow, Schedule
 
-VERSION = "2026-09-12.2"
+VERSION = "2026-09-12.3"
 RELIABLE = (-1.0, 50.0)
 RELIABLE_NEAR = (0.0, 20.0)
 NEAR_DAYS = 90
@@ -16,8 +16,8 @@ OTC_MAX_GAP = 3.0
 OTC_MAX_AGE = 14
 
 
-def warning(code: str, message: str, severity: str = "caution") -> dict:
-    return {"code": code, "message": message, "severity": severity}
+def warning(code: str, message: str, severity: str = "caution", **fields) -> dict:
+    return {"code": code, "message": message, "severity": severity, **fields}
 
 
 def cautions(value: float | None, horizon: date | None, today: date,
@@ -40,7 +40,18 @@ def cautions(value: float | None, horizon: date | None, today: date,
     if (otc_yield is not None and math.isfinite(otc_yield) and otc_trade_date
           and 0 <= (today - otc_trade_date).days <= OTC_MAX_AGE
           and abs(value - otc_yield) > OTC_MAX_GAP):
-        result.append(warning("otc_difference", f"Recent OTC yield {otc_yield:.2f}% on {otc_trade_date}; difference from this yield: {abs(value - otc_yield):.2f} percentage points. Prices, dates, scenarios and quotation conventions may differ; this comparison does not establish a calculation problem", "info"))
+        # Signed: positive means the retail yield is above the OTC print (so
+        # the retail price is below institutional). The UI composes its own
+        # direction-specific wording from these fields; `message` is the
+        # plain-text form quoted into the AI prompt.
+        gap = round(value - otc_yield, 2)
+        direction = "above" if gap > 0 else "below"
+        result.append(warning(
+            "otc_difference",
+            f"Retail yield {value:.2f}% is {abs(gap):.2f} pts {direction} the recent OTC yield "
+            f"{otc_yield:.2f}% ({otc_trade_date}). OTC and retail quotes can differ in price, "
+            f"date and convention; treat as market context, not a calculation error.",
+            "info", otc_yield=otc_yield, otc_trade_date=otc_trade_date, gap=gap))
     return result
 
 

@@ -5,7 +5,7 @@ import type { BondDetail } from "../api/types";
 import { LINK_TIPS, nsdlUrl } from "../lib/links";
 import { replaceNumberWords } from "../lib/numberWords";
 import { usePortfolio } from "../lib/portfolio";
-import { hasYieldReview, valuationTooltip } from "../lib/quoteValuation";
+import { hasYieldReview, provenanceLines, valuationTooltip } from "../lib/quoteValuation";
 import { firstFutureCall, isYieldToCall, yieldLabel } from "../lib/yieldDisplay";
 import AiPromptBtn from "./AiPromptBtn";
 import CashflowTable from "./CashflowTable";
@@ -506,7 +506,9 @@ function Overview({
           label={`${yieldLabel(b)}${b.ytm_reliable === false && hasYieldReview(b.valuation, b.ytm_reliable) ? " ⚠" : ""}`}
           value={fmt.pct(b.ytm)}
           accent
-          tip={`${valuationTooltip(b.valuation)}\n${ytmTip(b) ?? ""}`}
+          tip={[valuationTooltip(b.valuation), ytmTip(b), ...provenanceLines(b.valuation)]
+            .filter(Boolean)
+            .join("\n")}
         />
         {b.yield_to_worst != null && b.yield_to_worst !== b.ytm && (
           <Stat label="Yield to worst" value={fmt.pct(b.yield_to_worst)} />

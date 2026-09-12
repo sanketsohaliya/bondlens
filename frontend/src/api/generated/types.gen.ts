@@ -2251,6 +2251,18 @@ export type YieldWarning = {
      * Severity
      */
     severity: 'info' | 'caution' | 'error';
+    /**
+     * Otc Yield
+     */
+    otc_yield?: number | null;
+    /**
+     * Otc Trade Date
+     */
+    otc_trade_date?: string | null;
+    /**
+     * Gap
+     */
+    gap?: number | null;
 };
 
 /**

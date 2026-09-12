@@ -26,7 +26,23 @@ export default function AiPromptBtn({
   const [manual, setManual] = useState("");
 
   const label =
-    phase === "working" ? "…" : phase === "copied" || phase === "blocked" ? "✓ Copied" : "Ask AI ↗";
+    phase === "working"
+      ? "…"
+      : phase === "copied"
+        ? "✓ Copied"
+        : phase === "blocked"
+          ? "✓ Copied — open chatgpt.com"
+          : "Ask AI ↗";
+  // Row buttons sit behind a hover reveal; warming the detail query then means
+  // the click itself has no await, so copy and open both run inside activation.
+  const prefetch = () => {
+    if (bond) return;
+    void queryClient.prefetchQuery({
+      queryKey: ["bond", isin, undefined],
+      queryFn: () => api.bond(isin, undefined),
+      staleTime: 60_000,
+    });
+  };
   const tip =
     phase === "blocked"
       ? LINK_TIPS.askAiBlocked
@@ -77,6 +93,8 @@ export default function AiPromptBtn({
       <button
         type="button"
         onClick={onClick}
+        onMouseEnter={prefetch}
+        onFocus={prefetch}
         disabled={phase === "working"}
         title={tip}
         aria-label={tip}

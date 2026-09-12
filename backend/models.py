@@ -16,6 +16,11 @@ class YieldWarning(BaseModel):
     code: str
     message: str
     severity: Literal["info", "caution", "error"]
+    # Structured fields for otc_difference so the UI can phrase the comparison
+    # by direction. gap is signed: retail yield minus OTC yield.
+    otc_yield: float | None = None
+    otc_trade_date: date | None = None
+    gap: float | None = None
 
 
 class YieldValuation(BaseModel):

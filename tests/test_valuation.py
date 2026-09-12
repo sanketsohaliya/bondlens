@@ -63,6 +63,27 @@ def test_short_horizon_shows_rupee_gain_even_inside_normal_yield_band():
     assert "short_horizon" in {w["code"] for w in result["warnings"]}
 
 
+@pytest.mark.parametrize("retail,otc,gap,direction", [
+    (18.26, 12.26, 6.0, "above"),
+    (9.10, 12.26, -3.16, "below"),
+])
+def test_otc_difference_carries_the_numbers_and_says_which_way(retail, otc, gap, direction):
+    [note] = valuation.cautions(retail, TODAY + timedelta(days=365), TODAY,
+                                otc_yield=otc, otc_trade_date=TODAY)
+    assert note["code"] == "otc_difference"
+    assert note["otc_yield"] == otc
+    assert note["otc_trade_date"] == TODAY
+    assert note["gap"] == gap
+    # The sentence leads with direction so a reader does not have to infer it.
+    assert note["message"].startswith(f"Retail yield {retail:.2f}% is {abs(gap):.2f} pts {direction}")
+    assert "not a calculation error" in note["message"]
+
+
+def test_otc_within_tolerance_produces_no_comparison_note():
+    assert valuation.cautions(12.0, TODAY + timedelta(days=365), TODAY,
+                              otc_yield=12.26, otc_trade_date=TODAY) == []
+
+
 def test_future_otc_print_is_not_called_a_fresh_comparison():
     warnings = valuation.cautions(10, TODAY + timedelta(days=365), TODAY,
                                   otc_yield=20, otc_trade_date=TODAY + timedelta(days=1))

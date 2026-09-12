@@ -4,7 +4,13 @@ import { createPortal } from "react-dom";
 import { api, fmt } from "../api/client";
 import type { AskYtm, Bond } from "../api/types";
 import { useAuth } from "../lib/auth";
-import { askTicketText, payoutDisplay, usePayoutDay } from "../lib/exploreAmounts";
+import {
+  askTicketText,
+  otcLine,
+  payoutDisplay,
+  shouldOpenRow,
+  usePayoutDay,
+} from "../lib/exploreAmounts";
 import { LINK_TIPS, nsdlUrl } from "../lib/links";
 import { nextListName, useHeldIsins, useWatchlists } from "../lib/lists";
 import {
@@ -17,7 +23,6 @@ import {
 import { useColumnWidths } from "../lib/useColumnWidths";
 import AddLotPopover from "./AddLotPopover";
 import AiPromptBtn from "./AiPromptBtn";
-import CopyBtn from "./CopyBtn";
 import RatingBadge from "./RatingBadge";
 import YieldQuote from "./YieldQuote";
 
@@ -457,7 +462,7 @@ export default function ExploreTable({
   );
 }
 
-function Row({
+export function Row({
   bond: b,
   today,
   onSelect,
@@ -471,7 +476,10 @@ function Row({
 }) {
   return (
     <tr
-      onClick={() => onSelect(b.isin)}
+      onClick={() => {
+        if (!shouldOpenRow(window.getSelection()?.toString())) return;
+        onSelect(b.isin);
+      }}
       className="group/row border-b border-zinc-900 hover:bg-zinc-900/60 cursor-pointer transition-colors"
     >
       <td className="pl-3 pr-1 py-2.5 w-14">
@@ -481,18 +489,14 @@ function Row({
         </span>
       </td>
       <td className="px-3 py-2.5 w-80 max-w-80">
+        {/* Issuer leads: it is what you scan for. Symbol, ISIN and the
+            hover-revealed actions sit beneath, separated by spacing only. */}
         <div className="flex items-center gap-1.5 min-w-0">
-          <span className="font-medium text-zinc-200 hover:text-emerald-400 hover:underline underline-offset-2 transition-colors shrink-0">
-            {b.nse_symbol ?? b.bse_scrip_id ?? b.isin}
-          </span>
-          <span className="font-mono text-[10px] text-zinc-500 truncate" title="ISIN">
-            {b.isin}
-          </span>
-          <span className="flex items-center gap-2 shrink-0 opacity-0 group-hover/row:opacity-100 transition-opacity">
-            <CopyBtn text={b.isin} label="ISIN" />
-            <RowLink href={nsdlUrl(b.isin)} label="NSDL" tip={LINK_TIPS.nsdl} />
-            {b.kite_url && <RowLink href={b.kite_url} label="Kite" tip={LINK_TIPS.kite} />}
-            <AiPromptBtn isin={b.isin} variant="row" />
+          <span
+            className="font-medium text-zinc-200 truncate hover:text-emerald-400 hover:underline underline-offset-2 transition-colors"
+            title={b.issuer_name ?? undefined}
+          >
+            {b.issuer_name ?? b.isin}
           </span>
           {b.in_default && (
             <span
@@ -503,7 +507,20 @@ function Row({
             </span>
           )}
         </div>
-        <div className="text-[11px] text-zinc-500 truncate max-w-76">{b.issuer_name ?? b.isin}</div>
+        <div className="flex items-center gap-3 text-[11px] min-w-0">
+          <span className="text-zinc-400 shrink-0">{b.nse_symbol ?? b.bse_scrip_id ?? b.isin}</span>
+          <span
+            className="font-mono text-[10px] text-zinc-500 select-text cursor-text truncate"
+            title="ISIN"
+          >
+            {b.isin}
+          </span>
+          <span className="flex items-center gap-3 shrink-0 opacity-0 group-hover/row:opacity-100 transition-opacity">
+            <RowLink href={nsdlUrl(b.isin)} label="NSDL" tip={LINK_TIPS.nsdl} />
+            {b.kite_url && <RowLink href={b.kite_url} label="Kite" tip={LINK_TIPS.kite} />}
+            <AiPromptBtn isin={b.isin} variant="row" />
+          </span>
+        </div>
       </td>
       {/* Merged column: YTM (at the last traded price) on top, the LTP
           it was computed from as the sub-line. */}
@@ -618,17 +635,17 @@ function Row({
             )}
           </>
         )}
-        {b.otc_turnover != null && (
-          <div
-            className="text-[11px] text-zinc-500"
-            title={
-              "OTC turnover on its last OTC trade date" +
-              (b.otc_price_pct != null ? ` · at ${fmt.num(Number(b.otc_price_pct))}% of face` : "")
-            }
-          >
-            OTC {fmt.inr(b.otc_turnover)}
-          </div>
-        )}
+        {(() => {
+          const otc = otcLine(b, today);
+          return otc ? (
+            <div
+              className={`text-[11px] ${otc.attention ? "text-amber-400/80" : "text-zinc-500"}`}
+              title={otc.title}
+            >
+              {otc.text}
+            </div>
+          ) : null;
+        })()}
       </td>
       <td
         className="px-3 py-2.5 whitespace-nowrap hover:underline decoration-zinc-600 underline-offset-2"

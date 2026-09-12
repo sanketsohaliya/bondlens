@@ -1,6 +1,7 @@
 import { fmt } from "../api/client";
 import type { YieldValuation } from "../api/types";
 import {
+  comparisonText,
   hasYieldReview,
   isMarketComparison,
   valuationTooltip,
@@ -58,16 +59,22 @@ export function YieldNotes({
           </ul>
         </details>
       )}
-      {comparisons.length > 0 && (
-        <details className="rounded border border-zinc-800 p-3 text-xs text-zinc-400">
-          <summary className="cursor-pointer">Market comparison</summary>
-          <ul className="mt-2 list-disc pl-4 space-y-1">
-            {comparisons.map((note, index) => (
-              <li key={`${note.code}:${index}`}>{note.message}</li>
-            ))}
-          </ul>
-        </details>
-      )}
+      {comparisons.map((note, index) => {
+        const text = comparisonText(note, value?.ytm);
+        return (
+          <div key={`${note.code}:${index}`} className="rounded border border-zinc-800 p-3 text-xs">
+            <div className="text-[10px] uppercase tracking-wide text-zinc-500">
+              Market comparison
+            </div>
+            <div
+              className={`mt-1 ${text.tone === "attention" ? "text-zinc-200 font-medium" : "text-zinc-400"}`}
+            >
+              {text.headline}
+            </div>
+            {text.action && <div className="mt-0.5 text-zinc-400">{text.action}</div>}
+          </div>
+        );
+      })}
     </>
   );
 }

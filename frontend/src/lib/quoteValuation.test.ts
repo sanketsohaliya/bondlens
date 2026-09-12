@@ -51,7 +51,11 @@ describe("quote valuation", () => {
       ],
     };
     expect(valuationLabel(value)).toBe("YTC (estimated)");
-    expect(valuationTooltip(value)).toContain("Assumes exercise at par");
+    // The caveat survives on hover in its terse form, not the raw sentence.
+    const tip = valuationTooltip(value);
+    expect(tip).toContain("⚠ Yield to call");
+    expect(tip).toContain("exercises the call");
+    expect(tip.split("\n")).toHaveLength(2);
   });
 
   it.each([
@@ -71,7 +75,8 @@ describe("quote valuation", () => {
     };
     const html = renderToStaticMarkup(createElement(YieldQuote, { value }));
     expect(html).toContain("10.00%");
-    expect(html).toContain("OTC 5.00%");
+    // Legacy snapshot (no structured gap): the stored sentence is the one caveat.
+    expect(html).toContain("⚠ OTC 5.00% on 2026-09-11");
     expect(html).not.toContain("text-amber");
     expect(html).not.toContain(">review<");
     expect(hasYieldReview(value, false)).toBe(false);
@@ -109,6 +114,112 @@ describe("quote valuation", () => {
     expect(comparison).toContain("Market comparison");
     expect(comparison).toContain("OTC comparison data");
     expect(comparison).not.toContain("text-amber");
+  });
+
+  it("phrases the OTC comparison by direction with a matching action", async () => {
+    const { comparisonText } = await import("./quoteValuation");
+    const above = comparisonText(
+      {
+        code: "otc_difference",
+        severity: "info",
+        message: "legacy",
+        otc_yield: 12.26,
+        otc_trade_date: "2026-09-11",
+        gap: 6.0,
+      },
+      18.26,
+    );
+    expect(above.headline).toBe(
+      "Retail 18.26% vs OTC 12.26% (11 Sept 2026) — 6.0 pts above institutional.",
+    );
+    expect(above.action).toContain("stale or thin");
+    expect(above.action).toContain("order book");
+    expect(above.tone).toBe("attention");
+    const below = comparisonText(
+      {
+        code: "otc_difference",
+        severity: "info",
+        message: "legacy",
+        otc_yield: 12.26,
+        otc_trade_date: "2026-09-11",
+        gap: -3.16,
+      },
+      9.1,
+    );
+    expect(below.headline).toBe(
+      "Retail 9.10% vs OTC 12.26% (11 Sept 2026) — 3.2 pts below institutional.",
+    );
+    expect(below.action).toContain("paying more than institutions");
+    expect(below.tone).toBe("attention");
+    // Old snapshot without structured fields: fall back to the stored sentence.
+    const legacy = comparisonText(
+      { code: "otc_difference", severity: "info", message: "OTC 5.00% on 2026-09-11" },
+      10,
+    );
+    expect(legacy.headline).toBe("OTC 5.00% on 2026-09-11");
+    expect(legacy.action).toBeNull();
+    expect(legacy.tone).toBe("neutral");
+  });
+
+  it("keeps the hover tooltip to a gain line plus at most one caveat", () => {
+    const base = {
+      ...quote(),
+      gross_gain: 1540,
+      holding_period_return: 16.3,
+      day_count: "act/act",
+      periods_per_year: 12,
+      price_basis: "Dirty price",
+      settlement_assumption: "T+1",
+      calculation_version: "v",
+    };
+    const plain = valuationTooltip(base).split("\n");
+    expect(plain).toEqual(["Earn ₹1,540 per unit (16.30%) if held to maturity, before tax."]);
+    const withOtc = valuationTooltip({
+      ...base,
+      warnings: [
+        { code: "short_horizon", severity: "info", message: "Only 40 days" },
+        {
+          code: "otc_difference",
+          severity: "info",
+          message: "legacy",
+          otc_yield: 12.26,
+          otc_trade_date: "2026-09-11",
+          gap: 6.0,
+        },
+        { code: "yield_range", severity: "caution", message: "Yield outside sanity range" },
+      ],
+    }).split("\n");
+    expect(withOtc).toHaveLength(2);
+    expect(withOtc[1]).toBe("⚠ 6.0 pts above OTC — verify the price.");
+    const variable = valuationTooltip({
+      ...base,
+      warnings: [{ code: "variable_coupon", severity: "caution", message: "long text" }],
+    }).split("\n");
+    expect(variable[1]).toBe("⚠ Floating coupon — yield assumes today's rate.");
+    const ytc = valuationTooltip({ ...base, yield_type: "ytc" as const }).split("\n");
+    expect(ytc[0]).toContain("if held to first call");
+    const noGain = valuationTooltip({ ...quote(), gross_gain: null }).split("\n");
+    expect(noGain).toEqual(["Indicative YTM at the displayed price."]);
+    for (const line of [...plain, ...withOtc, ...variable]) {
+      expect(line).not.toMatch(/Day count|compounded|Calculator|Valuation date|settlement/i);
+    }
+  });
+
+  it("keeps every provenance line available for the drawer", async () => {
+    const { provenanceLines } = await import("./quoteValuation");
+    const lines = provenanceLines({
+      ...quote(),
+      day_count: "act/act",
+      periods_per_year: 12,
+      price_basis: "Dirty price",
+      settlement_assumption: "T+1 settlement",
+    });
+    expect(lines.join("\n")).toMatch(/Valuation date: 2026-09-12/);
+    expect(lines.join("\n")).toMatch(/Dirty price/);
+    expect(lines.join("\n")).toMatch(/compounded 12/);
+    expect(lines.join("\n")).toMatch(/Actual\/Actual/);
+    expect(lines.join("\n")).toMatch(/T\+1 settlement/);
+    expect(lines.join("\n")).toMatch(/Calculator: test/);
   });
 
   it("retains unexplained legacy caution flags rather than assuming they were OTC-only", () => {
