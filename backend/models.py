@@ -21,6 +21,12 @@ class YieldWarning(BaseModel):
     otc_yield: float | None = None
     otc_trade_date: date | None = None
     gap: float | None = None
+    # Rupee view of the same comparison (dirty, per unit). price_gap is signed:
+    # retail minus OTC, so negative means retail is the cheaper way in.
+    otc_price: float | None = None
+    retail_price: float | None = None
+    price_gap: float | None = None
+    price_gap_pct: float | None = None
 
 
 class YieldValuation(BaseModel):

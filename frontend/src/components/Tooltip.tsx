@@ -19,7 +19,7 @@ export default function Tip({
         // With display:contents the wrapper has a zero rect — measure the child.
         const el = (e.currentTarget.firstElementChild ?? e.currentTarget) as HTMLElement;
         const r = el.getBoundingClientRect();
-        setPos({ x: Math.max(8, Math.min(r.left, window.innerWidth - 292)), y: r.bottom + 6 });
+        setPos({ x: Math.max(8, Math.min(r.left, window.innerWidth - 332)), y: r.bottom + 6 });
       }}
       onMouseLeave={() => setPos(null)}
     >

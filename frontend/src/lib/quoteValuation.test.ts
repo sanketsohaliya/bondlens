@@ -116,44 +116,76 @@ describe("quote valuation", () => {
     expect(comparison).not.toContain("text-amber");
   });
 
-  it("phrases the OTC comparison by direction with a matching action", async () => {
+  it("states the OTC comparison as a rupee price gap, in the units of the LTP", async () => {
     const { comparisonText } = await import("./quoteValuation");
+    const note = (extra: object) => ({
+      code: "otc_difference",
+      severity: "info" as const,
+      message: "legacy",
+      ...extra,
+    });
     const above = comparisonText(
-      {
-        code: "otc_difference",
-        severity: "info",
-        message: "legacy",
+      note({
         otc_yield: 12.26,
         otc_trade_date: "2026-09-11",
         gap: 6.0,
-      },
+        otc_price: 9950,
+        retail_price: 9425,
+        price_gap: -525,
+        price_gap_pct: -5.28,
+      }),
       18.26,
     );
     expect(above.headline).toBe(
       "Retail 18.26% vs OTC 12.26% (11 Sept 2026) — 6.0 pts above institutional.",
     );
+    // The action is the price gap the reader can compare with the LTP, not an instruction to go look elsewhere.
     expect(above.action).toBe(
-      "Looks too good: 6.0 pts above what institutions paid — the retail price is probably stale. Check the order book.",
+      "Institutions paid ≈₹9,950 for this on 11 Sept 2026; retail last traded at ₹9,425 — ₹525 (5.3%) cheaper.",
     );
+    expect(above.action).not.toMatch(/stale|order book/);
+    // Dirty prices carry paise; prose rounds to whole rupees.
+    const fractional = comparisonText(
+      note({
+        otc_yield: 12.26,
+        otc_trade_date: "2026-09-11",
+        gap: 6.0,
+        otc_price: 9950.4,
+        retail_price: 9425,
+        price_gap: -525.4,
+        price_gap_pct: -5.28,
+      }),
+      18.26,
+    );
+    expect(fractional.action).toContain("≈₹9,950 for this");
+    expect(fractional.action).toContain("₹525 (5.3%) cheaper");
     expect(above.tone).toBe("attention");
     const below = comparisonText(
-      {
-        code: "otc_difference",
-        severity: "info",
-        message: "legacy",
+      note({
         otc_yield: 12.26,
         otc_trade_date: "2026-09-11",
         gap: -3.16,
-      },
+        otc_price: 9950,
+        retail_price: 10300,
+        price_gap: 350,
+        price_gap_pct: 3.52,
+      }),
       9.1,
     );
     expect(below.headline).toBe(
       "Retail 9.10% vs OTC 12.26% (11 Sept 2026) — 3.2 pts below institutional.",
     );
     expect(below.action).toBe(
-      "You'd get 3.2 pts less yield than institutions did — check the ask before buying.",
+      "Institutions paid ≈₹9,950 for this on 11 Sept 2026; retail last traded at ₹10,300 — ₹350 (3.5%) more.",
     );
     expect(below.tone).toBe("attention");
+    // No rupee data (accrued unknowable): headline only, no filler action.
+    const yieldOnly = comparisonText(
+      note({ otc_yield: 12.26, otc_trade_date: "2026-09-11", gap: 6.0 }),
+      18.26,
+    );
+    expect(yieldOnly.headline).toContain("6.0 pts above institutional");
+    expect(yieldOnly.action).toBeNull();
     // Old snapshot without structured fields: fall back to the stored sentence.
     const legacy = comparisonText(
       { code: "otc_difference", severity: "info", message: "OTC 5.00% on 2026-09-11" },
@@ -188,16 +220,20 @@ describe("quote valuation", () => {
           otc_yield: 12.26,
           otc_trade_date: "2026-09-11",
           gap: 6.0,
+          otc_price: 9950,
+          retail_price: 9425,
+          price_gap: -525,
+          price_gap_pct: -5.28,
         },
         { code: "yield_range", severity: "caution", message: "Yield outside sanity range" },
       ],
     }).split("\n");
     expect(withOtc).toHaveLength(2);
     expect(withOtc[1]).toBe(
-      "⚠ Looks too good: 6.0 pts above what institutions paid — the retail price is probably stale. Check the order book.",
+      "⚠ Institutions paid ≈₹9,950 for this on 11 Sept 2026; retail last traded at ₹9,425 — ₹525 (5.3%) cheaper.",
     );
-    // Large gaps read as whole points; the row hover and the drawer share one sentence.
-    const big = valuationTooltip({
+    // Without rupee data the one caveat falls back to the yield gap, still exactly one line.
+    const yieldOnly = valuationTooltip({
       ...base,
       warnings: [
         {
@@ -210,9 +246,8 @@ describe("quote valuation", () => {
         },
       ],
     }).split("\n");
-    expect(big[1]).toBe(
-      "⚠ Looks too good: 12 pts above what institutions paid — the retail price is probably stale. Check the order book.",
-    );
+    expect(yieldOnly).toHaveLength(2);
+    expect(yieldOnly[1]).toBe("⚠ Retail yield is 12 pts above the recent OTC print.");
     const variable = valuationTooltip({
       ...base,
       warnings: [{ code: "variable_coupon", severity: "caution", message: "long text" }],

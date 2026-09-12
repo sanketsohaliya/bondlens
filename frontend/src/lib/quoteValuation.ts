@@ -59,12 +59,28 @@ export function gapText(gap: number): string {
   return g >= 10 ? g.toFixed(0) : g.toFixed(1);
 }
 
-/** The judgement a reader should draw from an OTC gap, plus what to do about it. */
-export function otcJudgement(gap: number): string {
-  const g = gapText(gap);
-  return gap > 0
-    ? `Looks too good: ${g} pts above what institutions paid — the retail price is probably stale. Check the order book.`
-    : `You'd get ${g} pts less yield than institutions did — check the ask before buying.`;
+/** The OTC comparison in the units the reader is already looking at: what
+ * institutions paid per unit versus the retail last trade, as a rupee gap.
+ * Null when the print could not be expressed in rupees (accrued interest
+ * unknown), in which case callers fall back to the yield headline. */
+export function otcJudgement(
+  note: Pick<
+    YieldWarning,
+    "otc_price" | "retail_price" | "price_gap" | "price_gap_pct" | "otc_trade_date"
+  >,
+): string | null {
+  const { otc_price: otc, retail_price: retail, price_gap: gap, price_gap_pct: pct } = note;
+  if (otc == null || retail == null || gap == null || pct == null) return null;
+  const when = note.otc_trade_date ? ` on ${fmt.date(note.otc_trade_date)}` : "";
+  const word = gap < 0 ? "cheaper" : "more";
+  const whole = (v: number) => fmt.inrFull(Math.round(v));
+  return `Institutions paid ≈${whole(otc)} for this${when}; retail last traded at ${whole(retail)} — ${whole(Math.abs(gap))} (${Math.abs(pct).toFixed(1)}%) ${word}.`;
+}
+
+/** Yield-only fallback when no rupee comparison is available. */
+export function yieldGapText(gap: number): string {
+  const direction = gap > 0 ? "above" : "below";
+  return `Retail yield is ${gapText(gap)} pts ${direction} the recent OTC print.`;
 }
 
 export type ComparisonText = {
@@ -88,7 +104,7 @@ export function comparisonText(
   const direction = gap > 0 ? "above" : "below";
   const when = date ? ` (${fmt.date(date)})` : "";
   const headline = `Retail ${fmt.pct(retailYtm)} vs OTC ${fmt.pct(otc)}${when} — ${Math.abs(gap).toFixed(1)} pts ${direction} institutional.`;
-  return { headline, action: otcJudgement(gap), tone: "attention" };
+  return { headline, action: otcJudgement(note), tone: "attention" };
 }
 
 const SHORT_CAVEATS: Record<string, string> = {
@@ -127,7 +143,8 @@ export function valuationTooltip(value: YieldValuation | null | undefined): stri
   for (const code of CAVEAT_PRIORITY) {
     const note = warnings.find((w) => w.code === code);
     if (!note) continue;
-    if (code === "otc_difference" && note.gap != null) lines.push(`⚠ ${otcJudgement(note.gap)}`);
+    if (code === "otc_difference" && note.gap != null)
+      lines.push(`⚠ ${otcJudgement(note) ?? yieldGapText(note.gap)}`);
     else lines.push(`⚠ ${SHORT_CAVEATS[code] ?? note.message}`);
     break;
   }

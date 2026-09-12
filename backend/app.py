@@ -367,6 +367,7 @@ def bond_detail(isin: str, price: float | None = Query(None, gt=0, allow_inf_nan
     call_dates = yields.parse_call_dates(terms)
     priced = valuation.calculate(ltp, sched, terms, today, allow_approx=True,
                                  otc_yield=core.get("otc_yield"), otc_trade_date=core.get("otc_trade_date"),
+                                 otc_price_pct=core.get("otc_price_pct"),
                                  price_date=None if custom_price else core.get("trade_date"))
     if perpetual:
         # A maturity-based YTM against a perpetual (9999 sentinel) is
@@ -526,7 +527,8 @@ def bond_valuation(isin: str, price: float = Query(gt=0, allow_inf_nan=False)):
     sched = schedule.build(isin, queries.bond_cashflows(isin), terms, today=today)
     core = queries.analytics_row(isin, STALE_AFTER_DAYS) or {}
     return valuation.calculate(price, sched, terms, today, otc_yield=core.get("otc_yield"),
-                               otc_trade_date=core.get("otc_trade_date"))
+                               otc_trade_date=core.get("otc_trade_date"),
+                               otc_price_pct=core.get("otc_price_pct"))
 
 
 def _annotate_ytm(book: dict, isin: str) -> None:

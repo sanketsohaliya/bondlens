@@ -14,7 +14,7 @@ import { HoldMark, WatchStar } from "./ExploreTable";
 import HoldingPanel from "./HoldingPanel";
 import OrderBook from "./OrderBook";
 import RatingTimeline from "./RatingTimeline";
-import StatBox from "./StatBox";
+import StatBox, { type StatDetail } from "./StatBox";
 import TradeChart from "./TradeChart";
 import { YieldNotes } from "./YieldQuote";
 
@@ -261,12 +261,14 @@ function Stat({
   accent,
   tip,
   badge,
+  detail,
 }: {
   label: string;
   value: string;
   accent?: boolean;
   tip?: string | null;
   badge?: string;
+  detail?: StatDetail;
 }) {
   // Long NSDL prose gets clamped to two lines — surface the full text as a
   // tooltip so nothing is lost (explicit tips take precedence). Amounts
@@ -282,6 +284,7 @@ function Stat({
       label={label}
       value={value}
       accent={accent}
+      detail={detail}
       badge={badge}
       tip={shownTip}
       className={span}
@@ -387,6 +390,11 @@ const PERIODS: Record<string, [number, string]> = {
 };
 
 /** Per-bond explanation of exactly how the shown YTM figure is solved. */
+/** One paragraph per sentence for the detail panel. */
+function sentences(text: string | null): string[] {
+  return text ? text.split(/(?<=[.%])\s+(?=\S)/).filter(Boolean) : [];
+}
+
 function ytmTip(b: BondDetail): string | null {
   if (b.ytm == null || b.ltp == null)
     return (
@@ -506,9 +514,11 @@ function Overview({
           label={`${yieldLabel(b)}${b.ytm_reliable === false && hasYieldReview(b.valuation, b.ytm_reliable) ? " ⚠" : ""}`}
           value={fmt.pct(b.ytm)}
           accent
-          tip={[valuationTooltip(b.valuation), ytmTip(b), ...provenanceLines(b.valuation)]
-            .filter(Boolean)
-            .join("\n")}
+          tip={valuationTooltip(b.valuation)}
+          detail={{
+            title: "How this yield is calculated",
+            lines: [...sentences(ytmTip(b)), ...provenanceLines(b.valuation)],
+          }}
         />
         {b.yield_to_worst != null && b.yield_to_worst !== b.ytm && (
           <Stat label="Yield to worst" value={fmt.pct(b.yield_to_worst)} />

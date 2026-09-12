@@ -2267,6 +2267,22 @@ export type YieldWarning = {
      * Gap
      */
     gap?: number | null;
+    /**
+     * Otc Price
+     */
+    otc_price?: number | null;
+    /**
+     * Retail Price
+     */
+    retail_price?: number | null;
+    /**
+     * Price Gap
+     */
+    price_gap?: number | null;
+    /**
+     * Price Gap Pct
+     */
+    price_gap_pct?: number | null;
 };
 
 /**

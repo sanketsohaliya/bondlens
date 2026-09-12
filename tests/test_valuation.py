@@ -68,7 +68,7 @@ def test_short_horizon_shows_rupee_gain_even_inside_normal_yield_band():
     (18.26, 12.26, 6.0, "above"),
     (9.10, 12.26, -3.16, "below"),
 ])
-def test_otc_difference_carries_the_numbers_and_says_which_way(retail, otc, gap, direction):
+def test_otc_difference_falls_back_to_the_yield_gap_without_a_price(retail, otc, gap, direction):
     [note] = valuation.cautions(retail, TODAY + timedelta(days=365), TODAY,
                                 otc_yield=otc, otc_trade_date=TODAY)
     assert note["code"] == "otc_difference"
@@ -77,9 +77,48 @@ def test_otc_difference_carries_the_numbers_and_says_which_way(retail, otc, gap,
     assert note["otc_trade_date"] == TODAY.isoformat()
     json.dumps(note)
     assert note["gap"] == gap
-    # The sentence leads with direction so a reader does not have to infer it.
+    assert "otc_price" not in note and "price_gap" not in note
     assert note["message"].startswith(f"Retail yield {retail:.2f}% is {abs(gap):.2f} pts {direction}")
-    assert "not a calculation error" in note["message"]
+
+
+@pytest.mark.parametrize("retail_px,otc_px,price_gap,pct,word", [
+    (9425.0, 9950.0, -525.0, -5.28, "cheaper"),   # Kanakadurga: retail below institutional
+    (10300.0, 9950.0, 350.0, 3.52, "more"),        # retail dearer than institutional
+])
+def test_otc_difference_states_the_rupee_gap_in_the_units_of_the_ltp(retail_px, otc_px, price_gap, pct, word):
+    [note] = valuation.cautions(18.26, TODAY + timedelta(days=365), TODAY,
+                                otc_yield=12.26, otc_trade_date=TODAY,
+                                otc_price=otc_px, price=retail_px)
+    assert note["otc_price"] == otc_px and note["retail_price"] == retail_px
+    assert note["price_gap"] == price_gap
+    assert note["price_gap_pct"] == pct
+    assert note["message"].startswith(f"Institutions paid about Rs {otc_px:,.0f} per unit")
+    assert f"Rs {abs(price_gap):,.0f} ({abs(pct):.1f}%) {word}" in note["message"]
+    assert "probably stale" not in note["message"] and "order book" not in note["message"]
+    json.dumps(note)
+
+
+def test_calculate_derives_the_otc_rupee_price_from_the_clean_percentage():
+    # 99.99% of a 1,000 face = 999.90, plus one day of a 100 coupon accrued
+    # from allotment (100/365 = 0.27) -> 1,000.17 dirty.
+    sched = schedule()
+    sched.allotment_date = TODAY - timedelta(days=1)
+    result = valuation.calculate(950.0, sched, {}, TODAY, otc_yield=5, otc_trade_date=TODAY,
+                                 otc_price_pct=99.99)
+    [note] = [w for w in result["warnings"] if w["code"] == "otc_difference"]
+    assert note["otc_price"] == 1000.17
+    assert note["retail_price"] == 950.0
+    assert note["price_gap"] == -50.17 and "cheaper" in note["message"]
+
+
+def test_calculate_falls_back_when_accrued_interest_cannot_be_computed():
+    # No allotment date and no prior coupon: accrued is unknowable, so the
+    # note carries the yield comparison only rather than a guessed price.
+    result = valuation.calculate(950.0, schedule(), {}, TODAY, otc_yield=5, otc_trade_date=TODAY,
+                                 otc_price_pct=99.99)
+    [note] = [w for w in result["warnings"] if w["code"] == "otc_difference"]
+    assert "otc_price" not in note
+    assert note["message"].startswith("Retail yield")
 
 
 def test_otc_within_tolerance_produces_no_comparison_note():

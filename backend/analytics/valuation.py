@@ -8,7 +8,7 @@ from datetime import UTC, date, datetime
 from . import yields
 from .schedule import Flow, Schedule
 
-VERSION = "2026-09-12.3"
+VERSION = "2026-09-12.4"
 RELIABLE = (-1.0, 50.0)
 RELIABLE_NEAR = (0.0, 20.0)
 NEAR_DAYS = 90
@@ -22,7 +22,8 @@ def warning(code: str, message: str, severity: str = "caution", **fields) -> dic
 
 def cautions(value: float | None, horizon: date | None, today: date,
              coupon_basis: str | None = None, otc_yield: float | None = None,
-             otc_trade_date: date | None = None, coupon_type: str | None = None) -> list[dict]:
+             otc_trade_date: date | None = None, coupon_type: str | None = None,
+             otc_price: float | None = None, price: float | None = None) -> list[dict]:
     result = []
     if otc_trade_date and otc_trade_date > today:
         result.append(warning("future_otc_date", "OTC print is future-dated and cannot be used as a current comparison"))
@@ -46,12 +47,25 @@ def cautions(value: float | None, horizon: date | None, today: date,
         # plain-text form quoted into the AI prompt.
         gap = round(value - otc_yield, 2)
         direction = "above" if gap > 0 else "below"
-        result.append(warning(
-            "otc_difference",
-            f"Retail yield {value:.2f}% is {abs(gap):.2f} pts {direction} the recent OTC yield "
-            f"{otc_yield:.2f}% ({otc_trade_date}). OTC and retail quotes can differ in price, "
-            f"date and convention; treat as market context, not a calculation error.",
-            "info", otc_yield=otc_yield, otc_trade_date=otc_trade_date.isoformat(), gap=gap))
+        # When the OTC print can be expressed in rupees (dirty, per unit) the
+        # comparison is stated as a price gap in the same units as the LTP
+        # the reader is looking at; the yield gap is the fallback.
+        extra: dict = {}
+        if otc_price is not None and price is not None and otc_price > 0:
+            price_gap = round(price - otc_price, 2)          # + means retail dearer
+            price_gap_pct = round(price_gap / otc_price * 100, 2)
+            extra = {"otc_price": round(otc_price, 2), "retail_price": round(price, 2),
+                     "price_gap": price_gap, "price_gap_pct": price_gap_pct}
+            cheaper = "cheaper" if price_gap < 0 else "more"
+            message = (f"Institutions paid about Rs {otc_price:,.0f} per unit on {otc_trade_date} (OTC); "
+                       f"retail last traded at Rs {price:,.0f} - Rs {abs(price_gap):,.0f} "
+                       f"({abs(price_gap_pct):.1f}%) {cheaper}. Yields {value:.2f}% retail vs {otc_yield:.2f}% OTC.")
+        else:
+            message = (f"Retail yield {value:.2f}% is {abs(gap):.2f} pts {direction} the recent OTC yield "
+                       f"{otc_yield:.2f}% ({otc_trade_date}). OTC and retail quotes can differ in price, "
+                       f"date and convention; treat as market context, not a calculation error.")
+        result.append(warning("otc_difference", message, "info",
+                              otc_yield=otc_yield, otc_trade_date=otc_trade_date.isoformat(), gap=gap, **extra))
     return result
 
 
@@ -69,7 +83,8 @@ def flow_data(flow: Flow, today: date) -> dict:
 
 def calculate(price: float | None, sched: Schedule, terms: dict | None, today: date, *,
               allow_approx: bool = False, otc_yield: float | None = None,
-              otc_trade_date: date | None = None, price_date: date | None = None) -> dict:
+              otc_trade_date: date | None = None, price_date: date | None = None,
+              otc_price_pct: float | None = None) -> dict:
     terms = terms or {}
     perpetual = sched.perpetual or sched.shape == "perpetual"
     calls = yields.parse_call_dates(terms)
@@ -89,8 +104,11 @@ def calculate(price: float | None, sched: Schedule, terms: dict | None, today: d
             if value is not None:
                 method = "approx"
     horizon = max((f.effective_date for f in flows or []), default=target)
+    otc_price = (yields.dirty_from_clean_pct(otc_price_pct, sched, today)
+                 if otc_price_pct else None)
     warnings = cautions(value, horizon, today, terms.get("coupon_basis"), otc_yield,
-                        otc_trade_date, terms.get("coupon_type"))
+                        otc_trade_date, terms.get("coupon_type"),
+                        otc_price=otc_price, price=price)
     warnings.extend(warning("schedule_invalid", issue, "error") for issue in issues)
     if not valid_price:
         warnings.append(warning("price_unavailable", "No finite positive price is available for this calculation", "error"))

@@ -157,6 +157,7 @@ def build_rows(today: date | None = None) -> list[dict]:
         priced = valuation.calculate(price, sched, terms_map.get(isin), today, allow_approx=True,
                                      otc_yield=_f(otc and (otc.get("wap_yield") or otc.get("last_yield"))),
                                      otc_trade_date=otc["trade_date"] if otc else None,
+                                     otc_price_pct=_f(otc and (otc.get("wap") or otc.get("last_price"))),
                                      price_date=retail["trade_date"] if retail else None)
         ytm, ytm_method = priced["ytm"], priced["ytm_method"]
 
