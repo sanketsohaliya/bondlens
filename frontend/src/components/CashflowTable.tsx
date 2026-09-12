@@ -58,6 +58,14 @@ export default function CashflowTable({ bond: b }: { bond: CashflowBond }) {
 
 const CAVEAT = "Scheduled dates from NSDL, not confirmation of receipt.";
 
+/** Small bordered label: exchange source, excluded/optional. One box for all
+ * three so they align to the pixel; callers add colour only. Height is fixed
+ * rather than derived from line-height, so the chip renders identically as a
+ * flex item (inside the compare button) or as a plain sibling. */
+const CHIP = "inline-flex h-[18px] items-center rounded border px-1 text-[10px] leading-none";
+const CHIP_NEUTRAL = `${CHIP} border-zinc-700 text-zinc-400`;
+const CHIP_ATTENTION = `${CHIP} border-amber-500/30 text-amber-400/80`;
+
 export function CashflowSchedule({
   bond: b,
   asOf,
@@ -117,38 +125,40 @@ export function CashflowSchedule({
       <Fragment key={`${key}:${index}`}>
         <tr>
           <td className={`px-3 py-2 whitespace-nowrap ${mutedText}`}>
-            {!chip ? (
-              <span title={dateTitle}>{calendarDate(effective)}</span>
-            ) : (
-              <button
-                type="button"
-                aria-expanded={open}
-                aria-controls={id}
-                aria-label={`${open ? "Hide" : "Show"} exchange date comparison for ${flow.event} due ${flow.due_date}`}
-                onClick={() => setExpanded(open ? null : selection)}
-                className="inline-flex min-h-6 items-center gap-1.5 hover:text-zinc-100"
-              >
+            {/* One flex row so the exchange chip (inside the compare button)
+                and the excluded tag (outside it, not a click target) share a
+                centreline and box height. */}
+            <span className="inline-flex items-center gap-1.5">
+              {!chip ? (
                 <span title={dateTitle}>{calendarDate(effective)}</span>
-                <span
-                  title={
-                    chip.attention
-                      ? "Exchange notice differs on a date — click to compare"
-                      : "Exchange notice agrees on dates — click to compare"
-                  }
-                  className={`rounded border px-1 text-[10px] leading-4 ${chip.attention ? "border-amber-500/30 text-amber-400/80" : "border-zinc-700 text-zinc-400"}`}
+              ) : (
+                <button
+                  type="button"
+                  aria-expanded={open}
+                  aria-controls={id}
+                  aria-label={`${open ? "Hide" : "Show"} exchange date comparison for ${flow.event} due ${flow.due_date}`}
+                  onClick={() => setExpanded(open ? null : selection)}
+                  className="inline-flex min-h-6 items-center gap-1.5 hover:text-zinc-100"
                 >
-                  {chip.text}
+                  <span title={dateTitle}>{calendarDate(effective)}</span>
+                  <span
+                    title={
+                      chip.attention
+                        ? "Exchange notice differs on a date — click to compare"
+                        : "Exchange notice agrees on dates — click to compare"
+                    }
+                    className={chip.attention ? CHIP_ATTENTION : CHIP_NEUTRAL}
+                  >
+                    {chip.text}
+                  </span>
+                </button>
+              )}
+              {excluded && (
+                <span className={CHIP_NEUTRAL} title={excluded}>
+                  {flow.optional ? "optional" : "excluded"}
                 </span>
-              </button>
-            )}
-            {excluded && (
-              <span
-                className="ml-1.5 rounded border border-zinc-700 px-1 text-[10px] leading-4 text-zinc-400"
-                title={excluded}
-              >
-                {flow.optional ? "optional" : "excluded"}
-              </span>
-            )}
+              )}
+            </span>
           </td>
           <td className="px-3 py-2">
             <span
@@ -218,11 +228,7 @@ export function CashflowSchedule({
               className="inline-flex min-h-6 items-center gap-1.5 hover:text-zinc-100"
             >
               <span>{calendarDate(announced)}</span>
-              <span
-                className={`rounded border px-1 text-[10px] leading-4 ${isEarly ? "border-amber-500/30 text-amber-400/80" : "border-zinc-700 text-zinc-400"}`}
-              >
-                {n.source}
-              </span>
+              <span className={isEarly ? CHIP_ATTENTION : CHIP_NEUTRAL}>{n.source}</span>
             </button>
           </td>
           <td className="px-3 py-2">

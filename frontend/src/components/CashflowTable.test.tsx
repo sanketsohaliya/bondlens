@@ -202,6 +202,44 @@ describe("cashflow schedule presentation", () => {
     expect(tag?.[1]).toContain("border-zinc-700");
     expect(tag?.[1]).not.toContain("text-zinc-500");
     expect(tag?.[1]).not.toContain("amber");
+    // Sizing is pinned, not inherited from line-height, so the box is the same
+    // whether the chip is a flex item or not.
+    expect(tag?.[1]).toContain("h-[18px]");
+    expect(tag?.[1]).toContain("inline-flex");
+    expect(tag?.[1]).not.toContain("leading-4");
+    expect(tag?.[1]).not.toContain("ml-1.5");
+
+    // With exchange evidence the BSE chip and the tag sit on the same row and
+    // must share one class string - the single guard against size drift.
+    const agreeing: FlowSourceEvidence = {
+      source: "BSE",
+      anchor: "due_date",
+      state: "matched",
+      notice_ids: [],
+      fields: [
+        {
+          field: "record_date",
+          state: "agree",
+          nsdl_date: "2026-09-10",
+          exchange_dates: ["2026-09-10"],
+        },
+      ],
+    };
+    const withChip = renderToStaticMarkup(
+      <CashflowSchedule bond={bond} asOf="2026-09-11" evidence={view([agreeing])} />,
+    );
+    // Attribute order differs between the two spans (title first on the chip),
+    // so locate the opening tag first and read its class from anywhere inside it.
+    const classOf = (label: string) =>
+      withChip
+        .match(new RegExp(`<span([^>]*)>${label}</span>`))?.[1]
+        ?.match(/class="([^"]*)"/)?.[1];
+    expect(classOf("BSE")).toBeDefined();
+    expect(classOf("excluded")).toBe(classOf("BSE"));
+    // The tag is a sibling of the compare button, not inside it: clicking
+    // "excluded" must not open the comparison panel.
+    const cell = withChip.slice(withChip.indexOf(">BSE<"), withChip.indexOf(">excluded<"));
+    expect(cell).toContain("</button>");
     // Only the excluded row's amount is struck, and only its cells are muted.
     // Give the two rows distinct amounts so each cell can be attributed.
     const html2 = renderToStaticMarkup(
