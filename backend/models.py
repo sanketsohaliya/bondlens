@@ -53,6 +53,7 @@ class Bond(BaseModel):
     nse_symbol: str | None
     nse_series: str | None
     bse_scrip_id: str | None
+    kite_url: str | None = None
     coupon: float | None
     face_value: float | None
     coupon_basis: str | None

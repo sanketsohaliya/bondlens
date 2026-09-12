@@ -15,7 +15,7 @@ from typing import LiteralString
 
 from psycopg.types.json import Jsonb
 
-from .. import db, queries
+from .. import db, kite, queries
 from . import ratings, schedule, valuation, yields
 
 STALE_AFTER_DAYS = 7  # retail price older than this is flagged stale
@@ -23,7 +23,7 @@ STALE_AFTER_DAYS = 7  # retail price older than this is flagged stale
 # Table DDL lives in migrations/ (0001 baseline).
 _COLS: list[LiteralString] = [
     "isin", "issuer_name", "sector", "industry", "on_nse", "on_bse",
-    "nse_symbol", "nse_series", "bse_scrip_id", "coupon", "face_value",
+    "nse_symbol", "nse_series", "bse_scrip_id", "kite_url", "coupon", "face_value",
     "coupon_basis", "frequency", "secured", "tax_free", "perpetual",
     "maturity_date", "schedule_shape", "future_flows", "total_flows",
     "payout_total_snapshot", "payout_state_snapshot", "payout_as_of", "payout_valid_until",
@@ -172,6 +172,11 @@ def build_rows(today: date | None = None) -> list[dict]:
             "nse_symbol": r.get("nse_symbol"),
             "nse_series": r.get("nse_series"),
             "bse_scrip_id": r.get("bse_scrip_id"),
+            # Resolved here (cached instrument lookup) so explorer rows can
+            # link straight to Kite without a per-request resolution.
+            "kite_url": kite.kite_url(r.get("nse_symbol"), r.get("nse_series"),
+                                      r.get("bse_scrip_id"),
+                                      prefer=retail["exchange"] if retail else None),
             "coupon": coupon,
             "face_value": face,
             "coupon_basis": r.get("coupon_basis"),

@@ -1,18 +1,8 @@
 import { useState } from "react";
 
 /* v1's minimal copy button: 13px stroke icon, muted until hover,
-   swaps to an emerald check for 1.2s after copying. `chip` renders a
-   tiny uppercase text chip instead of the icon (for a second copy
-   target next to an icon one, e.g. ISIN beside the symbol). */
-export default function CopyBtn({
-  text,
-  label,
-  chip,
-}: {
-  text: string;
-  label: string;
-  chip?: string;
-}) {
+   swaps to an emerald check for 1.2s after copying. */
+export default function CopyBtn({ text, label }: { text: string; label: string }) {
   const [copied, setCopied] = useState(false);
   return (
     <button
@@ -26,11 +16,7 @@ export default function CopyBtn({
       }}
       className={copied ? "text-emerald-500" : "text-zinc-600 hover:text-emerald-400 transition"}
     >
-      {chip ? (
-        <span className="text-[10px] uppercase tracking-wide leading-none">
-          {copied ? "✓" : chip}
-        </span>
-      ) : copied ? (
+      {copied ? (
         <svg
           width="13"
           height="13"

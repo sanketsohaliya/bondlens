@@ -5,6 +5,7 @@ import { api, fmt } from "../api/client";
 import type { AskYtm, Bond } from "../api/types";
 import { useAuth } from "../lib/auth";
 import { askTicketText, payoutDisplay, usePayoutDay } from "../lib/exploreAmounts";
+import { LINK_TIPS, nsdlUrl } from "../lib/links";
 import { nextListName, useHeldIsins, useWatchlists } from "../lib/lists";
 import {
   hasYieldReview,
@@ -15,6 +16,7 @@ import {
 } from "../lib/quoteValuation";
 import { useColumnWidths } from "../lib/useColumnWidths";
 import AddLotPopover from "./AddLotPopover";
+import AiPromptBtn from "./AiPromptBtn";
 import CopyBtn from "./CopyBtn";
 import RatingBadge from "./RatingBadge";
 import YieldQuote from "./YieldQuote";
@@ -66,6 +68,24 @@ type PayoutBond = Pick<
   | "payout_as_of"
   | "payout_valid_until"
 >;
+
+/** Hover-revealed external link in the symbol cell. Stops propagation so the
+ * row's own click (open drawer) does not fire. */
+export function RowLink({ href, label, tip }: { href: string; label: string; tip: string }) {
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      title={tip}
+      aria-label={tip}
+      onClick={(e) => e.stopPropagation()}
+      className="text-[10px] whitespace-nowrap text-zinc-600 hover:text-emerald-400 transition"
+    >
+      {label} ↗
+    </a>
+  );
+}
 
 export function PayoutCell({
   bond: b,
@@ -461,13 +481,18 @@ function Row({
         </span>
       </td>
       <td className="px-3 py-2.5 w-80 max-w-80">
-        <div className="flex items-center gap-1.5">
-          <span className="font-medium text-zinc-200 hover:text-emerald-400 hover:underline underline-offset-2 transition-colors">
+        <div className="flex items-center gap-1.5 min-w-0">
+          <span className="font-medium text-zinc-200 hover:text-emerald-400 hover:underline underline-offset-2 transition-colors shrink-0">
             {b.nse_symbol ?? b.bse_scrip_id ?? b.isin}
           </span>
-          <span className="flex items-center gap-1.5 opacity-0 group-hover/row:opacity-100 transition-opacity">
-            <CopyBtn text={b.nse_symbol ?? b.bse_scrip_id ?? b.isin} label="symbol" />
-            <CopyBtn text={b.isin} label="ISIN" chip="isin" />
+          <span className="font-mono text-[10px] text-zinc-500 truncate" title="ISIN">
+            {b.isin}
+          </span>
+          <span className="flex items-center gap-2 shrink-0 opacity-0 group-hover/row:opacity-100 transition-opacity">
+            <CopyBtn text={b.isin} label="ISIN" />
+            <RowLink href={nsdlUrl(b.isin)} label="NSDL" tip={LINK_TIPS.nsdl} />
+            {b.kite_url && <RowLink href={b.kite_url} label="Kite" tip={LINK_TIPS.kite} />}
+            <AiPromptBtn isin={b.isin} variant="row" />
           </span>
           {b.in_default && (
             <span

@@ -413,9 +413,11 @@ def bond_detail(isin: str, price: float | None = Query(None, gt=0, allow_inf_nan
         "as_of": today,
         "terms": terms,
         "trustee_name": queries.bond_trustee(isin),
-        "kite_url": kite.kite_url(row.get("nse_symbol"), row.get("nse_series"),
-                                  row.get("bse_scrip_id"),
-                                  prefer=core.get("exchange")),
+        # Precomputed on the analytics row; live lookup only if that is empty
+        # (e.g. Kite's instrument list was unreachable at the last refresh).
+        "kite_url": core.get("kite_url") or kite.kite_url(
+            row.get("nse_symbol"), row.get("nse_series"), row.get("bse_scrip_id"),
+            prefer=core.get("exchange")),
         "ltp": ltp,
         "custom_price": custom_price,
         "trade_date": core.get("trade_date"),

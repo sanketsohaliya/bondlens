@@ -170,6 +170,42 @@ def test_tech_delay_does_not_brand_default(monkeypatch):
     assert rows["INEDFLT00002"]["tech_delay"] is False
 
 
+# --- Kite deep link is precomputed onto the explorer row ----------------------
+
+def test_kite_url_is_resolved_once_per_bond_preferring_the_retail_exchange(monkeypatch):
+    from backend import kite
+
+    core = {
+        "INEKITE00001": {"isin": "INEKITE00001", "on_nse": True, "on_bse": True,
+                         "nse_symbol": "ABC", "nse_series": "N1", "bse_scrip_id": "ABC27",
+                         "retail_trade": {"close": 1000, "trade_date": TODAY, "exchange": "BSE"}},
+        "INEKITE00002": {"isin": "INEKITE00002", "on_nse": True, "on_bse": False,
+                         "nse_symbol": "NOPE", "nse_series": None},
+    }
+    calls = []
+
+    def fake_kite_url(nse_symbol, nse_series, bse_scrip_id=None, prefer=None):
+        calls.append((nse_symbol, nse_series, bse_scrip_id, prefer))
+        return "https://kite.zerodha.com/x" if nse_symbol == "ABC" else None
+
+    monkeypatch.setattr(kite, "kite_url", fake_kite_url)
+    monkeypatch.setattr(queries, "explorer_core", lambda: core)
+    monkeypatch.setattr(queries, "all_cashflows", lambda: {})
+    monkeypatch.setattr(queries, "cashflows_for", lambda isins: {})
+    monkeypatch.setattr(queries, "all_terms", lambda: {})
+    monkeypatch.setattr(queries, "current_ratings", lambda: {})
+    monkeypatch.setattr(queries, "rating_history", lambda: {})
+    monkeypatch.setattr(queries, "defaulted_isins", lambda: set())
+    monkeypatch.setattr(queries, "tech_delay_isins", lambda: set())
+
+    rows = {r["isin"]: r for r in compute.build_rows(today=TODAY)}
+    assert rows["INEKITE00001"]["kite_url"] == "https://kite.zerodha.com/x"
+    assert rows["INEKITE00002"]["kite_url"] is None
+    assert ("ABC", "N1", "ABC27", "BSE") in calls
+    assert ("NOPE", None, None, None) in calls
+    assert len(calls) == 2
+
+
 @pytest.fixture
 def pricing_case(monkeypatch):
     from backend import app as api_module

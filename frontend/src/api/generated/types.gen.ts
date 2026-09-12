@@ -195,6 +195,10 @@ export type Bond = {
      */
     bse_scrip_id: string | null;
     /**
+     * Kite Url
+     */
+    kite_url?: string | null;
+    /**
      * Coupon
      */
     coupon: number | null;

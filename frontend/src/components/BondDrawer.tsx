@@ -2,11 +2,12 @@ import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { type ReactNode, useEffect, useState } from "react";
 import { api, fmt } from "../api/client";
 import type { BondDetail } from "../api/types";
-import { buildBondPrompt } from "../lib/aiPrompt";
+import { LINK_TIPS, nsdlUrl } from "../lib/links";
 import { replaceNumberWords } from "../lib/numberWords";
 import { usePortfolio } from "../lib/portfolio";
 import { hasYieldReview, valuationTooltip } from "../lib/quoteValuation";
 import { firstFutureCall, isYieldToCall, yieldLabel } from "../lib/yieldDisplay";
+import AiPromptBtn from "./AiPromptBtn";
 import CashflowTable from "./CashflowTable";
 import CopyBtn from "./CopyBtn";
 import { HoldMark, WatchStar } from "./ExploreTable";
@@ -14,7 +15,6 @@ import HoldingPanel from "./HoldingPanel";
 import OrderBook from "./OrderBook";
 import RatingTimeline from "./RatingTimeline";
 import StatBox from "./StatBox";
-import Tip from "./Tooltip";
 import TradeChart from "./TradeChart";
 import { YieldNotes } from "./YieldQuote";
 
@@ -92,6 +92,7 @@ export default function BondDrawer({
     queryFn: () => api.bond(isin, price),
     placeholderData: keepPreviousData,
   });
+  useDepthForPrompt(isin);
 
   // The "holding" tab only exists while the bond is in the portfolio;
   // deleting the last lot from inside the tab kicks back to overview.
@@ -166,11 +167,13 @@ export default function BondDrawer({
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
-                  <AiBriefBtn bond={bond} />
+                  <AiPromptBtn isin={bond.isin} bond={bond} variant="drawer" />
                   <a
-                    href={`https://www.indiabondinfo.nsdl.com/CBDServices/#/instrumentDetails/${bond.isin}`}
+                    href={nsdlUrl(bond.isin)}
                     target="_blank"
-                    rel="noreferrer"
+                    rel="noopener noreferrer"
+                    title={LINK_TIPS.nsdl}
+                    aria-label={LINK_TIPS.nsdl}
                     className="text-xs px-3 py-1.5 rounded-md border border-zinc-700 text-zinc-300 hover:border-zinc-500 hover:text-zinc-100 transition-colors"
                   >
                     NSDL ↗
@@ -179,7 +182,9 @@ export default function BondDrawer({
                     <a
                       href={bond.kite_url}
                       target="_blank"
-                      rel="noreferrer"
+                      rel="noopener noreferrer"
+                      title={LINK_TIPS.kite}
+                      aria-label={LINK_TIPS.kite}
                       className="text-xs px-3 py-1.5 rounded-md border border-zinc-700 text-zinc-300 hover:border-zinc-500 hover:text-zinc-100 transition-colors"
                     >
                       Kite ↗
@@ -236,84 +241,18 @@ export default function BondDrawer({
   );
 }
 
-function AiBriefBtn({ bond }: { bond: BondDetail }) {
-  const [copied, setCopied] = useState(false);
-  const [manual, setManual] = useState("");
-  // Depth loads alongside the drawer using the Order Book query key.
-  // The exported snapshot retains its own capture and valuation dates;
-  // copying never silently treats it as a newly executable offer.
-  // If depth is unavailable the complete bond evidence still exports.
-  const { data: depth } = useQuery({
-    queryKey: ["depth", bond.isin],
-    queryFn: () => api.depth(bond.isin),
+/** Keeps the order book loaded while the drawer is open so the Ask AI prompt
+ * can include depth from cache even before the Order Book tab is visited. The
+ * exported snapshot keeps its own capture time; it is never treated as a live
+ * executable offer. */
+function useDepthForPrompt(isin: string) {
+  useQuery({
+    queryKey: ["depth", isin],
+    queryFn: () => api.depth(isin),
     staleTime: 25_000,
     refetchInterval: 60_000,
     refetchOnWindowFocus: true,
   });
-  return (
-    <div className="relative flex items-center gap-2">
-      <Tip text="Copy the complete evidence prompt, then paste it into your preferred AI. No payments are truncated to fit a URL.">
-        <button
-          type="button"
-          onClick={async () => {
-            const prompt = buildBondPrompt(bond, { depth: depth ?? null });
-            setCopied(false);
-            setManual("");
-            // Report copy success only after the clipboard operation succeeds.
-            try {
-              await navigator.clipboard.writeText(prompt);
-              setCopied(true);
-              setTimeout(() => setCopied(false), 2000);
-            } catch {
-              setManual(prompt);
-            }
-          }}
-          className="text-xs px-3 py-1.5 rounded-md border border-zinc-700 text-zinc-300 hover:border-zinc-500"
-        >
-          {copied ? "Prompt copied" : "Copy AI prompt"}
-        </button>
-      </Tip>
-      <button
-        type="button"
-        className="text-xs text-zinc-400 hover:text-zinc-200"
-        onClick={() => {
-          const prompt = buildBondPrompt(bond, { depth: depth ?? null });
-          const url = URL.createObjectURL(new Blob([prompt], { type: "text/plain;charset=utf-8" }));
-          const link = document.createElement("a");
-          link.href = url;
-          link.download = `BondLens-${bond.isin}-${bond.as_of ?? "snapshot"}.txt`;
-          link.click();
-          setTimeout(() => URL.revokeObjectURL(url), 0);
-        }}
-      >
-        Download
-      </button>
-      <a
-        href="https://chatgpt.com/"
-        target="_blank"
-        rel="noopener noreferrer"
-        className="text-xs text-zinc-400 hover:text-zinc-200"
-        title="Open a new chat, then paste the copied prompt or attach the downloaded text"
-      >
-        Open ChatGPT
-      </a>
-      {manual && (
-        <div className="absolute right-0 top-full z-50 mt-2 w-96 rounded border border-amber-500/40 bg-zinc-950 p-3 text-xs text-amber-300">
-          Clipboard access failed. Select and copy the complete prompt below, or use Download.
-          <textarea
-            readOnly
-            value={manual}
-            aria-label="Complete AI review prompt"
-            className="mt-2 h-48 w-full bg-zinc-900 text-zinc-300"
-            onFocus={(event) => event.currentTarget.select()}
-          />
-          <button type="button" onClick={() => setManual("")}>
-            Close
-          </button>
-        </div>
-      )}
-    </div>
-  );
 }
 
 function Stat({
