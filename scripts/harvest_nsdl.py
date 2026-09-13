@@ -117,6 +117,71 @@ _db_lock = threading.Lock()
 _stats = {"fetched": 0, "unchanged": 0, "skipped": 0, "failed": 0}
 _stats_lock = threading.Lock()
 
+# Fail fast on a dead upstream. On 13 Sept 2026 NSDL answered 503 to all
+# 192 calls for four minutes while the harvester patiently retried each
+# one; twelve consecutive upstream failures (5xx or connection error) with
+# no success anywhere in the pool is an outage, not a run of dead ISINs.
+# A 4xx is NSDL *answering* and does not count.
+OUTAGE_STREAK = 12
+_outage = {"streak": 0, "last": None}
+_status_counts: dict[int, int] = {}
+
+
+class NsdlOutage(RuntimeError):
+    """Raised from fetch() once the upstream looks systemically down."""
+
+
+def reset_outage_tracking():
+    with _stats_lock:
+        _outage["streak"], _outage["last"] = 0, None
+        _status_counts.clear()
+
+
+def _note_upstream_failure(status):
+    """Count a 5xx/connection failure; raise once the streak says outage."""
+    with _stats_lock:
+        if status is not None:
+            _status_counts[status] = _status_counts.get(status, 0) + 1
+        _outage["streak"] += 1
+        _outage["last"] = status
+        streak, last = _outage["streak"], _outage["last"]
+    if streak >= OUTAGE_STREAK:
+        what = f"http={last}" if last is not None else "connection errors"
+        raise NsdlOutage(f"{streak} consecutive upstream failures ({what})")
+
+
+def _note_upstream_success():
+    with _stats_lock:
+        _outage["streak"] = 0
+
+
+def status_counts() -> dict[int, int]:
+    with _stats_lock:
+        return dict(_status_counts)
+
+
+def failure_note(failed: int) -> str | None:
+    """'48 fetch failures (503x192)' - what the healthcheck relays."""
+    if not failed:
+        return None
+    counts = status_counts()
+    detail = ", ".join(f"{k}x{v}" for k, v in sorted(counts.items(), key=lambda kv: -kv[1]))
+    return f"{failed} fetch failures" + (f" ({detail})" if detail else "")
+
+
+def run_ok(fetched: int, unchanged: int, failed: int) -> bool:
+    """A few dead ISINs out of tens of thousands of calls is normal, so
+    tolerate max(25, 1%) failures - but a run that attempted work and got
+    nothing back is never ok, whatever the floor. (Under the old rule a
+    total outage on a light day, e.g. 20 due / 20 failed, read as healthy.)
+    Nothing due at all is legitimately fine."""
+    attempts = fetched + unchanged + failed
+    if attempts == 0:
+        return True
+    if fetched + unchanged == 0:
+        return False
+    return failed <= max(25, attempts * 0.01)
+
 
 def _bump(key, n=1):
     with _stats_lock:
@@ -148,10 +213,14 @@ def fetch(url: str, tag: str):
             if r.status_code in (200, 400):
                 payload = json.loads(r.text)
                 if r.status_code == 200 and isinstance(payload, (dict, list)):
+                    _note_upstream_success()
                     return r.status_code, r.text
                 if r.status_code == 400 and "no record found" in str(payload).lower():
+                    _note_upstream_success()
                     return r.status_code, r.text
             if r.status_code < 500 and r.status_code != 429:
+                # NSDL answered; the ISIN/endpoint is simply not there.
+                _note_upstream_success()
                 return None, None
             if r.status_code == 429:
                 retry_after = r.headers.get("Retry-After", "")
@@ -159,8 +228,13 @@ def fetch(url: str, tag: str):
                     delay = int(retry_after)
                     if delay > 60:
                         return None, None
+            else:
+                _note_upstream_failure(r.status_code)
             print(f"  {tag}: http={r.status_code} retry", flush=True)
+        except NsdlOutage:
+            raise
         except Exception as exc:  # noqa: BLE001
+            _note_upstream_failure(None)
             print(f"  {tag}: {str(exc)[:60]} retry", flush=True)
         if attempt + 1 < MAX_ATTEMPTS:
             time.sleep(delay)
@@ -206,6 +280,27 @@ def store(isin, endpoint, quarter, status, text, prev, run_id):
                  json.dumps(payload)))
             _bump("fetched")
     return status, sha, now
+
+
+def latest_run_today():
+    """Most recent nsdl_runs row started today (IST), or None."""
+    with db._conn() as conn:
+        return conn.execute(
+            "SELECT id, ok FROM nsdl_runs "
+            "WHERE (run_at AT TIME ZONE 'Asia/Kolkata')::date = "
+            "      (now() AT TIME ZONE 'Asia/Kolkata')::date "
+            "ORDER BY id DESC LIMIT 1").fetchone()
+
+
+def should_skip_retry() -> bool:
+    """--if-failed-today: only re-run when today's latest run is not ok.
+    A missing run also proceeds (the 07:00 job should always exist; if it
+    does not, something else went wrong and a harvest can only help)."""
+    latest = latest_run_today()
+    if latest and latest["ok"] is True:
+        print(f"morning run {latest['id']} ok; skipping retry", flush=True)
+        return True
+    return False
 
 
 def start_nsdl_run(tiers, workers, n_isins):
@@ -303,7 +398,14 @@ def main():
                     help="restrict to tier(s); default all")
     ap.add_argument("--force", action="store_true",
                     help="refetch even fresh/terminal entries")
+    ap.add_argument("--if-failed-today", action="store_true",
+                    help="exit immediately unless today's latest run failed "
+                         "(for the midday retry slot)")
     args = ap.parse_args()
+
+    if args.if_failed_today and should_skip_retry():
+        db.close_pool()
+        return 0
 
     tiers = set(args.tier or ["static", "weekly", "monthly", "quarterly"])
     isins = args.isin or db.universe_isins()
@@ -342,13 +444,8 @@ def main():
         db.close_pool()
         raise
 
-    # A few dead ISINs out of tens of thousands of calls is normal; only
-    # flag the run unhealthy when failures suggest systematic breakage.
-    attempts = (_stats["fetched"] + _stats["unchanged"] + _stats["failed"]) or 1
-    ok = _stats["failed"] <= max(25, attempts * 0.01)
-    finish_nsdl_run(run_id, ok=ok,
-                    notes=f"{_stats['failed']} fetch failures"
-                          if _stats["failed"] else None)
+    ok = run_ok(_stats["fetched"], _stats["unchanged"], _stats["failed"])
+    finish_nsdl_run(run_id, ok=ok, notes=failure_note(_stats["failed"]))
     print(f"DONE {json.dumps(_stats)}", flush=True)
     db.close_pool()
     return 0 if ok else 1

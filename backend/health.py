@@ -31,6 +31,26 @@ def _last_trading_day(today: date) -> date:
     return d
 
 
+def nsdl_problem(runs: list, now: datetime) -> str | None:
+    """Human-readable NSDL verdict from today's run rows (oldest first), or
+    None when the latest run is fine. Pure, so it is unit-testable."""
+    if not runs:
+        return "nsdl: no run today"
+    latest = runs[-1]
+    if latest["ok"] is not False:
+        return None
+    attempts = "morning and midday runs" if len(runs) > 1 else "today's run"
+    detail = latest["notes"] or "no detail recorded"
+    hint = ""
+    if "NsdlOutage" in detail or "consecutive upstream" in detail:
+        hint = " NSDL upstream down (aborted early)."
+    elif (latest["fetched"] or 0) == 0 and (latest["failed"] or 0) > 0:
+        hint = " Fetched nothing; NSDL upstream likely down."
+    ist_hour = (now + timedelta(hours=5, minutes=30)).hour
+    retry = " Auto-retry at 13:00 IST." if len(runs) == 1 and ist_hour < 13 else ""
+    return f"nsdl: {attempts} FAILED \u2014 {detail}.{hint}{retry}"
+
+
 def check(now: datetime | None = None) -> list[str]:
     """Return a list of human-readable problems (empty = healthy)."""
     now = now or datetime.now(UTC)
@@ -48,14 +68,16 @@ def check(now: datetime | None = None) -> list[str]:
             elif r["ok"] is False:
                 problems.append("universe: today's run FAILED")
 
-        # 2) NSDL harvest ran today and succeeded (daily 07:00 IST).
-        r = conn.execute(
-            "SELECT ok FROM nsdl_runs WHERE run_at::date = %s "
-            "ORDER BY id DESC LIMIT 1", (today,)).fetchone()
-        if r is None:
-            problems.append("nsdl: no run today")
-        elif r["ok"] is False:
-            problems.append("nsdl: today's run FAILED")
+        # 2) NSDL harvest ran today and succeeded (daily 07:00 IST, with a
+        #    conditional 13:00 retry). Say *why* it failed so the alert is
+        #    actionable without opening the logs.
+        rows = conn.execute(
+            "SELECT ok, fetched, failed, notes, "
+            "       (run_at AT TIME ZONE 'Asia/Kolkata')::time AS at "
+            "FROM nsdl_runs WHERE run_at::date = %s ORDER BY id", (today,)).fetchall()
+        problem = nsdl_problem(rows, now)
+        if problem:
+            problems.append(problem)
 
         # 3) EOD trades no older than the last trading day.
         r = conn.execute(

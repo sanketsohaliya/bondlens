@@ -9,6 +9,12 @@
 #    fetched even if some calls failed.
 0 7 * * * cd /app && python scripts/harvest_nsdl.py --workers 8; python scripts/parse_nsdl.py; python scripts/compute_analytics.py
 
+# 2b) NSDL midday retry - 13:00 daily, only if the 07:00 run failed
+#     (--if-failed-today exits at once otherwise). Covers a transient
+#     morning outage without anyone being paged; parse/compute are
+#     idempotent no-ops when nothing new was fetched.
+0 13 * * * cd /app && python scripts/harvest_nsdl.py --workers 8 --if-failed-today; python scripts/parse_nsdl.py; python scripts/compute_analytics.py
+
 # 3) EOD trades harvest + parse — 19:00 Mon-Fri (exchanges publish ~16-18h)
 0 19 * * 1-5 cd /app && python scripts/harvest_eod.py; python scripts/parse_eod.py; python scripts/compute_analytics.py
 
