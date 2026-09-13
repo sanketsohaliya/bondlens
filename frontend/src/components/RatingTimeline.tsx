@@ -1,5 +1,6 @@
 import { fmt } from "../api/client";
 import type { RatingEvent } from "../api/types";
+import InlineMetadata from "./InlineMetadata";
 
 export default function RatingTimeline({ timeline }: { timeline: Record<string, RatingEvent[]> }) {
   const agencies = Object.keys(timeline);
@@ -29,18 +30,31 @@ export default function RatingTimeline({ timeline }: { timeline: Record<string, 
                       <span className="text-zinc-500 font-normal">/{e.outlook}</span>
                     )}
                   </span>
-                  {e.action && <span className="text-xs text-zinc-500">{e.action}</span>}
-                  <span className="text-xs text-zinc-600">{fmt.date(e.rating_date)}</span>
-                  {e.press_release && (
-                    <a
-                      href={e.press_release}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-xs text-emerald-500 hover:underline"
-                    >
-                      press release ↗
-                    </a>
-                  )}
+                  <span className="inline-flex flex-wrap items-baseline gap-y-0.5 text-xs">
+                    <InlineMetadata
+                      parts={[
+                        e.action && (
+                          <span key="action" className="text-zinc-500">
+                            {e.action}
+                          </span>
+                        ),
+                        <span key="date" className="text-zinc-600">
+                          {fmt.date(e.rating_date)}
+                        </span>,
+                        e.press_release && (
+                          <a
+                            key="pr"
+                            href={e.press_release}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-emerald-500 hover:underline"
+                          >
+                            press release ↗
+                          </a>
+                        ),
+                      ]}
+                    />
+                  </span>
                 </div>
               </li>
             ))}

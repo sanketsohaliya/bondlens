@@ -24,6 +24,57 @@ const bond = {
 };
 
 describe("explore amount cells", () => {
+  const text = (html: string) => html.replace(/<[^>]*>/g, "");
+
+  it("uses pipes between payout fields without separating coupon and frequency", () => {
+    const render = (overrides: Partial<typeof bond> = {}, today = "2026-09-11") =>
+      text(
+        renderToStaticMarkup(
+          <PayoutCell bond={{ ...bond, ...overrides }} today={today} onOpen={() => {}} />,
+        ),
+      );
+    expect(render()).toContain("14.4% monthly | 18/20 left");
+    expect(render({ future_flows: 0 })).toContain("14.4% monthly | 0/20 left");
+    expect(render({ coupon_basis: "Zero Coupon" })).toContain("Zero coupon | 18/20 left");
+    expect(render({ total_flows: 0 })).not.toContain("|");
+    const countOnly = text(
+      renderToStaticMarkup(
+        <PayoutCell bond={{ ...bond, coupon: null }} today="2026-09-11" onOpen={() => {}} />,
+      ),
+    );
+    expect(countOnly).toContain("18/20 left");
+    expect(countOnly).not.toContain("|");
+    const stale = text(
+      renderToStaticMarkup(
+        <PayoutCell
+          bond={{ ...bond, payout_valid_until: "2026-09-12" }}
+          today="2026-09-12"
+          onOpen={() => {}}
+        />,
+      ),
+    );
+    expect(stale).not.toContain("|");
+  });
+
+  it("separates an available fresh ask return from its ticket, never an absent return", () => {
+    const ask = {
+      ...freshness,
+      isin: "TEST",
+      ask_price: 10025,
+      ask_qty: 10,
+      ytm: 12.34,
+      holding_period_return: 16.3,
+    };
+    const render = (value: typeof ask | null) =>
+      text(renderToStaticMarkup(<AskQuoteCell ask={value} onOpen={() => {}} />));
+    expect(render(ask)).toContain("16.3% | ₹1.00 L ticket");
+    expect(render({ ...ask, holding_period_return: 0 })).toContain("0.0% | ₹1.00 L ticket");
+    expect(render({ ...ask, holding_period_return: Number.NaN })).not.toContain("|");
+    expect(render({ ...ask, expires_at: "2020-01-01T00:00:00Z" })).not.toContain("|");
+    expect(render({ ...ask, ask_qty: 0 })).not.toContain("|");
+    expect(render(null)).not.toContain("|");
+  });
+
   it("keeps structure and qualified per-unit payout together above coupon and counts", () => {
     const html = renderToStaticMarkup(
       <PayoutCell bond={bond} today="2026-09-11" onOpen={() => {}} />,
@@ -102,6 +153,7 @@ describe("explore amount cells", () => {
     expect(html).toContain("₹1.00 L ticket");
     expect(html).toContain("₹1,00,250");
     expect(html).toContain("Order Book");
+    expect(text(html)).not.toContain("|");
     expect(html.match(/<div/g)).toHaveLength(2);
   });
 

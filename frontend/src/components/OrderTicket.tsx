@@ -9,6 +9,7 @@ import {
   valuationLabel,
   valuationTooltip,
 } from "../lib/quoteValuation";
+import InlineMetadata from "./InlineMetadata";
 import YieldQuote, { YieldNotes } from "./YieldQuote";
 
 /** Kite-style order dialog: LIMIT/CNC/DAY only (market orders on
@@ -260,7 +261,9 @@ export default function OrderTicket({
               )}
               <div className="flex justify-between text-zinc-600">
                 <span>Order type</span>
-                <span>LIMIT · CNC · DAY</span>
+                <span>
+                  <InlineMetadata parts={["LIMIT", "CNC", "DAY"]} />
+                </span>
               </div>
             </div>
 

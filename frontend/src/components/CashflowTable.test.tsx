@@ -84,6 +84,25 @@ const differing: FlowSourceEvidence = {
 };
 
 describe("cashflow schedule presentation", () => {
+  it("separates schedule metadata and independent evidence status facts", () => {
+    const html = renderToStaticMarkup(
+      <CashflowSchedule
+        bond={bond}
+        asOf="2026-09-11"
+        evidence={view([], {
+          partial: true,
+          sources: [{ source: "NSE", status: "stale", history_complete: true, reasons: [] }],
+          summary: { checked_flows: 2, matched_flows: 0, differences: 1, unmatched_notices: 0 },
+        })}
+        refresh={() => {}}
+      />,
+    );
+    const text = html.replace(/<[^>]*>/g, "");
+    expect(text).toContain("Schedule: plain | 1 future / 2 total flows");
+    expect(text).toContain("1 date difference | partial evidence | NSE capture stale");
+    expect(text).not.toContain("flows | ");
+  });
+
   it("restores the simple future/past layout with the buyer total in the heading", () => {
     const html = renderToStaticMarkup(<CashflowSchedule bond={bond} asOf="2026-09-11" />);
     expect(html).toContain("Future (₹1,234/unit)");
@@ -140,6 +159,7 @@ describe("cashflow schedule presentation", () => {
     );
     expect(html).toContain("normalized");
     expect(html).toContain("total unchanged");
+    expect(html.replace(/<[^>]*>/g, "")).toContain("Before: ₹1,100 | After: ₹1,000");
     expect(html).toContain("₹1,100");
     expect(html).not.toContain("some amounts estimated");
   });

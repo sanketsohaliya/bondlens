@@ -21,6 +21,7 @@ import {
   validLink,
 } from "../lib/cashflowEvidence";
 import CashflowEvidencePanel, { NoticeCard } from "./CashflowEvidencePanel";
+import InlineMetadata, { MetadataSeparator } from "./InlineMetadata";
 
 type CashflowBond = Pick<
   BondDetail,
@@ -317,12 +318,12 @@ export function CashflowSchedule({
         const when = noticeAnnouncedDate(n);
         return (
           <span key={n.id}>
-            {i > 0 && " · "}
+            {i > 0 && <MetadataSeparator />}
             {n.source} reports an early redemption
             {when && ` with ${n.ex_date ? "ex-date" : "record date"} ${calendarDate(when)}`}
             {link && (
               <>
-                {" · "}
+                <MetadataSeparator />
                 <a
                   href={link}
                   target="_blank"
@@ -342,23 +343,28 @@ export function CashflowSchedule({
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-4 text-xs text-zinc-500">
-        <span>
-          Schedule: <span className="text-zinc-300 capitalize">{b.schedule_shape}</span>
-        </span>
-        <span title="Flows a buyer today would receive / all scheduled flows">
-          {receivable} future / {b.cashflows.length} total flows
-        </span>
-        {(futureEstimates > 0 || otherEstimates > 0) && (
-          <span
-            className="text-amber-500"
-            title={`${futureEstimates} estimates in current buyer cashflows; ${otherEstimates} in past or excluded flows. Expand the amount details for each adjustment.`}
-          >
-            {futureEstimates > 0
-              ? `${futureEstimates} future amount${futureEstimates === 1 ? "" : "s"} estimated`
-              : "Only past/excluded amounts estimated"}
-          </span>
-        )}
+      <div className="flex items-center text-xs text-zinc-500">
+        <InlineMetadata
+          parts={[
+            <span key="schedule">
+              Schedule: <span className="text-zinc-300 capitalize">{b.schedule_shape}</span>
+            </span>,
+            <span key="count" title="Flows a buyer today would receive / all scheduled flows">
+              {receivable} future / {b.cashflows.length} total flows
+            </span>,
+            (futureEstimates > 0 || otherEstimates > 0) && (
+              <span
+                key="estimates"
+                className="text-amber-500"
+                title={`${futureEstimates} estimates in current buyer cashflows; ${otherEstimates} in past or excluded flows. Expand the amount details for each adjustment.`}
+              >
+                {futureEstimates > 0
+                  ? `${futureEstimates} future amount${futureEstimates === 1 ? "" : "s"} estimated`
+                  : "Only past/excluded amounts estimated"}
+              </span>
+            ),
+          ]}
+        />
         {refresh && (
           <button
             type="button"
@@ -441,7 +447,9 @@ function AmountProvenance({ flow }: { flow: Cashflow }) {
           <div key={`${adjustment.kind}:${index}`}>
             <p>{adjustment.reason}</p>
             <p className="text-zinc-500">
-              Before: {amount(adjustment.previous_amount)}. After: {amount(adjustment.amount)}.
+              Before: {amount(adjustment.previous_amount)}
+              <MetadataSeparator />
+              After: {amount(adjustment.amount)}
             </p>
           </div>
         ))}
@@ -468,7 +476,7 @@ function summaryLine(
   for (const s of notFresh) parts.push(`${s.source} capture ${s.status.replace("_", " ")}`);
   if (parts.length === 0) return null;
   const tone = differences > 0 || evidence.partial ? "text-amber-400/80" : "text-zinc-500";
-  return { text: parts.join(" · "), tone };
+  return { text: parts.join(" | "), tone };
 }
 
 function recordDiffers(row: FlowEvidence | undefined): boolean {

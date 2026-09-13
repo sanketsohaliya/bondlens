@@ -26,6 +26,7 @@ import { useColumnWidths } from "../lib/useColumnWidths";
 import AddLotPopover from "./AddLotPopover";
 import AiPromptBtn from "./AiPromptBtn";
 import CopyText from "./CopyText";
+import InlineMetadata, { MetadataSeparator } from "./InlineMetadata";
 import RatingBadge from "./RatingBadge";
 import YieldQuote from "./YieldQuote";
 
@@ -161,7 +162,7 @@ export function PayoutCell({
             <span
               title={`${paymentsLeftText(b.future_flows, b.total_flows)} (interest and principal payments a buyer today would receive)`}
             >
-              {(isZeroCoupon(b) || b.coupon != null) && " · "}
+              {(isZeroCoupon(b) || b.coupon != null) && <MetadataSeparator />}
               {b.future_flows}/{b.total_flows} left
             </span>
           )}
@@ -192,9 +193,15 @@ export function AskQuoteCell({ ask, onOpen }: { ask: AskYtm | null; onOpen: () =
         <YieldQuote value={ask} stale={stale} />
       </div>
       {ask && (
-        <div className="flex items-center gap-3 truncate text-[11px]">
-          {!stale && <AbsReturn value={ask} />}
-          <span className="truncate text-zinc-400">{ticket.label}</span>
+        <div className="flex items-center truncate text-[11px]">
+          <InlineMetadata
+            parts={[
+              !stale && absReturnText(ask) && <AbsReturn key="return" value={ask} />,
+              <span key="ticket" className="truncate text-zinc-400">
+                {ticket.label}
+              </span>,
+            ]}
+          />
         </div>
       )}
     </button>
@@ -501,6 +508,7 @@ export function Row({
   ask?: AskYtm | null;
 }) {
   const payout = payoutDisplay(b, today);
+  const abs = b.ytm != null ? absReturnText(b.valuation) : null;
   return (
     <tr
       onClick={() => {
@@ -534,17 +542,29 @@ export function Row({
             </span>
           )}
         </div>
-        <div className="flex items-center gap-3 text-[11px] min-w-0">
-          <CopyText
-            value={b.nse_symbol ?? b.bse_scrip_id ?? b.isin}
-            label="symbol"
-            className="text-zinc-500 shrink-0"
+        <div className="flex items-center text-[11px] min-w-0">
+          <InlineMetadata
+            parts={[
+              <CopyText
+                key="symbol"
+                value={b.nse_symbol ?? b.bse_scrip_id ?? b.isin}
+                label="symbol"
+                className="text-zinc-500 shrink-0"
+              />,
+              <CopyText key="isin" value={b.isin} label="ISIN" className="text-zinc-500" />,
+            ]}
           />
-          <CopyText value={b.isin} label="ISIN" className="text-zinc-500" />
-          <span className="flex items-center gap-3 shrink-0 opacity-0 group-hover/row:opacity-100 transition-opacity">
-            <RowLink href={nsdlUrl(b.isin)} label="NSDL" tip={LINK_TIPS.nsdl} />
-            {b.kite_url && <RowLink href={b.kite_url} label="Kite" tip={LINK_TIPS.kite} />}
-            <AiPromptBtn isin={b.isin} variant="row" />
+          <span className="flex items-center shrink-0 opacity-0 group-hover/row:opacity-100 transition-opacity">
+            <MetadataSeparator />
+            <InlineMetadata
+              parts={[
+                <RowLink key="nsdl" href={nsdlUrl(b.isin)} label="NSDL" tip={LINK_TIPS.nsdl} />,
+                b.kite_url && (
+                  <RowLink key="kite" href={b.kite_url} label="Kite" tip={LINK_TIPS.kite} />
+                ),
+                <AiPromptBtn key="ai" isin={b.isin} variant="row" />,
+              ]}
+            />
           </span>
         </div>
       </td>
@@ -583,9 +603,10 @@ export function Row({
             </span>
           )}
         </div>
-        {(b.ltp != null || (b.ytm != null && absReturnText(b.valuation))) && (
-          <div className="flex items-center gap-3 text-[11px] font-normal">
-            {b.ytm != null && <AbsReturn value={b.valuation} />}
+        {(b.ltp != null || abs) && (
+          <div className="flex items-center text-[11px] font-normal">
+            {abs && <AbsReturn value={b.valuation} />}
+            {abs && b.ltp != null && <MetadataSeparator />}
             {b.ltp != null && (
               <div
                 className={`group/ltp ${

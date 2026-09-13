@@ -179,10 +179,9 @@ export function otcLine(b: OtcData): { text: string; title: string } | null {
   const yieldPart = hasYield
     ? `${fmt.pct(b.otc_yield)}${b.otc_price_pct != null ? ` @ ${fmt.num(Number(b.otc_price_pct))}` : ""}`
     : null;
-  const text = ["OTC", hasTurnover ? fmt.inr(b.otc_turnover) : null, yieldPart]
+  const text = `OTC ${[hasTurnover ? fmt.inr(b.otc_turnover) : null, yieldPart]
     .filter(Boolean)
-    .join(" · ")
-    .replace("OTC · ", "OTC ");
+    .join(" | ")}`;
   const when = b.otc_trade_date ? ` on ${calendarDate(b.otc_trade_date)}` : "";
   if (hasYield) {
     title.push(

@@ -13,6 +13,7 @@ import CopyBtn from "../components/CopyBtn";
 import CopyText from "../components/CopyText";
 import Donut from "../components/Donut";
 import { BookmarkIcon } from "../components/ExploreTable";
+import InlineMetadata, { MetadataSeparator } from "../components/InlineMetadata";
 import LotsPanel from "../components/LotsPanel";
 import RatingBadge from "../components/RatingBadge";
 import StatBox from "../components/StatBox";
@@ -488,9 +489,20 @@ function PositionRow({
           >
             {p.issuer_name ?? p.isin}
           </button>
-          <div className="flex items-center gap-3 text-[11px]">
-            {p.symbol && <CopyText value={p.symbol} label="symbol" className="text-zinc-500" />}
-            <CopyText value={p.isin} label="ISIN" className="text-zinc-500" />
+          <div className="flex items-center text-[11px]">
+            <InlineMetadata
+              parts={[
+                p.symbol && (
+                  <CopyText
+                    key="symbol"
+                    value={p.symbol}
+                    label="symbol"
+                    className="text-zinc-500"
+                  />
+                ),
+                <CopyText key="isin" value={p.isin} label="ISIN" className="text-zinc-500" />,
+              ]}
+            />
           </div>
         </td>
         {/* Same treatment as the explorer's rating cell: full rating with
@@ -759,7 +771,7 @@ function CashflowChart({
         })
         .join("");
       el.innerHTML =
-        `<div style="color:#71717a;margin-bottom:2px">${d.toLocaleDateString("en-IN", { month: "short", year: "numeric" })}${isPastMonth(cf.month) ? " · past scheduled" : ""}${cf.estimated ? " (≈ est.)" : ""}</div>` +
+        `<div style="color:#71717a;margin-bottom:2px">${d.toLocaleDateString("en-IN", { month: "short", year: "numeric" })}${isPastMonth(cf.month) ? " | past scheduled" : ""}${cf.estimated ? " (≈ est.)" : ""}</div>` +
         `<table><thead><tr style="color:#71717a">` +
         `<td style="padding-right:10px">Bond</td>` +
         `<td style="padding-right:2px">ISIN</td>` +
@@ -892,8 +904,15 @@ function MonthPopover({
         }}
       >
         <div className="text-zinc-500 mb-1">
-          {MONTHS[monthIdx]} {year} · {fmt.inr(m.interest + m.principal)}
-          {isPastMonth(m.month) && <span className="text-zinc-600"> · past scheduled</span>}
+          {MONTHS[monthIdx]} {year}
+          <MetadataSeparator />
+          {fmt.inr(m.interest + m.principal)}
+          {isPastMonth(m.month) && (
+            <span className="text-zinc-600">
+              <MetadataSeparator />
+              past scheduled
+            </span>
+          )}
           {m.estimated && " (≈ est.)"}
         </div>
         <table className="tabular-nums">
@@ -1089,22 +1108,33 @@ function NewsList({ news, onSelect }: { news: PortfolioNews[]; onSelect: (isin: 
             {n.action ? `${n.action} — ` : ""}
             {n.rating ?? ""}
           </span>
-          <span className="text-zinc-600 whitespace-nowrap">
-            {n.rating_date ? new Date(n.rating_date).toLocaleDateString("en-IN") : ""}
+          <span className="inline-flex items-center whitespace-nowrap">
+            <InlineMetadata
+              parts={[
+                n.rating_date && (
+                  <span key="date" className="text-zinc-600">
+                    {new Date(n.rating_date).toLocaleDateString("en-IN")}
+                  </span>
+                ),
+                n.press_release && (
+                  <a
+                    key="pr"
+                    href={n.press_release}
+                    target="_blank"
+                    rel="noreferrer"
+                    onClick={(e) => e.stopPropagation()}
+                    className="text-emerald-400 hover:text-emerald-300 whitespace-nowrap"
+                  >
+                    PR ↗
+                  </a>
+                ),
+              ]}
+            />
           </span>
-          {n.press_release && (
-            <a
-              href={n.press_release}
-              target="_blank"
-              rel="noreferrer"
-              onClick={(e) => e.stopPropagation()}
-              className="text-emerald-400 hover:text-emerald-300 whitespace-nowrap"
-            >
-              PR ↗
-            </a>
-          )}
         </div>
       ))}
     </div>
   );
 }
+
+export { MonthPopover, NewsList, PositionRow };

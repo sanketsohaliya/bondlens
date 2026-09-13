@@ -93,6 +93,47 @@ const view: CashflowEvidenceResponse = {
 };
 
 describe("cashflow evidence panel", () => {
+  it("separates optional notice status and corroboration without empty fields", () => {
+    const render = (
+      status: ExchangeNotice["status"],
+      corroborated_by: ExchangeNotice["corroborated_by"],
+    ) =>
+      renderToStaticMarkup(
+        <NoticeCard notice={{ ...notice, status, corroborated_by }} showLink={false} />,
+      ).replace(/<[^>]*>/g, "");
+    expect(render("unmatched", "NSE")).toContain(
+      "Payment of Interest | Not matched to NSDL | attached via NSE record date",
+    );
+    expect(render("matched", "NSE")).toContain(
+      "Payment of Interest | attached via NSE record date",
+    );
+    expect(render("unmatched", null)).toContain("Payment of Interest | Not matched to NSDL");
+    expect(render("matched", null)).not.toContain("Payment of Interest |");
+  });
+
+  it("separates complete date fields and valid source references", () => {
+    const html = renderToStaticMarkup(
+      <NoticeCard
+        notice={{
+          ...notice,
+          links: [
+            "https://www.bseindia.com/",
+            "javascript:alert(1)",
+            "https://example.test/source",
+          ],
+        }}
+      />,
+    );
+    const text = html.replace(/<[^>]*>/g, "");
+    expect(text).toContain("Ex-date 11 Sept 2026 | Record date 12 Sept 2026");
+    expect(text).toContain("source ↗ 1 | source ↗ 2");
+    expect(text).toContain("Captured 11 Sept 2026, 05:30 IST");
+    const single = renderToStaticMarkup(
+      <NoticeCard notice={{ ...notice, ex_date: null }} showLink={false} />,
+    );
+    expect(single.replace(/<[^>]*>/g, "")).not.toContain("|");
+  });
+
   it("leads with the verdict and keeps Details to what the exchange said", () => {
     const html = renderToStaticMarkup(
       <CashflowEvidencePanel flow={flow} row={view.flows[0]} evidence={view} />,

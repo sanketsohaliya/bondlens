@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import InlineMetadata from "./InlineMetadata";
 
 /* Marketing hero for the sign-in page: a perspective-tilted explorer
    panel with floating order-book / income / rating cards overlapping
@@ -125,7 +126,9 @@ export default function LoginShowcase() {
               <span className="ml-2 text-zinc-600">— demo data</span>
             </span>
             <span className="ml-auto text-[10px] text-zinc-600">
-              NSE · BSE — <SessionClock reduced={reduced} />
+              <InlineMetadata
+                parts={["NSE", "BSE", <SessionClock key="clock" reduced={reduced} />]}
+              />
             </span>
           </div>
           <div className="h-[calc(100%-41px)]">

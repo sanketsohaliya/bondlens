@@ -166,16 +166,17 @@ describe("explore amounts", () => {
       bse_turnover: null,
     };
     const line = otcLine(b);
-    expect(line?.text).toBe("OTC ₹1.90 L · 12.26% @ 99.99");
+    expect(line?.text).toBe("OTC ₹1.90 L | 12.26% @ 99.99");
     expect(line).not.toHaveProperty("attention");
     expect(line?.title).toContain("Retail turnover ₹27,550 (prev ₹21,300)");
     expect(line?.title).toContain("OTC ₹1.90 L on 11 Sept 2026 at 99.99% of face, 12.26% yield");
     expect(line?.title).not.toMatch(/pts (above|below)/);
     // Each part is optional.
-    expect(otcLine({ ...b, otc_price_pct: null })?.text).toBe("OTC ₹1.90 L · 12.26%");
+    expect(otcLine({ ...b, otc_price_pct: null })?.text).toBe("OTC ₹1.90 L | 12.26%");
     expect(otcLine({ ...b, otc_turnover: null })?.text).toBe("OTC 12.26% @ 99.99");
     expect(otcLine({ ...b, otc_yield: null, otc_price_pct: null })?.text).toBe("OTC ₹1.90 L");
     expect(otcLine({ ...b, otc_yield: null, otc_turnover: null })).toBeNull();
+    expect(otcLine({ ...b, otc_turnover: 0 })?.text).toBe("OTC ₹0 | 12.26% @ 99.99");
   });
 
   it("formats the absolute return: one decimal, none at three digits, true minus when negative", () => {

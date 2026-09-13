@@ -4,6 +4,7 @@ import { api, fmt } from "../api/client";
 import type { DepthSide, KiteOrder, YtmAtPrice } from "../api/types";
 import { isQuoteFresh, useQuoteClock, valuationIsCurrent } from "../lib/quoteValuation";
 import { useDepthStream } from "../lib/useDepthStream";
+import { MetadataSeparator } from "./InlineMetadata";
 import OrderTicket from "./OrderTicket";
 import YieldQuote from "./YieldQuote";
 
@@ -83,7 +84,7 @@ export default function OrderBook({
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <div className="text-xs text-zinc-500 flex items-center gap-2">
+        <div className="text-xs text-zinc-500 flex items-center">
           {live ? (
             <>
               <span className="inline-flex items-center gap-1.5 text-emerald-400 font-medium">
@@ -93,13 +94,15 @@ export default function OrderBook({
                 </span>
                 LIVE
               </span>
+              <MetadataSeparator />
               <span>streaming from your Kite session</span>
             </>
           ) : (
             <span>
               Snapshot captured{" "}
               {new Date(data.fetched_at).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })} IST
-              · not a guaranteed executable offer
+              <MetadataSeparator />
+              not a guaranteed executable offer
             </span>
           )}
         </div>
@@ -274,7 +277,8 @@ function Ladder({
               className="text-[10px] text-zinc-500"
               title={(side.warnings ?? []).map((warning) => warning.message).join("\n")}
             >
-              {fresh ? "Snapshot" : "Expired snapshot"} ·{" "}
+              {fresh ? "Snapshot" : "Expired snapshot"}
+              <MetadataSeparator />
               {side.quote_at ?? side.fetched_at ?? "time unknown"}
             </span>
           )}

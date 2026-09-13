@@ -5,6 +5,7 @@ import type {
   FlowEvidence,
 } from "../api/types";
 import { calendarDate, noticeFacts, validLink, verdictFor } from "../lib/cashflowEvidence";
+import InlineMetadata, { MetadataSeparator } from "./InlineMetadata";
 
 const REASONS: Record<string, string> = {
   event_applies_to_another_isin:
@@ -57,20 +58,29 @@ export function NoticeCard({
   const links = showLink ? n.links.filter(validLink) : [];
   return (
     <div className="space-y-1 text-xs whitespace-normal">
-      <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-        <span className="font-semibold text-zinc-300">{n.source}</span>
-        <span className={n.redemption_form === "early" ? "text-amber-400/80" : "text-zinc-400"}>
-          {facts.header}
+      <div className="flex flex-wrap items-baseline gap-y-0.5">
+        <span className="inline-flex flex-wrap items-baseline gap-x-2">
+          <span className="font-semibold text-zinc-300">{n.source}</span>
+          <span className={n.redemption_form === "early" ? "text-amber-400/80" : "text-zinc-400"}>
+            {facts.header}
+          </span>
         </span>
-        {n.status !== "matched" && (
-          <span className="text-[10px] text-zinc-500">{NOTICE_STATES[n.status]}</span>
-        )}
-        {n.corroborated_by && (
-          <span
-            className="text-[10px] text-zinc-500"
-            title="BSE supplies only a record date. This notice was tied to the row because an NSE notice on the same row states the same record date."
-          >
-            · attached via {n.corroborated_by} record date
+        {(n.status !== "matched" || n.corroborated_by) && (
+          <span className="inline-flex flex-wrap items-baseline text-[10px] text-zinc-500">
+            <MetadataSeparator />
+            <InlineMetadata
+              parts={[
+                n.status !== "matched" && NOTICE_STATES[n.status],
+                n.corroborated_by && (
+                  <span
+                    key="corroboration"
+                    title="BSE supplies only a record date. This notice was tied to the row because an NSE notice on the same row states the same record date."
+                  >
+                    attached via {n.corroborated_by} record date
+                  </span>
+                ),
+              ]}
+            />
           </span>
         )}
       </div>
@@ -81,7 +91,7 @@ export function NoticeCard({
         <p className="text-[11px]">
           {facts.dates.map((d, i) => (
             <span key={d.label} title={d.title}>
-              {i > 0 && <span className="text-zinc-600"> · </span>}
+              {i > 0 && <MetadataSeparator />}
               <span className="text-zinc-500">{d.label} </span>
               <span className="text-zinc-300">{d.value}</span>
             </span>
@@ -102,18 +112,20 @@ export function NoticeCard({
         </p>
       )}
       {showLink && (
-        <div className="flex flex-wrap gap-x-3 gap-y-1">
-          {links.map((url, i) => (
-            <a
-              key={url}
-              href={url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-[11px] text-zinc-400 underline decoration-zinc-700 underline-offset-2 hover:text-zinc-100"
-            >
-              source ↗{links.length > 1 ? ` ${i + 1}` : ""}
-            </a>
-          ))}
+        <div className="flex flex-wrap gap-y-1 text-[11px]">
+          <InlineMetadata
+            parts={links.map((url, i) => (
+              <a
+                key={url}
+                href={url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-zinc-400 underline decoration-zinc-700 underline-offset-2 hover:text-zinc-100"
+              >
+                source ↗{links.length > 1 ? ` ${i + 1}` : ""}
+              </a>
+            ))}
+          />
           {links.length === 0 && (
             <span className="text-[11px] text-zinc-500">Source link not captured</span>
           )}
@@ -184,7 +196,7 @@ export default function CashflowEvidencePanel({
           {v.text}
           {v.links.map((l) => (
             <span key={l.href}>
-              {" · "}
+              <MetadataSeparator />
               <a
                 href={l.href}
                 target="_blank"

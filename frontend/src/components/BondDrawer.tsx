@@ -12,6 +12,7 @@ import CashflowTable from "./CashflowTable";
 import CopyBtn from "./CopyBtn";
 import { HoldMark, WatchStar } from "./ExploreTable";
 import HoldingPanel from "./HoldingPanel";
+import InlineMetadata from "./InlineMetadata";
 import OrderBook from "./OrderBook";
 import RatingTimeline from "./RatingTimeline";
 import StatBox, { type StatDetail } from "./StatBox";
@@ -160,10 +161,16 @@ export default function BondDrawer({
                     )}
                   </div>
                   <div className="text-sm text-zinc-400 mt-0.5">{bond.issuer_name}</div>
-                  <div className="text-xs text-zinc-500 font-mono mt-0.5 flex items-center gap-1.5">
-                    {bond.isin}
-                    <CopyBtn text={bond.isin} label="ISIN" />
-                    {bond.sector && <span>· {bond.sector}</span>}
+                  <div className="text-xs text-zinc-500 font-mono mt-0.5 flex items-center">
+                    <InlineMetadata
+                      parts={[
+                        <span key="isin" className="inline-flex items-center gap-1.5">
+                          {bond.isin}
+                          <CopyBtn text={bond.isin} label="ISIN" />
+                        </span>,
+                        bond.sector,
+                      ]}
+                    />
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
@@ -703,9 +710,13 @@ function Overview({
               >
                 <span className="font-mono text-zinc-400">{s.nse_symbol ?? s.isin}</span>
                 <span className="text-zinc-500">
-                  {s.coupon_rate != null ? `${Number(s.coupon_rate).toFixed(2)}%` : ""} ·{" "}
-                  {fmt.date(s.redemption_date)} ·{" "}
-                  {s.close != null ? fmt.inr(Number(s.close)) : "untraded"}
+                  <InlineMetadata
+                    parts={[
+                      s.coupon_rate != null ? `${Number(s.coupon_rate).toFixed(2)}%` : null,
+                      fmt.date(s.redemption_date),
+                      s.close != null ? fmt.inr(Number(s.close)) : "untraded",
+                    ]}
+                  />
                 </span>
               </button>
             ))}
