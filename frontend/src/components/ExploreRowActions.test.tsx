@@ -108,6 +108,22 @@ describe("explore row actions", () => {
     expect(text(cell(renderRow(), 6))).not.toContain("|");
   });
 
+  it("does not put a warning glyph beside a stale price; the hover still explains the age", () => {
+    const stale = { ...bond, stale: true, days_since_traded: 27, prev_ltp: null };
+    const html = wrap(
+      <table>
+        <tbody>
+          <Row bond={stale} today="2026-09-13" onSelect={() => {}} ask={undefined} />
+        </tbody>
+      </table>,
+    );
+    const yieldCell = html.split("<td")[3] ?? "";
+    // The badge beside the yield is severity-driven; a week-old price is not
+    // a doubt about the number, so no \u26a0 anywhere in this cell.
+    expect(yieldCell).not.toContain("\u26a0");
+    expect(yieldCell).toContain("No trades seen for 27 days");
+  });
+
   it("renders an external link that opens safely in a new tab and explains itself", () => {
     const html = renderToStaticMarkup(
       <RowLink href="https://example.test/x" label="NSDL" tip="Official bond record on NSDL" />,

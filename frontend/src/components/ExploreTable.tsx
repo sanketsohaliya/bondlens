@@ -215,16 +215,12 @@ type SortKey =
     >
   | "ask_ytm"; // client-side only — computed from the user's Kite session
 
-type Col = { key: SortKey | null; label: string; right?: boolean; tip?: string };
+type Col = { key: SortKey | null; label: string; right?: boolean };
 
 const BASE_COLS: Col[] = [
   { key: null, label: "" },
   { key: null, label: "Symbol" },
-  {
-    key: "ytm",
-    label: "YTM @ LTP",
-    tip: "Annualised yield at this price. The muted figure below is the total return to maturity, not annualised.",
-  },
+  { key: "ytm", label: "YTM @ LTP" },
   { key: "turnover", label: "Retail turnover" },
   { key: "rating_rank", label: "Rating" },
   { key: "coupon", label: "Payout" },
@@ -235,11 +231,7 @@ const BASE_COLS: Col[] = [
 /** With Kite connected, YTM @ Ask slots in right after YTM @ LTP. */
 const KITE_COLS: Col[] = [
   ...BASE_COLS.slice(0, 3),
-  {
-    key: "ask_ytm",
-    label: "YTM @ Ask",
-    tip: "Annualised yield at this price. The muted figure below is the total return to maturity, not annualised.",
-  },
+  { key: "ask_ytm", label: "YTM @ Ask" },
   ...BASE_COLS.slice(3),
 ];
 
@@ -438,7 +430,6 @@ export default function ExploreTable({
             {cols.map((c, i) => (
               <th
                 key={i}
-                title={c.tip}
                 className={`relative px-3 py-3 whitespace-nowrap ${c.right ? "text-right" : "text-left"} ${c.key ? "cursor-pointer select-none hover:text-zinc-300" : ""}`}
                 onClick={() =>
                   c.key &&
@@ -450,7 +441,6 @@ export default function ExploreTable({
               >
                 <span className={c.key === shownSortKey ? "text-zinc-200" : undefined}>
                   {c.label}
-                  {c.tip && <span className="ml-1 text-zinc-600">ⓘ</span>}
                 </span>
                 {c.key === shownSortKey && (
                   <span className="ml-1 text-emerald-500/80">{sort.dir === -1 ? "▼" : "▲"}</span>
@@ -640,7 +630,6 @@ export function Row({
                     {b.ltp > b.prev_ltp ? "▲" : "▼"}
                   </span>
                 )}
-                {b.stale && <span className="ml-1 text-[10px] text-zinc-600 align-middle">⚠</span>}
               </div>
             )}
           </div>
