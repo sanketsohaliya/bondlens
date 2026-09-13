@@ -38,8 +38,44 @@ export function isMarketComparison(note: Pick<YieldWarning, "code">): boolean {
   return note.code === "otc_difference";
 }
 
+/** Every warning code the backend can emit, with the one short sentence the
+ * hover shows for it. Order within the map is the display priority when a
+ * valuation carries several. `null` = the sentence is composed elsewhere
+ * (old_price from its day count, otc_difference from the rupee gap).
+ *
+ * Which of these show the ⚠ badge is NOT decided here: the backend's
+ * severity does that (caution/error = the number is suspect; info = context).
+ * A CI test asserts every backend code has an entry, so a badge can never
+ * appear without an explanation. */
+export const CAVEATS: Record<string, string | null> = {
+  // error
+  schedule_invalid: "Payment schedule could not be validated.",
+  invalid_payout: "Modeled payout is not finite — totals withheld.",
+  // caution: the calculation or its inputs are suspect
+  yield_unavailable: "Yield could not be solved.",
+  price_unavailable: "No usable price.",
+  yield_range: "Yield is outside the sanity range — verify the price.",
+  short_horizon_range: "Very short horizon — check the rupee gain, not the annualised rate.",
+  approximation: "Approximate yield — schedule detail was insufficient for an exact solve.",
+  call_scenario: "Yield to call — assumes the issuer exercises the call at par.",
+  callable_maturity: "Callable before maturity — the yield to maturity may not be realised.",
+  unresolved_calls: "Some call terms are unresolved — yield-to-worst unavailable.",
+  variable_coupon: "Floating coupon — yield assumes today's rate.",
+  estimated_payments: "Some payments are estimated from the coupon rate.",
+  future_price_date: "Price is future-dated — verify the source.",
+  // info: context, never a badge
+  otc_difference: null,
+  old_price: null,
+  short_horizon: "Matures within 90 days — the annualised yield is sensitive to timing.",
+  future_otc_date: "OTC print is future-dated — comparison unavailable.",
+};
+
+const SEVERITY_RANK: Record<string, number> = { error: 0, caution: 1, info: 2 };
+
+/** Warnings that cast doubt on the number itself — anything the backend did
+ * not mark as mere information. Drives every ⚠ / "review" marker. */
 export function yieldReviewWarnings(value: YieldValuation | null | undefined): YieldWarning[] {
-  return (value?.warnings ?? []).filter((note) => !isMarketComparison(note));
+  return (value?.warnings ?? []).filter((note) => note.severity !== "info");
 }
 
 export function hasYieldReview(
@@ -47,6 +83,30 @@ export function hasYieldReview(
   reliable = value?.ytm_reliable,
 ): boolean {
   return yieldReviewWarnings(value).length > 0 || (!value?.warnings?.length && reliable === false);
+}
+
+/** The single caveat sentence for a note, or null if it says nothing useful. */
+export function caveatText(note: YieldWarning): string | null {
+  if (note.code === "otc_difference")
+    return note.gap != null ? (otcJudgement(note) ?? yieldGapText(note.gap)) : note.message;
+  if (note.code === "old_price") {
+    const days = note.message.match(/(\d+) days old/)?.[1];
+    return days ? `Last trade ${days} days ago — not a current offer.` : note.message;
+  }
+  // A code we have a sentence for; otherwise the backend's own message so a
+  // new code is never silent.
+  return CAVEATS[note.code] ?? note.message;
+}
+
+/** Pick the one caveat to show: highest severity first, then map order. */
+export function primaryCaveat(value: YieldValuation | null | undefined): YieldWarning | null {
+  const order = Object.keys(CAVEATS);
+  const notes = [...(value?.warnings ?? [])].sort(
+    (a, b) =>
+      (SEVERITY_RANK[a.severity] ?? 1) - (SEVERITY_RANK[b.severity] ?? 1) ||
+      (order.indexOf(a.code) + 1 || 999) - (order.indexOf(b.code) + 1 || 999),
+  );
+  return notes[0] ?? null;
 }
 
 /** Mirror of backend valuation.OTC_MAX_GAP / OTC_MAX_AGE (backend/analytics/valuation.py). */
@@ -107,27 +167,6 @@ export function comparisonText(
   return { headline, action: otcJudgement(note), tone: "attention" };
 }
 
-const SHORT_CAVEATS: Record<string, string> = {
-  call_scenario: "Yield to call — assumes the issuer exercises the call at par.",
-  variable_coupon: "Floating coupon — yield assumes today's rate.",
-  yield_range: "Yield is outside the sanity range — verify the price.",
-  short_horizon_range: "Very short horizon — check the rupee gain, not the annualised rate.",
-  future_otc_date: "OTC print is future-dated — comparison unavailable.",
-  estimated_payments: "Some payments are estimated from the coupon rate.",
-  schedule_invalid: "Payment schedule could not be validated.",
-};
-const CAVEAT_PRIORITY = [
-  "otc_difference",
-  "schedule_invalid",
-  "yield_range",
-  "short_horizon_range",
-  "call_scenario",
-  "variable_coupon",
-  "estimated_payments",
-];
-
-/** Hover tooltip: what you would earn, plus at most one caveat. Everything
- * else about how the number was produced lives in provenanceLines(). */
 export function valuationTooltip(value: YieldValuation | null | undefined): string {
   if (!value)
     return "Calculation metadata unavailable for this snapshot; refresh the valuation before relying on it.";
@@ -139,14 +178,12 @@ export function valuationTooltip(value: YieldValuation | null | undefined): stri
           `Earn ${fmt.inrFull(value.gross_gain)} per unit (${fmt.pct(value.holding_period_return)}) if held to ${horizon}, before tax.`,
         ]
       : [`Indicative ${valuationLabel(value)} at the displayed price.`];
-  const warnings = value.warnings ?? [];
-  for (const code of CAVEAT_PRIORITY) {
-    const note = warnings.find((w) => w.code === code);
-    if (!note) continue;
-    if (code === "otc_difference" && note.gap != null)
-      lines.push(`⚠ ${otcJudgement(note) ?? yieldGapText(note.gap)}`);
-    else lines.push(`⚠ ${SHORT_CAVEATS[code] ?? note.message}`);
-    break;
+  // One caveat, highest severity first. The glyph matches the badge: ⚠ for
+  // a caution/error (the row shows ⚠ too), ⓘ for information (it does not).
+  const note = primaryCaveat(value);
+  if (note) {
+    const text = caveatText(note);
+    if (text) lines.push(`${note.severity === "info" ? "ⓘ" : "⚠"} ${text}`);
   }
   return lines.join("\n");
 }

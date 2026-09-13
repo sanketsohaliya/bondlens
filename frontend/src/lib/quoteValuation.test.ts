@@ -58,10 +58,9 @@ describe("quote valuation", () => {
     expect(tip.split("\n")).toHaveLength(2);
   });
 
-  it.each([
-    "caution",
-    "info",
-  ] as const)("does not badge an OTC-only %s note, including old snapshots", (severity) => {
+  it("does not badge an OTC-only note, including old snapshots", () => {
+    // The backend always emits otc_difference as info: it is market context.
+    const severity = "info" as const;
     const value = {
       ...quote(),
       ytm_reliable: false,
@@ -75,8 +74,9 @@ describe("quote valuation", () => {
     };
     const html = renderToStaticMarkup(createElement(YieldQuote, { value }));
     expect(html).toContain("10.00%");
-    // Legacy snapshot (no structured gap): the stored sentence is the one caveat.
-    expect(html).toContain("⚠ OTC 5.00% on 2026-09-11");
+    // Legacy snapshot (no structured gap): the stored sentence is the one
+    // caveat, with the info glyph because it is context, not a warning.
+    expect(html).toContain("ⓘ OTC 5.00% on 2026-09-11");
     expect(html).not.toContain("text-amber");
     expect(html).not.toContain(">review<");
     expect(hasYieldReview(value, false)).toBe(false);
@@ -92,7 +92,6 @@ describe("quote valuation", () => {
     ["yield_range", "caution"],
     ["future_otc_date", "caution"],
     ["schedule_invalid", "error"],
-    ["short_horizon", "info"],
   ] as const)("preserves %s beside an OTC comparison", (code, severity) => {
     const value = {
       ...quote(),
@@ -229,8 +228,27 @@ describe("quote valuation", () => {
       ],
     }).split("\n");
     expect(withOtc).toHaveLength(2);
-    expect(withOtc[1]).toBe(
-      "⚠ Institutions paid ≈₹9,950 for this on 11 Sept 2026; retail last traded at ₹9,425 — ₹525 (5.3%) cheaper.",
+    // A caution about the number itself outranks market context.
+    expect(withOtc[1]).toBe("⚠ Yield is outside the sanity range — verify the price.");
+    const otcOnly = valuationTooltip({
+      ...base,
+      warnings: [
+        {
+          code: "otc_difference",
+          severity: "info",
+          message: "legacy",
+          otc_yield: 12.26,
+          otc_trade_date: "2026-09-11",
+          gap: 6.0,
+          otc_price: 9950,
+          retail_price: 9425,
+          price_gap: -525,
+          price_gap_pct: -5.28,
+        },
+      ],
+    }).split("\n");
+    expect(otcOnly[1]).toBe(
+      "ⓘ Institutions paid ≈₹9,950 for this on 11 Sept 2026; retail last traded at ₹9,425 — ₹525 (5.3%) cheaper.",
     );
     // Without rupee data the one caveat falls back to the yield gap, still exactly one line.
     const yieldOnly = valuationTooltip({
@@ -247,7 +265,7 @@ describe("quote valuation", () => {
       ],
     }).split("\n");
     expect(yieldOnly).toHaveLength(2);
-    expect(yieldOnly[1]).toBe("⚠ Retail yield is 12 pts above the recent OTC print.");
+    expect(yieldOnly[1]).toBe("ⓘ Retail yield is 12 pts above the recent OTC print.");
     const variable = valuationTooltip({
       ...base,
       warnings: [{ code: "variable_coupon", severity: "caution", message: "long text" }],
@@ -277,6 +295,56 @@ describe("quote valuation", () => {
     expect(lines.join("\n")).toMatch(/Actual\/Actual/);
     expect(lines.join("\n")).toMatch(/T\+1 settlement/);
     expect(lines.join("\n")).toMatch(/Calculator: test/);
+  });
+
+  it("badges on severity, not on code: info is context, caution/error is doubt", async () => {
+    const { CAVEATS, caveatText, primaryCaveat } = await import("./quoteValuation");
+    const v = (warnings: object[]) => ({ ...quote(), warnings }) as never;
+    const note = (code: string, severity: "info" | "caution" | "error", message = "m") => ({
+      code,
+      severity,
+      message,
+    });
+    // 13 Sept 2026: old_price lit ⚠ on 60% of rows while the tooltip said "Earn ₹965".
+    expect(
+      hasYieldReview(
+        v([note("old_price", "info", "Price observation is 37 days old; not current")]),
+      ),
+    ).toBe(false);
+    expect(hasYieldReview(v([note("short_horizon", "info")]))).toBe(false);
+    expect(hasYieldReview(v([note("otc_difference", "info")]))).toBe(false);
+    expect(hasYieldReview(v([note("old_price", "info"), note("yield_range", "caution")]))).toBe(
+      true,
+    );
+    expect(hasYieldReview(v([note("schedule_invalid", "error")]))).toBe(true);
+    // Tooltip glyph agrees with the badge state.
+    const stale = valuationTooltip(
+      v([
+        note(
+          "old_price",
+          "info",
+          "Price observation is 37 days old; it is not a current executable offer",
+        ),
+      ]),
+    ).split("\n");
+    expect(stale[1]).toBe("ⓘ Last trade 37 days ago — not a current offer.");
+    // Caution outranks info regardless of map order.
+    expect(
+      primaryCaveat(v([note("old_price", "info"), note("estimated_payments", "caution")]))?.code,
+    ).toBe("estimated_payments");
+    // An unknown code is never silent: the backend's own sentence shows, with ⚠.
+    const unknown = valuationTooltip(
+      v([note("zzz_new_code", "caution", "Something new went wrong")]),
+    ).split("\n");
+    expect(unknown[1]).toBe("⚠ Something new went wrong");
+    expect(caveatText(note("zzz_new_code", "caution", "Something new went wrong"))).toBe(
+      "Something new went wrong",
+    );
+    // Every explained code has a real sentence or is composed elsewhere.
+    for (const [code, text] of Object.entries(CAVEATS)) {
+      if (text !== null) expect(text.length).toBeGreaterThan(10);
+      else expect(["otc_difference", "old_price"]).toContain(code);
+    }
   });
 
   it("retains unexplained legacy caution flags rather than assuming they were OTC-only", () => {

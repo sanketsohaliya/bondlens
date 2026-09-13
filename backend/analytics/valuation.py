@@ -8,7 +8,7 @@ from datetime import UTC, date, datetime
 from . import yields
 from .schedule import Flow, Schedule
 
-VERSION = "2026-09-12.4"
+VERSION = "2026-09-13.1"
 RELIABLE = (-1.0, 50.0)
 RELIABLE_NEAR = (0.0, 20.0)
 NEAR_DAYS = 90
@@ -127,7 +127,12 @@ def calculate(price: float | None, sched: Schedule, terms: dict | None, today: d
     if price_date and price_date > today:
         warnings.append(warning("future_price_date", "Price is future-dated; verify the source before using this valuation"))
     elif price_date and (today - price_date).days > 7:
-        warnings.append(warning("old_price", f"Price observation is {(today - price_date).days} days old; it is not a current executable offer"))
+        # Information about the price's age, not doubt about the arithmetic:
+        # a week without a trade is ordinary for Indian corporate bonds, and
+        # the explorer already shows "N days ago" beside the row. As a
+        # caution this marked ~60% of bonds unreliable; as info it feeds the
+        # tooltip only.
+        warnings.append(warning("old_price", f"Price observation is {(today - price_date).days} days old; it is not a current executable offer", "info"))
     complete = bool(flows) and not issues and (perpetual or sched.usable) and method != "approx"
     total = sum(f.amount or 0 for f in flows or []) if complete else None
     if total is not None and not math.isfinite(total):

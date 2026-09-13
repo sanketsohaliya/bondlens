@@ -179,3 +179,23 @@ def test_perpetual_uses_the_same_explicit_call_scenario():
     assert result["yield_type"] == result["ytm_method"] == "ytc"
     assert result["gross_payout"] == 1100
     assert "call_scenario" in {w["code"] for w in result["warnings"]}
+
+
+def test_price_age_is_information_not_a_reliability_caution():
+    # 37 days since the last trade: the note is present, but only as context.
+    result = valuation.calculate(950.0, schedule(), {}, TODAY,
+                                 price_date=TODAY - timedelta(days=37))
+    [note] = [w for w in result["warnings"] if w["code"] == "old_price"]
+    assert note["severity"] == "info"
+    assert "37 days old" in note["message"]
+    assert result["ytm_reliable"] is True
+
+
+def test_a_genuine_calculation_caution_still_marks_the_yield_unreliable():
+    # Same stale price, but an out-of-range yield: that one is a caution.
+    result = valuation.calculate(650.0, schedule(), {}, TODAY,
+                                 price_date=TODAY - timedelta(days=37))
+    codes = {w["code"]: w["severity"] for w in result["warnings"]}
+    assert codes["old_price"] == "info"
+    assert codes["yield_range"] == "caution"
+    assert result["ytm_reliable"] is False
