@@ -2,8 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { api, fmt } from "../api/client";
 import type { DepthSide, KiteOrder, YtmAtPrice } from "../api/types";
-import { isQuoteFresh, useQuoteClock, valuationIsCurrent } from "../lib/quoteValuation";
-import { useDepthStream } from "../lib/useDepthStream";
+import { fmtIstTime, useQuoteClock, valuationIsCurrent } from "../lib/quoteValuation";
 import { MetadataSeparator } from "./InlineMetadata";
 import OrderTicket from "./OrderTicket";
 import YieldQuote from "./YieldQuote";
@@ -23,10 +22,11 @@ interface TicketState {
   modifyOrderId?: string;
 }
 
-/** Live top-5 bid/ask depth per exchange. With the user's Kite account
- * connected the ladder streams from Zerodha's ticker and rows are
- * orderable; otherwise it's the REST snapshot (server caches 30s) with
- * a manual Refresh. */
+/** Top-5 bid/ask depth per exchange, fetched once when the drawer opens
+ * and again only on Refresh - a snapshot with its capture time, never
+ * polled or streamed under the reader. With the user's Kite account
+ * connected the depth comes from their session and rows are orderable;
+ * otherwise it's the exchange scrape (server caches 30s). */
 export default function OrderBook({
   isin,
   nseSymbol,
@@ -40,36 +40,17 @@ export default function OrderBook({
     queryKey: ["kite-status"],
     queryFn: api.kite.status,
     staleTime: 60_000,
-    refetchInterval: 60_000,
-    refetchOnWindowFocus: true,
+    refetchOnWindowFocus: false,
   });
   const connected = kite?.connected ?? false;
 
-  const {
-    data: rest,
-    isLoading,
-    isFetching,
-    refetch,
-  } = useQuery({
+  const { data, isLoading, isFetching, refetch } = useQuery({
     queryKey: ["depth", isin],
     queryFn: () => api.depth(isin),
-    staleTime: 25_000,
-    refetchInterval: 60_000,
-    refetchOnWindowFocus: true,
+    staleTime: Number.POSITIVE_INFINITY,
+    refetchOnWindowFocus: false,
   });
   const now = useQuoteClock();
-  const stream = useDepthStream(isin, connected);
-  const streamAge = now - Date.parse(stream.book?.fetched_at ?? "");
-  const recentStream = streamAge >= -30_000 && streamAge < 90_000;
-  const data = recentStream ? stream.book : (rest ?? stream.book);
-  // A connected socket alone is not live depth: require a recent tick
-  // with a usable snapshot. Each exchange keeps its own capture time,
-  // so a tick on one venue cannot rejuvenate stale depth on the other.
-  const live =
-    stream.status === "live" &&
-    recentStream &&
-    [stream.book?.nse, stream.book?.bse].some((side) => isQuoteFresh(side, now));
-  const showRefresh = !live;
 
   const [ticket, setTicket] = useState<TicketState | null>(null);
 
@@ -85,26 +66,12 @@ export default function OrderBook({
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div className="text-xs text-zinc-500 flex items-center">
-          {live ? (
-            <>
-              <span className="inline-flex items-center gap-1.5 text-emerald-400 font-medium">
-                <span className="relative flex h-2 w-2">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-60" />
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
-                </span>
-                LIVE
-              </span>
-              <MetadataSeparator />
-              <span>streaming from your Kite session</span>
-            </>
-          ) : (
-            <span>
-              Snapshot captured{" "}
-              {new Date(data.fetched_at).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })} IST
-              <MetadataSeparator />
-              not a guaranteed executable offer
-            </span>
-          )}
+          <span>
+            Snapshot captured{" "}
+            {new Date(data.fetched_at).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })} IST
+            <MetadataSeparator />
+            not a guaranteed executable offer
+          </span>
         </div>
         <div className="flex items-center gap-2">
           {kite?.configured && !connected && kite.login_url && (
@@ -117,16 +84,14 @@ export default function OrderBook({
             </a>
           )}
           {connected && <KiteConnectedBadge />}
-          {showRefresh && (
-            <button
-              type="button"
-              onClick={() => refetch()}
-              disabled={isFetching}
-              className="text-xs px-3 py-1.5 rounded-md border border-zinc-700 text-zinc-300 hover:border-zinc-500 hover:text-zinc-100 transition-colors disabled:opacity-50"
-            >
-              {isFetching ? "Refreshing…" : "Refresh"}
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={() => refetch()}
+            disabled={isFetching}
+            className="text-xs px-3 py-1.5 rounded-md border border-zinc-700 text-zinc-300 hover:border-zinc-500 hover:text-zinc-100 transition-colors disabled:opacity-50"
+          >
+            {isFetching ? "Refreshing…" : "Refresh"}
+          </button>
         </div>
       </div>
 
@@ -232,15 +197,19 @@ function Ladder({
   fallbackUrl?: string;
   onOrder?: (t: { side: "BUY" | "SELL"; price?: number | null; qty?: number | null }) => void;
 }) {
-  const fresh = isQuoteFresh(side, now);
   const ytmFor = (price: number | null) =>
     price == null ? null : ytmAtAsk.find((value) => value.price === price);
-  const bestAsk = fresh
-    ? side?.asks.find((level) => (level.price ?? 0) > 0 && (level.qty ?? 0) > 0)
-    : undefined;
-  const bestBid = fresh
-    ? side?.bids.find((level) => (level.price ?? 0) > 0 && (level.qty ?? 0) > 0)
-    : undefined;
+  const bestAsk = side?.asks.find((level) => (level.price ?? 0) > 0 && (level.qty ?? 0) > 0);
+  const bestBid = side?.bids.find((level) => (level.price ?? 0) > 0 && (level.qty ?? 0) > 0);
+  // Kite's quote timestamp is when the book last CHANGED; a resting
+  // order from the open is still a live order. Say so instead of hiding it.
+  const captured = fmtIstTime(side?.fetched_at, true);
+  const changedAt = Date.parse(side?.quote_at ?? "");
+  const fetchedAt = Date.parse(side?.fetched_at ?? "");
+  const unchangedSince =
+    Number.isFinite(changedAt) && Number.isFinite(fetchedAt) && fetchedAt - changedAt > 60_000
+      ? fmtIstTime(side?.quote_at)
+      : null;
 
   return (
     <div className="border border-zinc-800 rounded-lg overflow-hidden">
@@ -277,9 +246,15 @@ function Ladder({
               className="text-[10px] text-zinc-500"
               title={(side.warnings ?? []).map((warning) => warning.message).join("\n")}
             >
-              {fresh ? "Snapshot" : "Expired snapshot"}
+              Snapshot
               <MetadataSeparator />
-              {side.quote_at ?? side.fetched_at ?? "time unknown"}
+              {captured ?? "time unknown"}
+              {unchangedSince && (
+                <>
+                  <MetadataSeparator />
+                  book unchanged since {unchangedSince}
+                </>
+              )}
             </span>
           )}
         </span>
@@ -328,7 +303,6 @@ function Ladder({
                     title={onOrder && bid?.price != null ? "Sell at this bid" : undefined}
                     onClick={() =>
                       onOrder &&
-                      fresh &&
                       (bid?.qty ?? 0) > 0 &&
                       bid?.price != null &&
                       onOrder({ side: "SELL", price: bid.price, qty: bid.qty })
@@ -350,7 +324,6 @@ function Ladder({
                     title={onOrder && ask?.price != null ? "Buy at this ask" : undefined}
                     onClick={() =>
                       onOrder &&
-                      fresh &&
                       (ask?.qty ?? 0) > 0 &&
                       ask?.price != null &&
                       onOrder({ side: "BUY", price: ask.price, qty: ask.qty })
@@ -365,9 +338,7 @@ function Ladder({
                   </td>
                   <td className="px-2 py-1.5 text-right text-zinc-500">{ticket(ask) || "₹0"}</td>
                   <td className="px-2 py-1.5 text-right text-zinc-300">
-                    {ytm && (
-                      <YieldQuote value={ytm} stale={!fresh || !valuationIsCurrent(ytm, now)} />
-                    )}
+                    {ytm && <YieldQuote value={ytm} stale={!valuationIsCurrent(ytm, now)} />}
                   </td>
                 </tr>
               );

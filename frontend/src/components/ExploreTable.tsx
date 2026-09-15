@@ -4,7 +4,6 @@ import { createPortal } from "react-dom";
 import { api, fmt } from "../api/client";
 import type { AskYtm, Bond, YieldValuation } from "../api/types";
 import { useAuth } from "../lib/auth";
-import { calendarAsOf } from "../lib/cashflowEvidence";
 import {
   absReturnText,
   askTicketText,
@@ -17,12 +16,13 @@ import {
 import { LINK_TIPS, nsdlUrl } from "../lib/links";
 import { nextListName, useHeldIsins, useWatchlists } from "../lib/lists";
 import {
+  fmtIstTime,
   hasYieldReview,
-  isQuoteFresh,
   useQuoteClock,
   valuationIsCurrent,
   valuationTooltip,
 } from "../lib/quoteValuation";
+import { useAskCapture } from "../lib/useAskCapture";
 import { useColumnWidths } from "../lib/useColumnWidths";
 import AddLotPopover from "./AddLotPopover";
 import AiPromptBtn from "./AiPromptBtn";
@@ -174,13 +174,14 @@ export function PayoutCell({
 
 export function AskQuoteCell({ ask, onOpen }: { ask: AskYtm | null; onOpen: () => void }) {
   const ticket = askTicketText(ask);
-  // On the board an ask is hidden only when it has fallen off the refresh
-  // window or has no size; an ask merely past its 90s executable window
-  // stays visible, with its capture time in the tooltip.
-  const stale = ask != null && (!askOnBoard(ask) || !(ask.ask_qty && ask.ask_qty > 0));
+  // The ask is a snapshot from page load; only a size-less level is
+  // withheld. Its capture time lives in the tooltip.
+  const stale = ask != null && !(ask.ask_qty && ask.ask_qty > 0);
   const captured = stale ? null : askCapturedLabel(ask);
   const detail = `${ticket.detail}\n${valuationTooltip(ask)}${
-    captured ? `\nBest ask ${captured} IST; refreshed every 30 minutes.` : ""
+    captured
+      ? `\nBest ask ${captured} IST; captured when the page loaded - reload for a fresh book.`
+      : ""
   }`;
   return (
     <button
@@ -244,77 +245,11 @@ const KITE_COLS: Col[] = [
 const COLUMN_WIDTHS_KEY = "explore-col-widths";
 const LEGACY_COLUMN_WIDTHS_KEY = "screener-col-widths";
 
-/* Explore is a screen, not an order ticket. Asks move little intraday,
-   and refetching them every minute re-sorted the board under the reader,
-   so they are refreshed every half hour and a quote stays on the board
-   for the whole interval. Once the 90s executable-offer window has passed
-   the cell says when the quote was captured instead of hiding it; the
-   Order Book / ticket keep the strict freshness rules. */
-export const ASK_REFRESH_MS = 30 * 60_000;
-const ASK_BOARD_MAX_AGE = ASK_REFRESH_MS + 5 * 60_000;
-
-/** Is this ask still worth showing on the Explore board: captured within
- * the refresh window and valued for today's calendar day? */
-export function askOnBoard(ask: AskYtm | null | undefined, now = Date.now()): boolean {
-  const fetched = Date.parse(ask?.fetched_at ?? "");
-  return (
-    Number.isFinite(fetched) &&
-    fetched <= now + 30_000 &&
-    now - fetched < ASK_BOARD_MAX_AGE &&
-    Boolean(ask?.calculation_version) &&
-    ask?.as_of === calendarAsOf(undefined, new Date(now))
-  );
-}
-
-/** "as of 10:42" for an ask past its 90s executable window, else null. */
-export function askCapturedLabel(ask: AskYtm | null | undefined, now = Date.now()): string | null {
-  if (!ask || (isQuoteFresh(ask, now) && valuationIsCurrent(ask, now))) return null;
-  const fetched = Date.parse(ask.fetched_at ?? "");
-  if (!Number.isFinite(fetched)) return "time unknown";
-  const hm = new Date(fetched).toLocaleTimeString("en-IN", {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-    timeZone: "Asia/Kolkata",
-  });
-  return `as of ${hm}`;
-}
-
-/* Recent per-user asks bridge reloads without silently extending their
-   original quote or calculation lifetimes. Each entry expires separately;
-   a fresh subset cannot rejuvenate older entries or revive a missing ask.
-   Legacy snapshots without freshness metadata are never reused. */
-const ASK_SNAPSHOT_KEY = "ask-ytm-snapshot";
-const ASK_SNAPSHOT_TTL = ASK_BOARD_MAX_AGE;
-const ASK_SNAPSHOT_CAP = 2000;
-
-export function loadAskSnapshot(userId: number): Map<string, AskYtm> | null {
-  try {
-    const raw = localStorage.getItem(`${ASK_SNAPSHOT_KEY}:${userId}`);
-    if (!raw) return null;
-    const { ts, items } = JSON.parse(raw) as { ts: number; items: AskYtm[] };
-    if (!Number.isFinite(ts) || ts > Date.now() + 30_000 || Date.now() - ts > ASK_SNAPSHOT_TTL)
-      return null;
-    const current = items.filter((item) => askOnBoard(item));
-    return current.length ? new Map(current.map((item) => [item.isin, item])) : null;
-  } catch {
-    return null;
-  }
-}
-
-export function saveAskSnapshot(userId: number, fresh: AskYtm[], requested: string[]) {
-  try {
-    const merged = loadAskSnapshot(userId) ?? new Map<string, AskYtm>();
-    for (const isin of requested) merged.delete(isin);
-    for (const item of fresh) if (askOnBoard(item)) merged.set(item.isin, item);
-    const items = [...merged.values()].slice(-ASK_SNAPSHOT_CAP);
-    localStorage.setItem(
-      `${ASK_SNAPSHOT_KEY}:${userId}`,
-      JSON.stringify({ ts: Date.now(), items }),
-    );
-  } catch {
-    /* storage full/unavailable — snapshot is only an optimization */
-  }
+/** "as of 10:42" - when the best ask was captured (tooltip only). */
+export function askCapturedLabel(ask: AskYtm | null | undefined): string | null {
+  if (!ask) return null;
+  const hm = fmtIstTime(ask.fetched_at);
+  return hm ? `as of ${hm}` : "time unknown";
 }
 
 export type SortState = { key: SortKey; dir: 1 | -1 };
@@ -345,54 +280,36 @@ export default function ExploreTable({
       return next;
     });
 
-  // YTM @ Ask: best-ask yields fetched under the user's own Kite session.
+  // YTM @ Ask: best-ask yields under the user's own Kite session,
+  // captured for the WHOLE universe once per page load (filters only
+  // narrow that set, so no bond with an ask is ever missed).
   const { data: kite } = useQuery({
     queryKey: ["kite-status"],
     queryFn: api.kite.status,
     staleTime: 60_000,
-    refetchInterval: 60_000,
-    refetchOnWindowFocus: true,
+    refetchOnWindowFocus: false,
   });
   const kiteConnected = kite?.connected ?? false;
-  // Kite quote calls are the one genuinely bounded resource (500
-  // instruments per call, rate-limited): spend the 1,000-ISIN budget on
-  // the bonds with the best yield evidence instead of arbitrary order.
-  const isins = useMemo(
+  const capture = useAskCapture(kiteConnected, user.id, today);
+  const askMap = useMemo(
     () =>
-      [...bonds]
-        .sort((a, b) => (b.ytm ?? b.otc_yield ?? -1) - (a.ytm ?? a.otc_yield ?? -1))
-        .slice(0, 1000)
-        .map((b) => b.isin),
-    [bonds],
+      new Map(
+        [...capture.asks.values()]
+          .filter((item) => valuationIsCurrent(item, now))
+          .map((item) => [item.isin, item]),
+      ),
+    [capture.asks, now],
   );
-  const askYtm = useQuery({
-    queryKey: ["ask-ytm", user.id, today, isins.join(",")],
-    queryFn: () => api.kite.askYtm(isins),
-    enabled: kiteConnected && isins.length > 0,
-    staleTime: ASK_REFRESH_MS - 60_000,
-    refetchInterval: ASK_REFRESH_MS,
-    refetchOnWindowFocus: false, // tabbing back must not reshuffle the board
-  });
-  const snapshot = useMemo(() => loadAskSnapshot(user.id), [user.id]);
-  useEffect(() => {
-    if (askYtm.data) saveAskSnapshot(user.id, askYtm.data.items, isins);
-  }, [askYtm.data, isins, user.id]);
-  const askMap = useMemo(() => {
-    // Fresh data wins outright (even empty ⇒ the ytm fallback below);
-    // the snapshot only bridges the seconds before the first fetch lands.
-    const items = askYtm.data ? askYtm.data.items : [...(snapshot?.values() ?? [])];
-    return new Map(items.filter((item) => askOnBoard(item, now)).map((item) => [item.isin, item]));
-  }, [askYtm.data, snapshot, now]);
 
-  // Painting before the asks arrive would order by LTP-YTM and then
-  // visibly reorder — hold the loading state for the one first fetch
-  // (kite status unknown counts as pending; a disconnected user's ask
-  // query is disabled, so isLoading stays false and nothing holds).
+  // Painting before any asks arrive would order by LTP-YTM and then
+  // visibly reorder — hold the loading state until the first page lands
+  // (kite status unknown counts as pending; a disconnected user's capture
+  // is disabled, so nothing holds). Later pages fill in place; the sort
+  // settles as they land, once per load.
   const holdForAsks =
     sort.key === "ask_ytm" &&
-    snapshot == null &&
     bonds.length > 0 &&
-    (kite === undefined || (kiteConnected && askYtm.isLoading));
+    (kite === undefined || (kiteConnected && capture.loading && capture.done === 0));
 
   const cols = kiteConnected ? KITE_COLS : BASE_COLS;
   const { widths, tableRef, startResize } = useColumnWidths(COLUMN_WIDTHS_KEY, cols.length, {
@@ -443,10 +360,11 @@ export default function ExploreTable({
 
   return (
     <div className="overflow-x-auto scroll-slim">
-      {kiteConnected && askYtm.isError && (
+      {kiteConnected && capture.error && (
         <div className="p-3 text-xs text-amber-400">
-          Ask quotes could not be refreshed; expired snapshots are hidden.{" "}
-          <button type="button" onClick={() => askYtm.refetch()} className="underline">
+          Ask capture stopped after {capture.done}
+          {capture.pages ? ` of ${capture.pages}` : ""} page(s); some bonds may show no ask.{" "}
+          <button type="button" onClick={capture.retry} className="underline">
             Retry
           </button>
         </div>
@@ -481,6 +399,15 @@ export default function ExploreTable({
                 </span>
                 {c.key === shownSortKey && (
                   <span className="ml-1 text-emerald-500/80">{sort.dir === -1 ? "▼" : "▲"}</span>
+                )}
+                {c.key === "ask_ytm" && capture.loading && (
+                  <span
+                    className="ml-2 normal-case tracking-normal font-normal text-zinc-600 animate-pulse"
+                    title="Capturing the best ask for every listed bond; filters apply to the full set once done."
+                  >
+                    loading {capture.done}
+                    {capture.pages ? `/${capture.pages}` : ""}
+                  </span>
                 )}
                 {i > 0 && (
                   <span

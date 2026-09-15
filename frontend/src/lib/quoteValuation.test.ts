@@ -1,16 +1,11 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import {
-  askCapturedLabel,
-  askOnBoard,
-  loadAskSnapshot,
-  saveAskSnapshot,
-} from "../components/ExploreTable";
+import { askCapturedLabel } from "../components/ExploreTable";
 import YieldQuote, { YieldNotes } from "../components/YieldQuote";
 import {
+  fmtIstTime,
   hasYieldReview,
-  isQuoteFresh,
   valuationIsCurrent,
   valuationLabel,
   valuationTooltip,
@@ -26,7 +21,6 @@ const quote = (isin = "TEST", time = now) => ({
   calculation_version: "test",
   calculated_at: new Date(time).toISOString(),
   fetched_at: new Date(time).toISOString(),
-  expires_at: new Date(time + 60_000).toISOString(),
 });
 
 afterEach(() => {
@@ -35,15 +29,20 @@ afterEach(() => {
 });
 
 describe("quote valuation", () => {
-  it("expires both quotes and calculation contexts", () => {
-    expect(isQuoteFresh(quote(), now)).toBe(true);
-    expect(isQuoteFresh(quote(), now + 61_000)).toBe(false);
+  it("keeps a valuation for its calendar day and never ages it out", () => {
+    // Snapshots are captured on load; the capture time is shown, not enforced.
     expect(valuationIsCurrent(quote(), now)).toBe(true);
+    expect(valuationIsCurrent(quote(), now + 6 * 3600_000)).toBe(true);
     expect(valuationIsCurrent({ ...quote(), as_of: "2026-09-11" }, now)).toBe(false);
-    expect(valuationIsCurrent(quote(), now + 91_000)).toBe(false);
-    expect(
-      isQuoteFresh({ ...quote(), fetched_at: new Date(now + 3600_000).toISOString() }, now),
-    ).toBe(false);
+    expect(valuationIsCurrent({ ...quote(), calculation_version: undefined }, now)).toBe(false);
+    expect(valuationIsCurrent(null, now)).toBe(false);
+  });
+
+  it("formats capture times in IST", () => {
+    expect(fmtIstTime("2026-09-12T10:00:00Z")).toBe("15:30");
+    expect(fmtIstTime("2026-09-12T10:00:05Z", true)).toBe("15:30:05");
+    expect(fmtIstTime(null)).toBeNull();
+    expect(fmtIstTime("junk")).toBeNull();
   });
 
   it("preserves conditional type, estimates and the actual caution reason", () => {
@@ -358,37 +357,9 @@ describe("quote valuation", () => {
     expect(hasYieldReview(null, true)).toBe(false);
   });
 
-  it("does not rejuvenate old entries when a fresh subset is merged", () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(now);
-    const values = new Map<string, string>();
-    vi.stubGlobal("localStorage", {
-      getItem: (key: string) => values.get(key) ?? null,
-      setItem: (key: string, value: string) => values.set(key, value),
-    });
-    // Explore keeps an ask on the board for the 30-minute refresh window
-    // (plus slack); A falls off it while the later B does not.
-    const late = now + 34 * 60_000;
-    saveAskSnapshot(1, [quote("A")], ["A"]);
-    vi.setSystemTime(late);
-    saveAskSnapshot(1, [quote("B", late)], ["B"]);
-    expect([...(loadAskSnapshot(1)?.keys() ?? [])].sort()).toEqual(["A", "B"]);
-    vi.setSystemTime(now + 36 * 60_000);
-    expect([...(loadAskSnapshot(1)?.keys() ?? [])]).toEqual(["B"]);
-    expect(loadAskSnapshot(2)).toBeNull();
-    saveAskSnapshot(1, [], ["B"]);
-    expect(loadAskSnapshot(1)).toBeNull();
-  });
-
-  it("keeps an ask on the Explore board past its 90s ticket window, but not past the refresh window or the day", () => {
-    const q = quote();
-    expect(isQuoteFresh(q, now + 120_000)).toBe(false);
-    expect(askOnBoard(q, now + 120_000)).toBe(true);
-    expect(askCapturedLabel(q, now + 30_000)).toBeNull();
-    expect(askCapturedLabel(q, now + 120_000)).toBe("as of 15:30");
-    expect(askOnBoard(q, now + 36 * 60_000)).toBe(false);
-    expect(askOnBoard({ ...q, as_of: "2026-09-11" }, now)).toBe(false);
-    expect(askOnBoard({ ...q, fetched_at: null }, now)).toBe(false);
-    expect(askOnBoard({ ...q, calculation_version: undefined }, now)).toBe(false);
+  it("labels an ask with its capture time for the tooltip", () => {
+    expect(askCapturedLabel(quote())).toBe("as of 15:30");
+    expect(askCapturedLabel({ ...quote(), fetched_at: null })).toBe("time unknown");
+    expect(askCapturedLabel(null)).toBeNull();
   });
 });

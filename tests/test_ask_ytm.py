@@ -45,6 +45,7 @@ def env(monkeypatch):
         }
 
     monkeypatch.setattr(ask_ytm.kite_connect, "fetch_quotes", fake_quotes)
+    monkeypatch.setattr(ask_ytm.time, "sleep", lambda s: None)  # no Kite pacing in tests
     monkeypatch.setattr(ask_ytm.queries, "cashflows_for", lambda isins: {})
     monkeypatch.setattr(ask_ytm.queries, "terms_for", lambda isins: {})
 
@@ -63,7 +64,8 @@ def test_best_ask_across_exchanges(env):
     assert item["ask_price"] == 1005 and item["ask_qty"] == 10
     assert item["ytm"] == 11.44 and item["exchange"] == "BSE"
     assert item["ytm_method"] == "exact" and item["as_of"] == str(date.today())
-    assert item["expires_at"] and item["fetched_at"] and item["calculation_version"]
+    assert item["fetched_at"] and item["calculation_version"]
+    assert "expires_at" not in item
 
 
 def test_no_ask_is_cached_and_omitted(env):
@@ -101,13 +103,76 @@ def test_unusable_schedule_gives_null_ytm(env, monkeypatch):
     assert item["ask_price"] == 990.0 and item["ytm"] is None
 
 
-def test_zero_size_and_expired_quotes_do_not_win_the_best_ask():
+def test_zero_size_does_not_win_the_best_ask():
     quotes = {"NSE:T": _quote(900, 0), "BSE:T": _quote(1000, 5)}
     best = ask_ytm._best_ask(quotes, list(quotes))
     assert best is not None and best["ask_price"] == 1000
-    quotes["NSE:T"] = {**_quote(900, 5), "timestamp": (datetime.now(UTC) - timedelta(minutes=5)).isoformat()}
+
+
+def test_an_unchanged_book_is_still_the_best_ask():
+    # 15 Sept 2026: 202 listings had a resting ask, 12 had changed in the
+    # last 90s. Kite's timestamp is the book's last change, not its
+    # validity - an ask resting since the open is a live ask.
+    since_open = (datetime.now(UTC) - timedelta(hours=2)).isoformat()
+    quotes = {"NSE:T": {**_quote(900, 5), "timestamp": since_open}, "BSE:T": _quote(1000, 5)}
+    best = ask_ytm._best_ask(quotes, list(quotes))
+    assert best is not None and best["ask_price"] == 900
+    assert {w["code"] for w in best["warnings"]} == {"book_unchanged"}
+
+
+def test_a_future_dated_book_is_refused():
+    ahead = (datetime.now(UTC) + timedelta(hours=1)).isoformat()
+    quotes = {"NSE:T": {**_quote(900, 5), "timestamp": ahead}, "BSE:T": _quote(1000, 5)}
     best = ask_ytm._best_ask(quotes, list(quotes))
     assert best is not None and best["ask_price"] == 1000
+
+
+def test_universe_is_paged_in_yield_order_and_cached(monkeypatch):
+    calls = []
+    universe = [f"INE{n:09d}" for n in range(2300)]
+    monkeypatch.setattr(ask_ytm.queries, "ask_universe", lambda: calls.append(1) or list(universe))
+    monkeypatch.setattr(ask_ytm, "_universe", None)
+    pages = ask_ytm.universe_pages()
+    assert [len(p) for p in pages] == [1000, 1000, 300]
+    assert pages[0][0] == universe[0] and pages[2][-1] == universe[-1]
+    ask_ytm.universe_pages()
+    assert len(calls) == 1  # served from the 10-minute cache
+    monkeypatch.setattr(ask_ytm, "_universe", None)
+
+
+def test_compute_page_reports_its_isins_so_no_ask_can_be_recorded(env, monkeypatch):
+    monkeypatch.setattr(ask_ytm, "_universe", None)
+    monkeypatch.setattr(ask_ytm.queries, "ask_universe",
+                        lambda: ["INE000TEST01", "INE000TEST02", "INE000TEST03"])
+    monkeypatch.setattr(ask_ytm, "PAGE", 2)
+    first = ask_ytm.compute_page(1, 0)
+    assert first["page"] == 0 and first["pages"] == 2
+    assert first["isins"] == ["INE000TEST01", "INE000TEST02"]
+    assert [i["isin"] for i in first["items"]] == ["INE000TEST01"]  # TEST02 has no ask
+    last = ask_ytm.compute_page(1, 1)
+    assert last["isins"] == ["INE000TEST03"] and len(last["items"]) == 1
+    assert ask_ytm.compute_page(1, 7) == {"items": [], "page": 7, "pages": 2, "isins": []}
+    monkeypatch.setattr(ask_ytm, "_universe", None)
+
+
+def test_quote_calls_are_paced_to_kites_one_per_second(monkeypatch):
+    clock = {"t": 100.0}
+    slept: list[float] = []
+    monkeypatch.setattr(ask_ytm.time, "monotonic", lambda: clock["t"])
+
+    def sleep(s):
+        slept.append(s)
+        clock["t"] += s
+    monkeypatch.setattr(ask_ytm.time, "sleep", sleep)
+    monkeypatch.setattr(ask_ytm.kite_connect, "fetch_quotes", lambda uid, inst: {})
+    monkeypatch.setattr(ask_ytm, "_last_quote_call", 0.0)
+    ask_ytm._paced_quotes(1, ["NSE:A"])
+    assert slept == []  # first call goes straight out
+    ask_ytm._paced_quotes(1, ["NSE:B"])
+    assert len(slept) == 1 and abs(slept[0] - ask_ytm.QUOTE_MIN_INTERVAL) < 1e-9
+    clock["t"] += 5
+    ask_ytm._paced_quotes(1, ["NSE:C"])
+    assert len(slept) == 1  # long enough gap, no wait
 
 
 def test_cache_rejects_old_calculation_date_or_version(env):
@@ -157,6 +222,6 @@ def test_endpoint_empty_when_not_connected(monkeypatch):
     try:
         r = TestClient(app).post("/api/kite/ask-ytm",
                                  json={"isins": ["INE000TEST01"]})
-        assert r.status_code == 200 and r.json() == {"items": []}
+        assert r.status_code == 200 and r.json()["items"] == []
     finally:
         app.dependency_overrides.clear()

@@ -3,29 +3,30 @@ import { fmt } from "../api/client";
 import type { YieldValuation, YieldWarning } from "../api/types";
 import { calendarAsOf } from "./cashflowEvidence";
 
-export function isQuoteFresh(
-  quote: { fetched_at?: string | null; expires_at?: string | null } | null | undefined,
-  now = Date.now(),
-): boolean {
-  const fetched = Date.parse(quote?.fetched_at ?? "");
-  const expires = Date.parse(quote?.expires_at ?? "");
-  return (
-    Number.isFinite(fetched) && fetched <= now + 30_000 && now - fetched < 90_000 && expires > now
-  );
-}
-
+/** A valuation is usable while it was computed for today's calendar day
+ * with a known calculator. Quotes and valuations are snapshots captured
+ * when the page (or the order book) loaded; nothing ages them out - the
+ * capture time is shown instead, and a reload captures again. */
 export function valuationIsCurrent(
   value: YieldValuation | null | undefined,
   now = Date.now(),
 ): boolean {
-  const calculated = Date.parse(value?.calculated_at ?? "");
   return (
-    Boolean(value?.calculation_version) &&
-    value?.as_of === calendarAsOf(undefined, new Date(now)) &&
-    Number.isFinite(calculated) &&
-    calculated <= now + 30_000 &&
-    now - calculated < 90_000
+    Boolean(value?.calculation_version) && value?.as_of === calendarAsOf(undefined, new Date(now))
   );
+}
+
+/** "10:31" / "10:31:41" in IST for an ISO timestamp; null when unparsable. */
+export function fmtIstTime(iso: string | null | undefined, seconds = false): string | null {
+  const t = Date.parse(iso ?? "");
+  if (!Number.isFinite(t)) return null;
+  return new Date(t).toLocaleTimeString("en-IN", {
+    hour: "2-digit",
+    minute: "2-digit",
+    ...(seconds ? { second: "2-digit" } : {}),
+    hour12: false,
+    timeZone: "Asia/Kolkata",
+  });
 }
 
 export function valuationLabel(value: YieldValuation | null | undefined): string {

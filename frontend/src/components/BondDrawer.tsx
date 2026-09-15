@@ -248,17 +248,16 @@ export default function BondDrawer({
   );
 }
 
-/** Keeps the order book loaded while the drawer is open so the Ask AI prompt
- * can include depth from cache even before the Order Book tab is visited. The
- * exported snapshot keeps its own capture time; it is never treated as a live
- * executable offer. */
+/** Loads the order book once while the drawer is open so the Ask AI prompt
+ * can include depth from cache even before the Order Book tab is visited
+ * (same query key, so the tab reuses this one fetch). The exported snapshot
+ * keeps its own capture time; it is never treated as a live executable offer. */
 function useDepthForPrompt(isin: string) {
   useQuery({
     queryKey: ["depth", isin],
     queryFn: () => api.depth(isin),
-    staleTime: 25_000,
-    refetchInterval: 60_000,
-    refetchOnWindowFocus: true,
+    staleTime: Number.POSITIVE_INFINITY,
+    refetchOnWindowFocus: false,
   });
 }
 

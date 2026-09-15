@@ -8,7 +8,6 @@ const freshness = {
   calculation_version: "test",
   calculated_at: new Date().toISOString(),
   fetched_at: new Date().toISOString(),
-  expires_at: new Date(Date.now() + 60_000).toISOString(),
 };
 
 const bond = {
@@ -70,18 +69,15 @@ describe("explore amount cells", () => {
     expect(render(ask)).toContain("16.3% | ₹10,025 (₹1.00 L)");
     expect(render({ ...ask, holding_period_return: 0 })).toContain("0.0% | ₹10,025 (₹1.00 L)");
     expect(render({ ...ask, holding_period_return: Number.NaN })).not.toContain("|");
-    // Past the 90s ticket window the ask stays on the board unchanged; the
-    // capture time lives in the tooltip only.
-    const aged = new Date(Date.now() - 10 * 60_000).toISOString();
-    const agedAsk = { ...ask, fetched_at: aged, calculated_at: aged, expires_at: aged };
+    // An ask is a page-load snapshot: hours old, it still reads the same
+    // in the row, with its capture time in the tooltip only.
+    const aged = new Date(Date.now() - 3 * 3600_000).toISOString();
+    const agedAsk = { ...ask, fetched_at: aged, calculated_at: aged };
     expect(render(agedAsk)).toContain("16.3% | ₹10,025 (₹1.00 L)");
     expect(render(agedAsk)).not.toContain("as of");
     expect(renderToStaticMarkup(<AskQuoteCell ask={agedAsk} onOpen={() => {}} />)).toMatch(
-      /title="[^"]*Best ask as of \d\d:\d\d IST; refreshed every 30 minutes/,
+      /title="[^"]*Best ask as of \d\d:\d\d IST; captured when the page loaded/,
     );
-    // Off the 30-minute refresh window it is hidden like any expired quote.
-    const gone = new Date(Date.now() - 40 * 60_000).toISOString();
-    expect(render({ ...ask, fetched_at: gone, calculated_at: gone })).not.toContain("|");
     expect(render({ ...ask, ask_qty: 0 })).not.toContain("|");
     expect(render(null)).not.toContain("|");
   });

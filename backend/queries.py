@@ -480,6 +480,20 @@ def bonds_symbols(isins: list[str]) -> dict[str, dict]:
     return {r["isin"]: dict(r) for r in rows}
 
 
+def ask_universe() -> list[str]:
+    """Every bond that can carry a Kite quote (has an NSE or BSE symbol),
+    best known yield first so the explorer's first ask page covers the
+    likeliest opportunities; never-traded paper (ytm NULL) comes last but
+    is still asked - a resting ask is an opportunity whether or not the
+    bond has printed a trade."""
+    with db._conn() as conn:
+        rows = conn.execute(
+            "SELECT isin FROM bond_analytics "
+            "WHERE nse_symbol IS NOT NULL OR bse_scrip_id IS NOT NULL "
+            "ORDER BY ytm DESC NULLS LAST, isin").fetchall()
+    return [r["isin"] for r in rows]
+
+
 def terms_for(isins: list[str]) -> dict[str, dict]:
     """bond_terms rows keyed by ISIN, in one query (bulk bond_terms)."""
     with db._conn() as conn:

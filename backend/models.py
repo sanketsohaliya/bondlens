@@ -568,7 +568,6 @@ class DepthSide(BaseModel):
     source: Literal["kite", "exchange"] | None = None
     fetched_at: str | None = None
     quote_at: str | None = None
-    expires_at: str | None = None
     warnings: list[YieldWarning] = Field(default_factory=list)
 
 
@@ -613,7 +612,11 @@ class KiteMargins(BaseModel):
 
 
 class AskYtmRequest(BaseModel):
-    isins: list[str]
+    """Either explicit ISINs, or one page of the whole listed universe
+    (the explorer captures every bond's ask once per page load and lets
+    its filters narrow the result, so no ask is missed)."""
+    isins: list[str] = Field(default_factory=list)
+    page: int | None = Field(default=None, ge=0)
 
 
 class AskYtm(YieldValuation):
@@ -623,11 +626,16 @@ class AskYtm(YieldValuation):
     exchange: str | None = None
     fetched_at: str | None = None
     quote_at: str | None = None
-    expires_at: str | None = None
 
 
 class AskYtmResponse(BaseModel):
     items: list[AskYtm]
+    # Page bookkeeping (universe mode only): which page this is, how many
+    # there are, and every ISIN it covered - so the client can record
+    # "asked, no resting ask" for the ones missing from items.
+    page: int | None = None
+    pages: int | None = None
+    isins: list[str] = Field(default_factory=list)
 
 
 class KiteOrderId(BaseModel):

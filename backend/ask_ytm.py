@@ -3,11 +3,24 @@ Kite session (the explorer's "YTM @ Ask" column).
 
 Same yield engine as everywhere else — schedule.build + exact_ytm —
 just at the best (lowest) resting ask across the bond's NSE/BSE
-listings instead of the last traded price. Ask data is cached per
-(user, isin) for 60s, including "no ask" results, so a page load costs
-at most ceil(n/500) Kite quote calls per user per minute.
+listings instead of the last traded price.
+
+Two entry points:
+  compute(user, isins)   explicit ISINs (watchlists, tests, one-offs)
+  compute_page(user, k)  page k of the WHOLE listed universe. The explorer
+                         walks every page once per page load and then
+                         filters client-side, so an ask can never be
+                         missed because a cap or the active filters kept
+                         its bond out of the request.
+
+Ask data is a snapshot: what the book showed when we fetched it, with
+its capture time. Nothing expires it; a reload captures again. Results
+are cached per (user, isin) for 60s, including "no ask", so two tabs or
+a quick reload do not double the Kite traffic. Kite allows one /quote
+call per second, so chunks are paced.
 """
 import math
+import threading
 import time
 from datetime import UTC, date, datetime
 from typing import Any
@@ -16,20 +29,28 @@ from . import kite, kite_connect, queries, quote_time
 from .analytics import schedule, valuation
 
 MAX_ISINS = 1000
+PAGE = 1000
 CACHE_TTL_SECONDS = 60
+UNIVERSE_TTL_SECONDS = 600
 QUOTE_CHUNK = 500  # Kite /quote takes up to 500 instruments per call
+QUOTE_MIN_INTERVAL = 1.05  # Kite rate limit: 1 quote request per second
 
 # (user_id, isin) -> (fetched_at, entry-or-None); None = known no-ask.
 _cache: dict[tuple[int, str], tuple[float, dict[str, Any] | None]] = {}
+_universe: tuple[float, list[str]] | None = None
+_quote_lock = threading.Lock()
+_last_quote_call = 0.0
 
 
 def _best_ask(quotes: dict[str, Any], keys: list[str]) -> dict | None:
-    """Lowest positive-size, non-expired ask across a bond's listings."""
+    """Lowest positive-size ask across a bond's listings. A book that has
+    not changed since the open is still a live book (see quote_time);
+    only a future-dated source timestamp is refused."""
     best = None
     for key in keys:
         quote = quotes.get(key) or {}
         timing = quote_time.metadata(quote.get("_captured_at") or datetime.now(UTC), quote.get("timestamp"))
-        if any(w["code"] in {"stale_quote", "future_quote_time"} for w in timing["warnings"]):
+        if any(w["code"] == "future_quote_time" for w in timing["warnings"]):
             continue
         for top in (quote.get("depth") or {}).get("sell") or []:
             try:
@@ -87,6 +108,36 @@ class PriceCalculator:
         return [self.memo[p] for p in prices]
 
 
+def _paced_quotes(user_id: int, instruments: list[str]) -> dict[str, Any]:
+    """fetch_quotes with >= QUOTE_MIN_INTERVAL between calls, process-wide."""
+    global _last_quote_call
+    with _quote_lock:
+        wait = _last_quote_call + QUOTE_MIN_INTERVAL - time.monotonic()
+        if wait > 0:
+            time.sleep(wait)
+        try:
+            return kite_connect.fetch_quotes(user_id, instruments)
+        finally:
+            _last_quote_call = time.monotonic()
+
+
+def universe_pages() -> list[list[str]]:
+    """The listed universe cut into PAGE-sized pages (cached ~10 min; the
+    universe itself changes once a day at 05:30)."""
+    global _universe
+    now = time.monotonic()
+    if _universe is None or now - _universe[0] > UNIVERSE_TTL_SECONDS:
+        _universe = (now, queries.ask_universe())
+    isins = _universe[1]
+    return [isins[i:i + PAGE] for i in range(0, len(isins), PAGE)] or [[]]
+
+
+def compute_page(user_id: int, page: int) -> dict[str, Any]:
+    pages = universe_pages()
+    isins = pages[page] if 0 <= page < len(pages) else []
+    return {"items": compute(user_id, isins), "page": page, "pages": len(pages), "isins": isins}
+
+
 def compute(user_id: int, isins: list[str]) -> list[dict[str, Any]]:
     """[{isin, ask_price, ask_qty, ytm}] for the bonds with a live ask."""
     isins = list(dict.fromkeys(isins))[:MAX_ISINS]
@@ -103,9 +154,7 @@ def compute(user_id: int, isins: list[str]) -> list[dict[str, Any]]:
         same_day = hit and datetime.fromtimestamp(hit[0], quote_time.IST).date() == today
         current = hit and (hit[1] is None or (hit[1].get("as_of") == today.isoformat()
                                               and hit[1].get("calculation_version") == valuation.VERSION))
-        expiry = quote_time.timestamp(hit[1].get("expires_at")) if hit and hit[1] else None
-        quote_current = hit and (hit[1] is None or (expiry is not None and expiry > datetime.now(UTC)))
-        if hit and same_day and current and quote_current and 0 <= now - hit[0] < CACHE_TTL_SECONDS:
+        if hit and same_day and current and 0 <= now - hit[0] < CACHE_TTL_SECONDS:
             if hit[1] is not None:
                 out.append(hit[1])
         else:
@@ -128,7 +177,7 @@ def compute(user_id: int, isins: list[str]) -> list[dict[str, Any]]:
     instruments = [k for keys in keys_by_isin.values() for k in keys]
     quotes: dict[str, Any] = {}
     for i in range(0, len(instruments), QUOTE_CHUNK):
-        batch = kite_connect.fetch_quotes(user_id, instruments[i:i + QUOTE_CHUNK])
+        batch = _paced_quotes(user_id, instruments[i:i + QUOTE_CHUNK])
         captured = datetime.now(UTC).isoformat()
         quotes.update({key: {**value, "_captured_at": captured} for key, value in batch.items() if isinstance(value, dict)})
 

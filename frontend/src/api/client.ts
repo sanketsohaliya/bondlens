@@ -97,6 +97,8 @@ export const api = {
       request<{ ok: boolean }>("DELETE", `/api/kite/orders/${orderId}`),
     margins: () => get<KiteMargins>("/api/kite/margins"),
     askYtm: (isins: string[]) => request<AskYtmResponse>("POST", "/api/kite/ask-ytm", { isins }),
+    /** One page of the whole listed universe's best asks (1,000 bonds). */
+    askYtmPage: (page: number) => request<AskYtmResponse>("POST", "/api/kite/ask-ytm", { page }),
   },
   notifications: {
     get: (limit?: number, offset?: number) =>

@@ -179,19 +179,26 @@ describe("secondary metadata across screens", () => {
         total_ask_qty: 0,
         as_of: null,
         fetched_at,
-        expires_at: "2026-09-13T10:01:00Z",
       },
     };
     client.setQueryData(["kite-status"], { configured: false, connected: false, login_url: null });
     client.setQueryData(["depth", "TEST"], book);
     const view = () => text(render(<OrderBook isin="TEST" />));
     expect(view()).toContain("IST | not a guaranteed executable offer");
-    expect(view()).toContain("Snapshot | 2026-09-13T10:00:00Z");
+    expect(view()).toContain("Snapshot | 15:30:00");
+    expect(view()).not.toContain("Expired");
+    // Kite's timestamp is when the book last changed: an old one is
+    // disclosed as such, never as an expired quote.
     client.setQueryData(["depth", "TEST"], {
       ...book,
-      bse: { ...book.bse, fetched_at: null, expires_at: null },
+      bse: { ...book.bse, quote_at: "2026-09-13T03:45:27Z" },
     });
-    expect(view()).toContain("Expired snapshot | time unknown");
+    expect(view()).toContain("Snapshot | 15:30:00 | book unchanged since 09:15");
+    client.setQueryData(["depth", "TEST"], {
+      ...book,
+      bse: { ...book.bse, fetched_at: null },
+    });
+    expect(view()).toContain("Snapshot | time unknown");
   });
 
   it("changes the muted order-type summary but not the primary ticket title", () => {

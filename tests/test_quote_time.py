@@ -2,31 +2,40 @@ from datetime import UTC, datetime, timedelta
 
 from backend import quote_time
 
-NOW = datetime(2026, 9, 12, 10, tzinfo=UTC)
+NOW = datetime(2026, 9, 15, 5, tzinfo=UTC)  # 10:30 IST
 
 
-def test_capture_time_does_not_replace_source_time():
-    old = NOW - timedelta(minutes=5)
-    metadata = quote_time.metadata(NOW, old, now=NOW)
-    assert metadata["quote_at"] == old.isoformat()
-    assert "stale_quote" in {w["code"] for w in metadata["warnings"]}
+def codes(meta) -> set[str]:
+    return {w["code"] for w in meta["warnings"]}
+
+
+def test_an_unchanged_book_is_a_live_snapshot_not_an_expired_one():
+    # Kite's timestamp is when the book last changed; a resting ask from
+    # the open still carries 09:15 at 10:30. Disclose, do not expire.
+    open_ = NOW - timedelta(hours=1, minutes=15)
+    meta = quote_time.metadata(NOW, open_, now=NOW)
+    assert meta["fetched_at"] == NOW.isoformat() and meta["quote_at"] == open_.isoformat()
+    assert "expires_at" not in meta
+    assert codes(meta) == {"book_unchanged"}
+    [note] = meta["warnings"]
+    assert note["severity"] == "info" and "09:15 IST" in note["message"]
+
+
+def test_a_book_that_just_changed_carries_no_note():
+    assert quote_time.metadata(NOW, NOW - timedelta(seconds=20), now=NOW)["warnings"] == []
 
 
 def test_missing_timestamp_is_disclosed_and_future_timestamp_rejected():
-    assert quote_time.metadata(NOW, now=NOW)["warnings"][0]["code"] == "quote_time_unknown"
-    future = quote_time.metadata(NOW, NOW + timedelta(hours=1), now=NOW)
-    assert future["expires_at"] == NOW.isoformat()
-    assert "future_quote_time" in {w["code"] for w in future["warnings"]}
+    assert codes(quote_time.metadata(NOW, now=NOW)) == {"quote_time_unknown"}
+    assert codes(quote_time.metadata(NOW, NOW + timedelta(hours=1), now=NOW)) == {"future_quote_time"}
 
 
-def test_a_new_tick_elsewhere_does_not_refresh_an_old_side():
-    first = quote_time.metadata(NOW, NOW, now=NOW)
-    later = quote_time.metadata(first["fetched_at"], first["quote_at"], now=NOW + timedelta(seconds=95))
-    assert later["expires_at"] == first["expires_at"]
-    assert "stale_quote" in {w["code"] for w in later["warnings"]}
+def test_missing_or_future_capture_time_is_flagged():
+    assert "invalid_fetch_time" in codes(quote_time.metadata(None, NOW, now=NOW))
+    assert "invalid_fetch_time" in codes(quote_time.metadata(NOW + timedelta(minutes=5), NOW, now=NOW))
 
 
-def test_expiry_stops_at_ist_midnight():
-    capture = datetime(2026, 9, 12, 18, 29, 50, tzinfo=UTC)
-    result = quote_time.metadata(capture, capture, now=capture)
-    assert result["expires_at"] == "2026-09-12T18:30:00+00:00"
+def test_source_time_formats_are_normalised_to_utc():
+    assert quote_time.timestamp("2026-09-15 10:30:00") == NOW
+    assert quote_time.timestamp("15-Sep-2026 10:30:00 IST") == NOW
+    assert quote_time.timestamp("junk") is None

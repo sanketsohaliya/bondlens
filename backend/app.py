@@ -700,11 +700,15 @@ def kite_margins(user_id: int = Depends(auth.require_user)):
 @router.post("/api/kite/ask-ytm", response_model=models.AskYtmResponse)
 def kite_ask_ytm(body: models.AskYtmRequest,
                  user_id: int = Depends(auth.require_user)):
-    """Positive-size best-ask snapshots with indicative gross valuations
-    and their assumptions, dates and expiry, under the user's Kite
-    session. Empty when Kite isn't connected or no usable ask is available."""
+    """Positive-size best-ask snapshots with indicative gross valuations,
+    their assumptions and capture times, under the user's Kite session.
+    `page` walks the whole listed universe (the explorer captures every
+    bond once per load); `isins` asks for specific bonds. Empty when Kite
+    isn't connected or no usable ask is available."""
     if not kite_connect.configured() or kite_connect.token_for(user_id) is None:
         return {"items": []}
+    if body.page is not None:
+        return ask_ytm.compute_page(user_id, body.page)
     return {"items": ask_ytm.compute(user_id, body.isins)}
 
 

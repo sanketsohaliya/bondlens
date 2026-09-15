@@ -1,7 +1,7 @@
 import { fmt } from "../api/client";
 import type { BondDetail, OrderBook, RatingEvent } from "../api/types";
 import { calendarDate } from "./cashflowEvidence";
-import { isMarketComparison, isQuoteFresh, valuationLabel } from "./quoteValuation";
+import { isMarketComparison, valuationLabel } from "./quoteValuation";
 import { firstFutureCall, isYieldToCall } from "./yieldDisplay";
 
 /* Builds a self-contained prompt for an external AI (ChatGPT/Gemini/Claude)
@@ -138,7 +138,7 @@ function liquidityLine(b: BondDetail): string | null {
   return `Liquidity (last traded day): ${bits.join(" · ")}`;
 }
 
-function depthLines(depth: OrderBook | null | undefined, now: number): string[] {
+function depthLines(depth: OrderBook | null | undefined): string[] {
   if (!depth) return [];
   const out: string[] = [];
   for (const [name, side] of [
@@ -155,8 +155,8 @@ function depthLines(depth: OrderBook | null | undefined, now: number): string[] 
     out.push(
       `Order book snapshot (${name}): best bid ${fmtLevel(bid)}, best ask ${fmtLevel(ask)}` +
         ` (total bid ${side.total_bid_qty ?? "?"} / ask ${side.total_ask_qty ?? "?"})` +
-        `; captured ${side.fetched_at ?? depth.fetched_at ?? "unknown"}, quote time ${side.quote_at ?? "unknown"}` +
-        `; ${isQuoteFresh(side, now) ? "within the freshness window, not guaranteed executable" : "expired or freshness unverified"}` +
+        `; captured ${side.fetched_at ?? depth.fetched_at ?? "unknown"}, book last changed ${side.quote_at ?? "unknown"}` +
+        "; a snapshot, not a guaranteed executable offer" +
         (ytm?.ytm != null
           ? ` — ${valuationLabel(ytm)} at best ask ${fmt.pct(ytm.ytm)} (valuation ${ytm.as_of ?? "unknown"})`
           : ""),
@@ -324,7 +324,7 @@ export function buildBondPrompt(
         b.duration != null ? `Duration: ${fmt.yearsMonths(b.duration)}` : null,
         b.days_since_traded != null ? `Days since last trade: ${b.days_since_traded}` : null,
         liquidityLine(b),
-        ...depthLines(depth, today.getTime()),
+        ...depthLines(depth),
         ...(b.valuation?.warnings ?? []).map((note) =>
           isMarketComparison(note)
             ? `Market comparison: ${note.message}`

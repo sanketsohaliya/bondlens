@@ -67,9 +67,8 @@ export default function OrderTicket({
     queryKey: ["price-valuation", isin, pricedInput, today],
     queryFn: () => api.valuation(isin, pricedInput),
     enabled: Boolean(isin) && valid && side === "BUY" && pricedInput === limitPrice,
-    staleTime: 30_000,
-    refetchInterval: 60_000,
-    refetchOnWindowFocus: true,
+    staleTime: Number.POSITIVE_INFINITY,
+    refetchOnWindowFocus: false,
   });
   const current =
     calculation.data?.price === limitPrice && valuationIsCurrent(calculation.data, now)
