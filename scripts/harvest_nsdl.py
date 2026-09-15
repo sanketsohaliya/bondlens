@@ -17,7 +17,10 @@ Endpoint tiers (refresh policy):
 
 A 400 "No Record Found" is a meaningful terminal answer (clean bond) and
 is stored like a success. Identical re-fetches only bump last_checked_at
-instead of inserting duplicate payload rows.
+instead of inserting duplicate payload rows. A per-record 5xx (NSDL has
+~16 ISIN/endpoint pairs that always answer 503 while everything around
+them works) is stored too and retried weekly, so it neither poisons the
+parse (which reads only 200 rows) nor gets hammered every run.
 
 Usage:
   .venv/bin/python scripts/harvest_nsdl.py                # all due work
@@ -91,6 +94,7 @@ CREATE TABLE IF NOT EXISTS nsdl_runs (
     ok BOOLEAN,
     notes TEXT
 );
+ALTER TABLE nsdl_runs ADD COLUMN IF NOT EXISTS broken INTEGER;
 CREATE TABLE IF NOT EXISTS nsdl_raw (
     id BIGSERIAL PRIMARY KEY,
     isin TEXT NOT NULL REFERENCES bonds (isin),
@@ -114,17 +118,24 @@ MAX_ATTEMPTS = 4
 
 _local = threading.local()
 _db_lock = threading.Lock()
-_stats = {"fetched": 0, "unchanged": 0, "skipped": 0, "failed": 0}
+_stats = {"fetched": 0, "unchanged": 0, "skipped": 0, "failed": 0, "broken": 0}
 _stats_lock = threading.Lock()
 
 # Fail fast on a dead upstream. On 13 Sept 2026 NSDL answered 503 to all
 # 192 calls for four minutes while the harvester patiently retried each
 # one; twelve consecutive upstream failures (5xx or connection error) with
-# no success anywhere in the pool is an outage, not a run of dead ISINs.
+# no success anywhere in the pool *looks like* an outage. But on 14/15
+# Sept the only due work was the ~16 chronically broken records, which
+# also produced a flat run of 503s - so before declaring an outage the
+# streak is checked against a canary request to a known-good endpoint.
 # A 4xx is NSDL *answering* and does not count.
 OUTAGE_STREAK = 12
-_outage = {"streak": 0, "last": None}
+_outage = {"streak": 0, "last": None, "canary_ok": 0, "dead": False}
 _status_counts: dict[int, int] = {}
+
+# Axis Bank Basel-III tier-II (in the universe, answers 200 today). If it
+# ever disappears upstream_alive() falls back to the first universe ISIN.
+CANARY_ISIN = "INE238A08419"
 
 
 class NsdlOutage(RuntimeError):
@@ -133,21 +144,52 @@ class NsdlOutage(RuntimeError):
 
 def reset_outage_tracking():
     with _stats_lock:
-        _outage["streak"], _outage["last"] = 0, None
+        _outage.update(streak=0, last=None, canary_ok=0, dead=False)
         _status_counts.clear()
 
 
+def upstream_alive(isin: str | None = None) -> bool:
+    """One fresh GET against a record NSDL is known to serve. True iff it
+    comes back 200 with a JSON body: NSDL is answering, so a flat run of
+    503s elsewhere is per-record breakage rather than an outage."""
+    isin = isin or CANARY_ISIN
+    try:
+        r = session(rotate=True).get(f"{BASE}/instruments?isin={isin}",
+                                     timeout=45)
+        if r.status_code == 200 and isinstance(json.loads(r.text), (dict, list)):
+            return True
+        if isin == CANARY_ISIN and r.status_code < 500:
+            fallback = next(iter(db.universe_isins()), None)
+            return bool(fallback) and fallback != isin and upstream_alive(fallback)
+    except Exception:  # noqa: BLE001 - any failure reads as "not alive"
+        pass
+    return False
+
+
 def _note_upstream_failure(status):
-    """Count a 5xx/connection failure; raise once the streak says outage."""
+    """Count a 5xx/connection failure. Once the streak says outage, ask
+    the canary: alive -> reset and carry on; dead -> raise NsdlOutage."""
     with _stats_lock:
         if status is not None:
             _status_counts[status] = _status_counts.get(status, 0) + 1
         _outage["streak"] += 1
         _outage["last"] = status
-        streak, last = _outage["streak"], _outage["last"]
-    if streak >= OUTAGE_STREAK:
-        what = f"http={last}" if last is not None else "connection errors"
+        streak, last, dead = _outage["streak"], _outage["last"], _outage["dead"]
+    if streak < OUTAGE_STREAK:
+        return
+    what = f"http={last}" if last is not None else "connection errors"
+    if dead:  # already decided; other workers must not re-probe
         raise NsdlOutage(f"{streak} consecutive upstream failures ({what})")
+    if upstream_alive():
+        with _stats_lock:
+            _outage["streak"] = 0
+            _outage["canary_ok"] += 1
+        print(f"  canary ok after {streak} upstream failures; not an outage",
+              flush=True)
+        return
+    with _stats_lock:
+        _outage["dead"] = True
+    raise NsdlOutage(f"{streak} consecutive upstream failures ({what})")
 
 
 def _note_upstream_success():
@@ -160,26 +202,43 @@ def status_counts() -> dict[int, int]:
         return dict(_status_counts)
 
 
-def failure_note(failed: int) -> str | None:
-    """'48 fetch failures (503x192)' - what the healthcheck relays."""
-    if not failed:
+def failure_note(failed: int, broken: int = 0,
+                 canary_ok: bool | None = None) -> str | None:
+    """'48 fetch failures (503x192)' - what the healthcheck relays.
+    Broken records and a passed canary are named so a light day full of
+    per-record 503s does not read as an outage."""
+    if not failed and not broken:
         return None
     counts = status_counts()
     detail = ", ".join(f"{k}x{v}" for k, v in sorted(counts.items(), key=lambda kv: -kv[1]))
-    return f"{failed} fetch failures" + (f" ({detail})" if detail else "")
+    parts = []
+    if failed:
+        parts.append(f"{failed} fetch failures" + (f" ({detail})" if detail else ""))
+    if broken:
+        parts.append(f"{broken} broken records" +
+                     ("" if failed or not detail else f" ({detail})"))
+    if canary_ok is None and _outage["canary_ok"]:
+        canary_ok = True
+    if canary_ok is True:
+        parts.append("canary ok - per-record NSDL errors, not an outage")
+    elif canary_ok is False:
+        parts.append("canary failed - NSDL upstream down")
+    return "; ".join(parts)
 
 
-def run_ok(fetched: int, unchanged: int, failed: int) -> bool:
+def run_ok(fetched: int, unchanged: int, failed: int,
+           upstream_alive: bool | None = None) -> bool:
     """A few dead ISINs out of tens of thousands of calls is normal, so
-    tolerate max(25, 1%) failures - but a run that attempted work and got
-    nothing back is never ok, whatever the floor. (Under the old rule a
-    total outage on a light day, e.g. 20 due / 20 failed, read as healthy.)
+    tolerate max(25, 1%) failures. A run that attempted work and got
+    nothing back is only ok when the canary proved NSDL was answering
+    (then the failures are per-record, e.g. the 16 chronic 503s being the
+    only due work on 14/15 Sept 2026); without that proof it is an outage.
     Nothing due at all is legitimately fine."""
     attempts = fetched + unchanged + failed
     if attempts == 0:
         return True
     if fetched + unchanged == 0:
-        return False
+        return upstream_alive is True
     return failed <= max(25, attempts * 0.01)
 
 
@@ -205,7 +264,11 @@ def session(rotate: bool = False) -> requests.Session:
 
 def fetch(url: str, tag: str):
     """GET with retries. Returns (http_status, text) or (None, None).
-    Only JSON success or explicit 400 'No Record Found' is cacheable."""
+    JSON success and explicit 400 'No Record Found' are cacheable; a
+    record that answers 5xx on every attempt is returned as-is so the
+    caller can store it and back off, rather than retrying it every run.
+    Connection errors and unrelenting 429s stay (None, None)."""
+    last_5xx = None
     for attempt in range(MAX_ATTEMPTS):
         delay = min(5 * (attempt + 1), 20)
         try:
@@ -229,16 +292,18 @@ def fetch(url: str, tag: str):
                     if delay > 60:
                         return None, None
             else:
+                last_5xx = (r.status_code, r.text)
                 _note_upstream_failure(r.status_code)
             print(f"  {tag}: http={r.status_code} retry", flush=True)
         except NsdlOutage:
             raise
         except Exception as exc:  # noqa: BLE001
+            last_5xx = None
             _note_upstream_failure(None)
             print(f"  {tag}: {str(exc)[:60]} retry", flush=True)
         if attempt + 1 < MAX_ATTEMPTS:
             time.sleep(delay)
-    return None, None
+    return last_5xx or (None, None)
 
 
 def load_state():
@@ -270,7 +335,7 @@ def store(isin, endpoint, quarter, status, text, prev, run_id):
                 "WHERE isin = %s AND endpoint = %s AND quarter = %s "
                 "  AND sha256 = %s",
                 (now, isin, endpoint, quarter, sha))
-            _bump("unchanged")
+            _bump("broken" if status >= 500 else "unchanged")
         else:
             conn.execute(
                 "INSERT INTO nsdl_raw (isin, endpoint, quarter, run_id, "
@@ -278,7 +343,7 @@ def store(isin, endpoint, quarter, status, text, prev, run_id):
                 "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)",
                 (isin, endpoint, quarter, run_id, now, now, status, sha,
                  json.dumps(payload)))
-            _bump("fetched")
+            _bump("broken" if status >= 500 else "fetched")
     return status, sha, now
 
 
@@ -320,16 +385,21 @@ def finish_nsdl_run(run_id, ok, notes=None):
     with _db_lock, db._conn() as conn:
         conn.execute(
             "UPDATE nsdl_runs SET finished_at = %s, fetched = %s, "
-            " unchanged = %s, skipped = %s, failed = %s, ok = %s, "
-            " notes = %s WHERE id = %s",
+            " unchanged = %s, skipped = %s, failed = %s, broken = %s, "
+            " ok = %s, notes = %s WHERE id = %s",
             (datetime.now(UTC), _stats["fetched"],
              _stats["unchanged"], _stats["skipped"], _stats["failed"],
-             ok, notes, run_id))
+             _stats["broken"], ok, notes, run_id))
 
 
 def due(prev, tier, force):
-    """Should this (isin, endpoint) be fetched now?"""
-    if force or prev is None or prev[0] not in (200, 400):
+    """Should this (isin, endpoint) be fetched now? A stored 5xx is a
+    record NSDL cannot serve today; retry it weekly whatever the tier."""
+    if force or prev is None:
+        return True
+    if prev[0] >= 500:
+        return prev[2] < datetime.now(UTC) - MAX_AGE["weekly"]
+    if prev[0] not in (200, 400):
         return True
     if tier == "static":
         return False  # terminal answer already stored
@@ -425,6 +495,10 @@ def main():
                 isin = futures[fut]
                 try:
                     fut.result()
+                except NsdlOutage:
+                    # Dead upstream: stop the whole pool, not just this ISIN.
+                    ex.shutdown(wait=False, cancel_futures=True)
+                    raise
                 except Exception as exc:  # noqa: BLE001 - keep harvesting
                     print(f"{isin}: ERROR {str(exc)[:80]}", flush=True)
                     _bump("failed")
@@ -436,6 +510,7 @@ def main():
                           f"unchanged={_stats['unchanged']} "
                           f"skipped={_stats['skipped']} "
                           f"failed={_stats['failed']} "
+                          f"broken={_stats['broken']} "
                           f"elapsed={el / 60:.1f}m eta={eta / 60:.0f}m",
                           flush=True)
     except BaseException as exc:  # noqa: BLE001 - incl. KeyboardInterrupt
@@ -444,11 +519,23 @@ def main():
         db.close_pool()
         raise
 
-    ok = run_ok(_stats["fetched"], _stats["unchanged"], _stats["failed"])
-    finish_nsdl_run(run_id, ok=ok, notes=failure_note(_stats["failed"]))
+    ok, canary = verdict(_stats)
+    finish_nsdl_run(run_id, ok=ok,
+                    notes=failure_note(_stats["failed"], _stats["broken"], canary))
     print(f"DONE {json.dumps(_stats)}", flush=True)
     db.close_pool()
     return 0 if ok else 1
+
+
+def verdict(stats, probe=None) -> tuple[bool, bool | None]:
+    """(ok, canary) for a finished run. The canary is only consulted when
+    the run attempted work and nothing came back - the one case where the
+    counts alone cannot separate an outage from per-record breakage."""
+    canary = None
+    if stats["fetched"] + stats["unchanged"] == 0 and (stats["failed"] or stats["broken"]):
+        canary = (probe or upstream_alive)()
+    ok = run_ok(stats["fetched"], stats["unchanged"], stats["failed"], canary)
+    return ok, canary
 
 
 if __name__ == "__main__":
