@@ -1,7 +1,12 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { loadAskSnapshot, saveAskSnapshot } from "../components/ExploreTable";
+import {
+  askCapturedLabel,
+  askOnBoard,
+  loadAskSnapshot,
+  saveAskSnapshot,
+} from "../components/ExploreTable";
 import YieldQuote, { YieldNotes } from "../components/YieldQuote";
 import {
   hasYieldReview,
@@ -361,13 +366,29 @@ describe("quote valuation", () => {
       getItem: (key: string) => values.get(key) ?? null,
       setItem: (key: string, value: string) => values.set(key, value),
     });
+    // Explore keeps an ask on the board for the 30-minute refresh window
+    // (plus slack); A falls off it while the later B does not.
+    const late = now + 34 * 60_000;
     saveAskSnapshot(1, [quote("A")], ["A"]);
-    vi.setSystemTime(now + 50_000);
-    saveAskSnapshot(1, [quote("B", now + 50_000)], ["B"]);
-    vi.setSystemTime(now + 65_000);
+    vi.setSystemTime(late);
+    saveAskSnapshot(1, [quote("B", late)], ["B"]);
+    expect([...(loadAskSnapshot(1)?.keys() ?? [])].sort()).toEqual(["A", "B"]);
+    vi.setSystemTime(now + 36 * 60_000);
     expect([...(loadAskSnapshot(1)?.keys() ?? [])]).toEqual(["B"]);
     expect(loadAskSnapshot(2)).toBeNull();
     saveAskSnapshot(1, [], ["B"]);
     expect(loadAskSnapshot(1)).toBeNull();
+  });
+
+  it("keeps an ask on the Explore board past its 90s ticket window, but not past the refresh window or the day", () => {
+    const q = quote();
+    expect(isQuoteFresh(q, now + 120_000)).toBe(false);
+    expect(askOnBoard(q, now + 120_000)).toBe(true);
+    expect(askCapturedLabel(q, now + 30_000)).toBeNull();
+    expect(askCapturedLabel(q, now + 120_000)).toBe("as of 15:30");
+    expect(askOnBoard(q, now + 36 * 60_000)).toBe(false);
+    expect(askOnBoard({ ...q, as_of: "2026-09-11" }, now)).toBe(false);
+    expect(askOnBoard({ ...q, fetched_at: null }, now)).toBe(false);
+    expect(askOnBoard({ ...q, calculation_version: undefined }, now)).toBe(false);
   });
 });

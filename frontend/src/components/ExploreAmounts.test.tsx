@@ -70,7 +70,14 @@ describe("explore amount cells", () => {
     expect(render(ask)).toContain("16.3% | ₹1.00 L ticket");
     expect(render({ ...ask, holding_period_return: 0 })).toContain("0.0% | ₹1.00 L ticket");
     expect(render({ ...ask, holding_period_return: Number.NaN })).not.toContain("|");
-    expect(render({ ...ask, expires_at: "2020-01-01T00:00:00Z" })).not.toContain("|");
+    // Past the 90s ticket window the ask stays on the board with its capture time.
+    const aged = new Date(Date.now() - 10 * 60_000).toISOString();
+    const agedHtml = render({ ...ask, fetched_at: aged, calculated_at: aged, expires_at: aged });
+    expect(agedHtml).toContain("16.3% | ₹1.00 L ticket | as of");
+    expect(agedHtml).toContain("12.34%");
+    // Off the 30-minute refresh window it is hidden like any expired quote.
+    const gone = new Date(Date.now() - 40 * 60_000).toISOString();
+    expect(render({ ...ask, fetched_at: gone, calculated_at: gone })).not.toContain("|");
     expect(render({ ...ask, ask_qty: 0 })).not.toContain("|");
     expect(render(null)).not.toContain("|");
   });

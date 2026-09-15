@@ -4,6 +4,7 @@ import { createPortal } from "react-dom";
 import { api, fmt } from "../api/client";
 import type { AskYtm, Bond, YieldValuation } from "../api/types";
 import { useAuth } from "../lib/auth";
+import { calendarAsOf } from "../lib/cashflowEvidence";
 import {
   absReturnText,
   askTicketText,
@@ -173,9 +174,14 @@ export function PayoutCell({
 
 export function AskQuoteCell({ ask, onOpen }: { ask: AskYtm | null; onOpen: () => void }) {
   const ticket = askTicketText(ask);
-  const fresh = isQuoteFresh(ask) && valuationIsCurrent(ask);
-  const stale = ask != null && (!fresh || !(ask.ask_qty && ask.ask_qty > 0));
-  const detail = `${ticket.detail}\n${valuationTooltip(ask)}`;
+  // On the board an ask is hidden only when it has fallen off the refresh
+  // window or has no size; an ask merely past its 90s executable window
+  // stays visible, labelled with its capture time.
+  const stale = ask != null && (!askOnBoard(ask) || !(ask.ask_qty && ask.ask_qty > 0));
+  const captured = stale ? null : askCapturedLabel(ask);
+  const detail = `${ticket.detail}\n${valuationTooltip(ask)}${
+    captured ? `\nBest ask ${captured} IST; refreshed every 30 minutes.` : ""
+  }`;
   return (
     <button
       type="button"
@@ -200,6 +206,11 @@ export function AskQuoteCell({ ask, onOpen }: { ask: AskYtm | null; onOpen: () =
               <span key="ticket" className="truncate text-zinc-400">
                 {ticket.label}
               </span>,
+              captured && (
+                <span key="captured" className="shrink-0 text-zinc-500">
+                  {captured}
+                </span>
+              ),
             ]}
           />
         </div>
@@ -238,12 +249,48 @@ const KITE_COLS: Col[] = [
 const COLUMN_WIDTHS_KEY = "explore-col-widths";
 const LEGACY_COLUMN_WIDTHS_KEY = "screener-col-widths";
 
+/* Explore is a screen, not an order ticket. Asks move little intraday,
+   and refetching them every minute re-sorted the board under the reader,
+   so they are refreshed every half hour and a quote stays on the board
+   for the whole interval. Once the 90s executable-offer window has passed
+   the cell says when the quote was captured instead of hiding it; the
+   Order Book / ticket keep the strict freshness rules. */
+export const ASK_REFRESH_MS = 30 * 60_000;
+const ASK_BOARD_MAX_AGE = ASK_REFRESH_MS + 5 * 60_000;
+
+/** Is this ask still worth showing on the Explore board: captured within
+ * the refresh window and valued for today's calendar day? */
+export function askOnBoard(ask: AskYtm | null | undefined, now = Date.now()): boolean {
+  const fetched = Date.parse(ask?.fetched_at ?? "");
+  return (
+    Number.isFinite(fetched) &&
+    fetched <= now + 30_000 &&
+    now - fetched < ASK_BOARD_MAX_AGE &&
+    Boolean(ask?.calculation_version) &&
+    ask?.as_of === calendarAsOf(undefined, new Date(now))
+  );
+}
+
+/** "as of 10:42" for an ask past its 90s executable window, else null. */
+export function askCapturedLabel(ask: AskYtm | null | undefined, now = Date.now()): string | null {
+  if (!ask || (isQuoteFresh(ask, now) && valuationIsCurrent(ask, now))) return null;
+  const fetched = Date.parse(ask.fetched_at ?? "");
+  if (!Number.isFinite(fetched)) return "time unknown";
+  const hm = new Date(fetched).toLocaleTimeString("en-IN", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+    timeZone: "Asia/Kolkata",
+  });
+  return `as of ${hm}`;
+}
+
 /* Recent per-user asks bridge reloads without silently extending their
    original quote or calculation lifetimes. Each entry expires separately;
    a fresh subset cannot rejuvenate older entries or revive a missing ask.
    Legacy snapshots without freshness metadata are never reused. */
 const ASK_SNAPSHOT_KEY = "ask-ytm-snapshot";
-const ASK_SNAPSHOT_TTL = 90 * 1000;
+const ASK_SNAPSHOT_TTL = ASK_BOARD_MAX_AGE;
 const ASK_SNAPSHOT_CAP = 2000;
 
 export function loadAskSnapshot(userId: number): Map<string, AskYtm> | null {
@@ -253,7 +300,7 @@ export function loadAskSnapshot(userId: number): Map<string, AskYtm> | null {
     const { ts, items } = JSON.parse(raw) as { ts: number; items: AskYtm[] };
     if (!Number.isFinite(ts) || ts > Date.now() + 30_000 || Date.now() - ts > ASK_SNAPSHOT_TTL)
       return null;
-    const current = items.filter((item) => isQuoteFresh(item) && valuationIsCurrent(item));
+    const current = items.filter((item) => askOnBoard(item));
     return current.length ? new Map(current.map((item) => [item.isin, item])) : null;
   } catch {
     return null;
@@ -264,8 +311,7 @@ export function saveAskSnapshot(userId: number, fresh: AskYtm[], requested: stri
   try {
     const merged = loadAskSnapshot(userId) ?? new Map<string, AskYtm>();
     for (const isin of requested) merged.delete(isin);
-    for (const item of fresh)
-      if (isQuoteFresh(item) && valuationIsCurrent(item)) merged.set(item.isin, item);
+    for (const item of fresh) if (askOnBoard(item)) merged.set(item.isin, item);
     const items = [...merged.values()].slice(-ASK_SNAPSHOT_CAP);
     localStorage.setItem(
       `${ASK_SNAPSHOT_KEY}:${userId}`,
@@ -328,9 +374,9 @@ export default function ExploreTable({
     queryKey: ["ask-ytm", user.id, today, isins.join(",")],
     queryFn: () => api.kite.askYtm(isins),
     enabled: kiteConnected && isins.length > 0,
-    staleTime: 55_000, // just under the server's 60s per-user cache
-    refetchInterval: 60_000,
-    refetchOnWindowFocus: true,
+    staleTime: ASK_REFRESH_MS - 60_000,
+    refetchInterval: ASK_REFRESH_MS,
+    refetchOnWindowFocus: false, // tabbing back must not reshuffle the board
   });
   const snapshot = useMemo(() => loadAskSnapshot(user.id), [user.id]);
   useEffect(() => {
@@ -340,11 +386,7 @@ export default function ExploreTable({
     // Fresh data wins outright (even empty ⇒ the ytm fallback below);
     // the snapshot only bridges the seconds before the first fetch lands.
     const items = askYtm.data ? askYtm.data.items : [...(snapshot?.values() ?? [])];
-    return new Map(
-      items
-        .filter((item) => isQuoteFresh(item, now) && valuationIsCurrent(item, now))
-        .map((item) => [item.isin, item]),
-    );
+    return new Map(items.filter((item) => askOnBoard(item, now)).map((item) => [item.isin, item]));
   }, [askYtm.data, snapshot, now]);
 
   // Painting before the asks arrive would order by LTP-YTM and then
