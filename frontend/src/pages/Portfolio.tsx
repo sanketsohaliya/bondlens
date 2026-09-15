@@ -337,7 +337,7 @@ function HoldingsTable({
     key: "value",
     dir: -1, // matches the backend's default biggest-position-first order
   });
-  const { widths, tableRef, startResize } = useColumnWidths(
+  const { widths, tableRef, startResize, tableProps } = useColumnWidths(
     "holdings-col-widths",
     HOLDINGS_COLS.length,
   );
@@ -358,7 +358,7 @@ function HoldingsTable({
 
   return (
     <div className="overflow-x-auto">
-      <table ref={tableRef} className={`w-full text-xs ${widths ? "table-fixed" : ""}`}>
+      <table ref={tableRef} className={`text-xs ${tableProps.className}`} style={tableProps.style}>
         {widths && (
           <colgroup>
             {widths.map((w, i) => (

@@ -115,10 +115,10 @@ export function askTicketText(ask: AskYtm | null | undefined) {
       detail: `${price}displayed best-ask ticket size is unavailable. Open Order Book to inspect the quote.`,
     };
   }
-  // Ask price first (full rupees, like the LTP column), whole best-level
-  // ticket in brackets.
+  // Ask price first (full rupees, like the LTP column), then the size at
+  // that level and what taking all of it costs.
   return {
-    label: `${fmt.inrFull(ask?.ask_price)} (${fmt.inr(total)})`,
+    label: `${fmt.inrFull(ask?.ask_price)} × ${fmt.num(ask?.ask_qty, 0)} = ${fmt.inr(total)}`,
     detail: `Displayed best-ask snapshot: ₹${fmt.num(ask?.ask_price, 2)} × ${fmt.num(ask?.ask_qty, 2)} units = ₹${fmt.num(total, 2)}. Entire selected best-price level, not a minimum purchase. Excludes brokerage/charges; availability can change.`,
   };
 }

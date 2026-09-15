@@ -66,14 +66,14 @@ describe("explore amount cells", () => {
     };
     const render = (value: typeof ask | null) =>
       text(renderToStaticMarkup(<AskQuoteCell ask={value} onOpen={() => {}} />));
-    expect(render(ask)).toContain("16.3% | ₹10,025 (₹1.00 L)");
-    expect(render({ ...ask, holding_period_return: 0 })).toContain("0.0% | ₹10,025 (₹1.00 L)");
+    expect(render(ask)).toContain("16.3% | ₹10,025 × 10 = ₹1.00 L");
+    expect(render({ ...ask, holding_period_return: 0 })).toContain("0.0% | ₹10,025 × 10 = ₹1.00 L");
     expect(render({ ...ask, holding_period_return: Number.NaN })).not.toContain("|");
     // An ask is a page-load snapshot: hours old, it still reads the same
     // in the row, with its capture time in the tooltip only.
     const aged = new Date(Date.now() - 3 * 3600_000).toISOString();
     const agedAsk = { ...ask, fetched_at: aged, calculated_at: aged };
-    expect(render(agedAsk)).toContain("16.3% | ₹10,025 (₹1.00 L)");
+    expect(render(agedAsk)).toContain("16.3% | ₹10,025 × 10 = ₹1.00 L");
     expect(render(agedAsk)).not.toContain("as of");
     expect(renderToStaticMarkup(<AskQuoteCell ask={agedAsk} onOpen={() => {}} />)).toMatch(
       /title="[^"]*Best ask as of \d\d:\d\d IST; captured when the page loaded/,
@@ -157,7 +157,7 @@ describe("explore amount cells", () => {
       />,
     );
     expect(html).toContain("12.34%");
-    expect(html).toContain("₹10,025 (₹1.00 L)");
+    expect(html).toContain("₹10,025 × 10 = ₹1.00 L");
     expect(html).not.toContain("ticket<");
     expect(html).toContain("₹1,00,250");
     expect(html).toContain("Order Book");
@@ -172,7 +172,7 @@ describe("explore amount cells", () => {
         onOpen={() => {}}
       />,
     );
-    expect(html).toContain("₹1,005 (₹10,050)");
+    expect(html).toContain("₹1,005 × 10 = ₹10,050");
     const unknown = renderToStaticMarkup(
       <AskQuoteCell
         ask={{ isin: "TEST", ask_price: 1005, ask_qty: null, ytm: 12.34 }}

@@ -22,10 +22,14 @@ const SAVED_FILTERS_KEY = "explore-filters";
 const SAVED_SORT_KEY = "explore-sort";
 const DEFAULT_SORT: SortState = { key: "ask_ytm", dir: -1 };
 
+/** Saved state wins outright; `fallback` only seeds a first visit. A
+ * filter cleared to "Any" is `undefined`, which JSON drops - merging the
+ * saved object over the defaults would quietly refill it (Last traded
+ * <= 5 sessions came back after every reload and hid never-traded paper). */
 function loadSaved<T extends object>(key: string, fallback: T): T {
   try {
     const raw = localStorage.getItem(key);
-    return raw ? { ...fallback, ...(JSON.parse(raw) as Partial<T>) } : fallback;
+    return raw ? (JSON.parse(raw) as T) : fallback;
   } catch {
     return fallback;
   }

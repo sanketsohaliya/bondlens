@@ -312,9 +312,13 @@ export default function ExploreTable({
     (kite === undefined || (kiteConnected && capture.loading && capture.done === 0));
 
   const cols = kiteConnected ? KITE_COLS : BASE_COLS;
-  const { widths, tableRef, startResize } = useColumnWidths(COLUMN_WIDTHS_KEY, cols.length, {
-    legacyKey: LEGACY_COLUMN_WIDTHS_KEY,
-  });
+  const { widths, tableRef, startResize, tableProps } = useColumnWidths(
+    COLUMN_WIDTHS_KEY,
+    cols.length,
+    {
+      legacyKey: LEGACY_COLUMN_WIDTHS_KEY,
+    },
+  );
 
   // Ask-YTM sorting uses only that column's values (no-ask rows last).
   // Only when the column has no data at all — Kite disconnected, or the
@@ -369,11 +373,8 @@ export default function ExploreTable({
           </button>
         </div>
       )}
-      <table
-        ref={tableRef}
-        className={`w-full text-sm ${widths && widths.length === cols.length ? "table-fixed" : ""}`}
-      >
-        {widths && widths.length === cols.length && (
+      <table ref={tableRef} className={`text-sm ${tableProps.className}`} style={tableProps.style}>
+        {widths && (
           <colgroup>
             {widths.map((w, i) => (
               <col key={i} style={{ width: w }} />
