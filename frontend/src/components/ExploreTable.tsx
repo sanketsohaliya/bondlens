@@ -176,7 +176,7 @@ export function AskQuoteCell({ ask, onOpen }: { ask: AskYtm | null; onOpen: () =
   const ticket = askTicketText(ask);
   // On the board an ask is hidden only when it has fallen off the refresh
   // window or has no size; an ask merely past its 90s executable window
-  // stays visible, labelled with its capture time.
+  // stays visible, with its capture time in the tooltip.
   const stale = ask != null && (!askOnBoard(ask) || !(ask.ask_qty && ask.ask_qty > 0));
   const captured = stale ? null : askCapturedLabel(ask);
   const detail = `${ticket.detail}\n${valuationTooltip(ask)}${
@@ -206,11 +206,6 @@ export function AskQuoteCell({ ask, onOpen }: { ask: AskYtm | null; onOpen: () =
               <span key="ticket" className="truncate text-zinc-400">
                 {ticket.label}
               </span>,
-              captured && (
-                <span key="captured" className="shrink-0 text-zinc-500">
-                  {captured}
-                </span>
-              ),
             ]}
           />
         </div>

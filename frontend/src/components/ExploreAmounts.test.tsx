@@ -67,14 +67,18 @@ describe("explore amount cells", () => {
     };
     const render = (value: typeof ask | null) =>
       text(renderToStaticMarkup(<AskQuoteCell ask={value} onOpen={() => {}} />));
-    expect(render(ask)).toContain("16.3% | ₹1.00 L ticket");
-    expect(render({ ...ask, holding_period_return: 0 })).toContain("0.0% | ₹1.00 L ticket");
+    expect(render(ask)).toContain("16.3% | ₹10,025 (₹1.00 L)");
+    expect(render({ ...ask, holding_period_return: 0 })).toContain("0.0% | ₹10,025 (₹1.00 L)");
     expect(render({ ...ask, holding_period_return: Number.NaN })).not.toContain("|");
-    // Past the 90s ticket window the ask stays on the board with its capture time.
+    // Past the 90s ticket window the ask stays on the board unchanged; the
+    // capture time lives in the tooltip only.
     const aged = new Date(Date.now() - 10 * 60_000).toISOString();
-    const agedHtml = render({ ...ask, fetched_at: aged, calculated_at: aged, expires_at: aged });
-    expect(agedHtml).toContain("16.3% | ₹1.00 L ticket | as of");
-    expect(agedHtml).toContain("12.34%");
+    const agedAsk = { ...ask, fetched_at: aged, calculated_at: aged, expires_at: aged };
+    expect(render(agedAsk)).toContain("16.3% | ₹10,025 (₹1.00 L)");
+    expect(render(agedAsk)).not.toContain("as of");
+    expect(renderToStaticMarkup(<AskQuoteCell ask={agedAsk} onOpen={() => {}} />)).toMatch(
+      /title="[^"]*Best ask as of \d\d:\d\d IST; refreshed every 30 minutes/,
+    );
     // Off the 30-minute refresh window it is hidden like any expired quote.
     const gone = new Date(Date.now() - 40 * 60_000).toISOString();
     expect(render({ ...ask, fetched_at: gone, calculated_at: gone })).not.toContain("|");
@@ -157,7 +161,8 @@ describe("explore amount cells", () => {
       />,
     );
     expect(html).toContain("12.34%");
-    expect(html).toContain("₹1.00 L ticket");
+    expect(html).toContain("₹10,025 (₹1.00 L)");
+    expect(html).not.toContain("ticket<");
     expect(html).toContain("₹1,00,250");
     expect(html).toContain("Order Book");
     expect(text(html)).not.toContain("|");
@@ -171,14 +176,14 @@ describe("explore amount cells", () => {
         onOpen={() => {}}
       />,
     );
-    expect(html).toContain("₹10,050 ticket");
+    expect(html).toContain("₹1,005 (₹10,050)");
     const unknown = renderToStaticMarkup(
       <AskQuoteCell
         ask={{ isin: "TEST", ask_price: 1005, ask_qty: null, ytm: 12.34 }}
         onOpen={() => {}}
       />,
     );
-    expect(unknown).toContain("Size unavailable");
-    expect(unknown).not.toContain("₹0 ticket");
+    expect(unknown).toContain("₹1,005 (size unavailable)");
+    expect(unknown).not.toContain("₹0");
   });
 });

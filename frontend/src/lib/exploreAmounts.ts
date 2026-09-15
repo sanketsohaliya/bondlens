@@ -107,18 +107,18 @@ export function askTicket(ask: AskYtm | null | undefined): number | null {
 
 export function askTicketText(ask: AskYtm | null | undefined) {
   const total = askTicket(ask);
+  const priced = ask != null && Number.isFinite(ask.ask_price) && ask.ask_price > 0;
   if (total == null) {
-    const price =
-      ask && Number.isFinite(ask.ask_price) && ask.ask_price > 0
-        ? `Displayed price ₹${fmt.num(ask.ask_price, 2)}; `
-        : "";
+    const price = priced ? `Displayed price ₹${fmt.num(ask.ask_price, 2)}; ` : "";
     return {
-      label: ask ? "Size unavailable" : "–",
+      label: priced ? `${fmt.inrFull(ask.ask_price)} (size unavailable)` : "–",
       detail: `${price}displayed best-ask ticket size is unavailable. Open Order Book to inspect the quote.`,
     };
   }
+  // Ask price first (full rupees, like the LTP column), whole best-level
+  // ticket in brackets.
   return {
-    label: `${fmt.inr(total)} ticket`,
+    label: `${fmt.inrFull(ask?.ask_price)} (${fmt.inr(total)})`,
     detail: `Displayed best-ask snapshot: ₹${fmt.num(ask?.ask_price, 2)} × ${fmt.num(ask?.ask_qty, 2)} units = ₹${fmt.num(total, 2)}. Entire selected best-price level, not a minimum purchase. Excludes brokerage/charges; availability can change.`,
   };
 }

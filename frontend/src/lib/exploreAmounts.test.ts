@@ -34,8 +34,8 @@ afterEach(() => {
 describe("explore amounts", () => {
   it("shows the entire selected best-level ticket, not one unit or a minimum lot", () => {
     expect(askTicket(quote)).toBe(10050);
-    expect(askTicketText(quote).label).toBe("₹10,050 ticket");
-    expect(askTicketText({ ...quote, ask_price: 10025 }).label).toBe("₹1.00 L ticket");
+    expect(askTicketText(quote).label).toBe("₹1,005 (₹10,050)");
+    expect(askTicketText({ ...quote, ask_price: 10025 }).label).toBe("₹10,025 (₹1.00 L)");
     expect(askTicketText({ ...quote, ask_price: 10025 }).detail).toContain("₹1,00,250");
     expect(askTicketText({ ...quote, ask_price: 10025 }).detail).toContain("not a minimum");
   });
@@ -53,8 +53,10 @@ describe("explore amounts", () => {
   it("preserves fractional-price arithmetic and existing Indian units", () => {
     expect(askTicket({ ...quote, ask_price: 1000.25, ask_qty: 10 })).toBe(10002.5);
     expect(askTicketText({ ...quote, ask_price: 250000, ask_qty: 100 }).label).toBe(
-      "₹2.50 Cr ticket",
+      "₹2,50,000 (₹2.50 Cr)",
     );
+    expect(askTicketText({ ...quote, ask_qty: null }).label).toBe("₹1,005 (size unavailable)");
+    expect(askTicketText({ ...quote, ask_price: 0 }).label).toBe("–");
   });
 
   it("labels current per-unit totals, estimates and known zero", () => {
