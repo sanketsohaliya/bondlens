@@ -243,6 +243,7 @@ const KITE_COLS: Col[] = [
 ];
 
 const COLUMN_WIDTHS_KEY = "explore-col-widths";
+const PAGE_ROWS = 100;
 const LEGACY_COLUMN_WIDTHS_KEY = "screener-col-widths";
 
 /** "as of 10:42" - when the best ask was captured (tooltip only). */
@@ -344,12 +345,29 @@ export default function ExploreTable({
   // The arrow sits on the column that actually orders the rows.
   const shownSortKey = effectiveKey;
 
-  // Sorting always sees the whole universe; only the RENDER is
-  // incremental (thousands of DOM rows would jank the browser).
-  const [shownCount, setShownCount] = useState(1000);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: reset on a new bond set is the point
-  useEffect(() => setShownCount(1000), [bonds]);
+  // Sorting always sees the whole universe; only the RENDER is windowed,
+  // 100 rows at a time, growing as the reader nears the bottom (thousands
+  // of DOM rows jank the browser and drown the eye). A new bond set or a
+  // new ordering starts again from its top 100.
+  const [shownCount, setShownCount] = useState(PAGE_ROWS);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reset on a new set/order is the point
+  useEffect(() => setShownCount(PAGE_ROWS), [bonds, effectiveKey, sort.dir]);
   const visibleRows = sorted.slice(0, shownCount);
+  const exhausted = shownCount >= sorted.length;
+  const sentinelRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el || exhausted || typeof IntersectionObserver === "undefined") return;
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting))
+          setShownCount((n) => Math.min(n + PAGE_ROWS, sorted.length));
+      },
+      { rootMargin: "1200px 0px" }, // start the next 100 about two screens early
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [exhausted, sorted.length]);
 
   if (error) {
     return <div className="p-8 text-center text-red-400 text-sm">{error}</div>;
@@ -434,14 +452,23 @@ export default function ExploreTable({
           ))}
         </tbody>
       </table>
-      {sorted.length > shownCount && (
-        <button
-          type="button"
-          onClick={() => setShownCount((n) => n + 1000)}
-          className="w-full py-3 text-center text-xs font-medium text-emerald-400 hover:text-emerald-300 hover:bg-zinc-900/50"
-        >
-          Show 1,000 more ({(sorted.length - shownCount).toLocaleString("en-IN")} remaining)
-        </button>
+      <div ref={sentinelRef} className="h-px" aria-hidden="true" />
+      {sorted.length > 0 && (
+        <div className="flex items-center justify-center gap-3 py-3 text-xs text-zinc-500">
+          <span>
+            showing {Math.min(shownCount, sorted.length).toLocaleString("en-IN")} of{" "}
+            {sorted.length.toLocaleString("en-IN")}
+          </span>
+          {!exhausted && (
+            <button
+              type="button"
+              onClick={() => setShownCount((n) => Math.min(n + PAGE_ROWS, sorted.length))}
+              className="font-medium text-emerald-400 hover:text-emerald-300"
+            >
+              Show more
+            </button>
+          )}
+        </div>
       )}
       {sorted.length === 0 && (
         <div className="p-8 text-center text-zinc-500 text-sm">No bonds match the filters.</div>
