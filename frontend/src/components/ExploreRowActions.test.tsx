@@ -28,6 +28,7 @@ const bond: Bond = {
   perpetual: false,
   maturity_date: "2033-11-01",
   years_to_maturity: 7.2,
+  tenor_months: 120,
   schedule_shape: "plain",
   ltp: 1265,
   trade_date: null,
@@ -108,7 +109,12 @@ describe("explore row actions", () => {
     expect(text(cell(renderRow({ ltp: null, days_since_traded: null }), 2))).toBe("5.08%32.6%");
     expect(text(cell(renderRow({ ytm: null, valuation: null, ltp: null }), 2))).not.toContain("|");
     expect(text(cell(renderRow(), 4))).toBe("AAA/StableINDIA RATINGS (S)");
-    expect(text(cell(renderRow(), 6))).not.toContain("|");
+    // Maturity: remaining on top; the month and NSDL's original tenor below.
+    expect(text(cell(renderRow(), 6))).toBe("7y 2moNov 2033 | 10y");
+    expect(text(cell(renderRow({ tenor_months: 54 }), 6))).toBe("7y 2moNov 2033 | 4y 6mo");
+    expect(text(cell(renderRow({ tenor_months: null }), 6))).toBe("7y 2moNov 2033");
+    expect(text(cell(renderRow({ maturity_date: null, perpetual: true }), 6))).toBe("perp");
+    expect(cell(renderRow(), 6)).toContain('title="Original tenor per NSDL"');
     expect([...renderRow().matchAll(/<td[^>]*>/g)]).toHaveLength(7);
     expect(renderRow()).not.toContain("never");
   });

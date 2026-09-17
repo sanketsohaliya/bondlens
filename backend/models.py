@@ -74,6 +74,8 @@ class Bond(BaseModel):
     perpetual: bool
     maturity_date: date | None
     years_to_maturity: float | None
+    # NSDL's published tenure (years*12 + months), the drawer's "Original tenor".
+    tenor_months: int | None = None
     schedule_shape: str
     ltp: float | None
     trade_date: date | None

@@ -251,6 +251,10 @@ export type Bond = {
      */
     years_to_maturity: number | null;
     /**
+     * Tenor Months
+     */
+    tenor_months?: number | null;
+    /**
      * Schedule Shape
      */
     schedule_shape: string;

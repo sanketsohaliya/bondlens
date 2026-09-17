@@ -193,8 +193,12 @@ SELECT a.*,
        (a.trade_date IS NULL
         OR CURRENT_DATE - a.trade_date > %(stale_days)s) AS stale,
        CASE WHEN a.otc_trade_date IS NOT NULL
-            THEN CURRENT_DATE - a.otc_trade_date END AS otc_days_since_traded
+            THEN CURRENT_DATE - a.otc_trade_date END AS otc_days_since_traded,
+       CASE WHEN COALESCE(t.tenure_years, 0) * 12 + COALESCE(t.tenure_months, 0) > 0
+            THEN COALESCE(t.tenure_years, 0) * 12 + COALESCE(t.tenure_months, 0)
+       END                                        AS tenor_months
 FROM bond_analytics a
+LEFT JOIN bond_terms t ON t.isin = a.isin
 """
 
 

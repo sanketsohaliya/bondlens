@@ -761,7 +761,15 @@ export function Row({
                 : monthYear(b.maturity_date)}
             </div>
             {b.years_to_maturity != null && (
-              <div className="text-[11px] text-zinc-500">{monthYear(b.maturity_date)}</div>
+              <div className="flex items-center justify-end text-[11px] text-zinc-500">
+                {monthYear(b.maturity_date)}
+                {b.tenor_months != null && (
+                  <>
+                    <MetadataSeparator />
+                    <span title="Original tenor per NSDL">{yearsMonths(b.tenor_months / 12)}</span>
+                  </>
+                )}
+              </div>
             )}
           </>
         ) : b.perpetual ? (
