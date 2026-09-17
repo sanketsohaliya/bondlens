@@ -216,14 +216,22 @@ export function AskQuoteCell({ ask, onOpen }: { ask: AskYtm | null; onOpen: () =
 }
 
 type SortKey =
-  | keyof Pick<
-      Bond,
-      "ytm" | "turnover" | "years_to_maturity" | "rating_rank" | "days_since_traded" | "coupon"
-    >
+  | keyof Pick<Bond, "ytm" | "turnover" | "years_to_maturity" | "rating_rank" | "coupon">
   | "ask_ytm"; // client-side only — computed from the user's Kite session
+
+const SORT_KEYS: ReadonlySet<string> = new Set([
+  "ytm",
+  "turnover",
+  "years_to_maturity",
+  "rating_rank",
+  "coupon",
+  "ask_ytm",
+]);
 
 type Col = { key: SortKey | null; label: string; right?: boolean };
 
+// Trade recency lives beside the price ("₹955 ▼ | 4d ago"): it qualifies
+// the LTP rather than standing on its own, and it freed a column.
 const BASE_COLS: Col[] = [
   { key: null, label: "" },
   { key: null, label: "Symbol" },
@@ -232,8 +240,12 @@ const BASE_COLS: Col[] = [
   { key: "rating_rank", label: "Rating" },
   { key: "coupon", label: "Payout" },
   { key: "years_to_maturity", label: "Maturity", right: true },
-  { key: "days_since_traded", label: "Last traded", right: true },
 ];
+
+/** "today" / "4d ago" for the LTP's age. */
+export function tradedAgo(days: number): string {
+  return days <= 1 ? "today" : `${days}d ago`;
+}
 
 /** With Kite connected, YTM @ Ask slots in right after YTM @ LTP. */
 const KITE_COLS: Col[] = [
@@ -273,7 +285,11 @@ export default function ExploreTable({
   const today = usePayoutDay();
   const now = useQuoteClock();
   const { user } = useAuth();
-  const [sort, setSortState] = useState<SortState>(initialSort ?? { key: "ask_ytm", dir: -1 });
+  // A saved sort may name a column that no longer exists (Last traded
+  // moved into the LTP cell); fall back rather than sort by nothing.
+  const [sort, setSortState] = useState<SortState>(
+    initialSort && SORT_KEYS.has(initialSort.key) ? initialSort : { key: "ask_ytm", dir: -1 },
+  );
   const setSort = (update: (s: SortState) => SortState) =>
     setSortState((s) => {
       const next = update(s);
@@ -622,6 +638,12 @@ export function Row({
                     {b.ltp > b.prev_ltp ? "▲" : "▼"}
                   </span>
                 )}
+                {b.days_since_traded != null && (
+                  <>
+                    <MetadataSeparator />
+                    <span>{tradedAgo(b.days_since_traded)}</span>
+                  </>
+                )}
               </div>
             )}
           </div>
@@ -747,15 +769,6 @@ export function Row({
         ) : (
           <span className="text-zinc-500">–</span>
         )}
-      </td>
-      <td className="px-3 py-2.5 whitespace-nowrap text-right">
-        <span className={b.stale ? "text-zinc-600" : "text-zinc-200 font-medium"}>
-          {b.days_since_traded == null
-            ? "never"
-            : b.days_since_traded <= 1
-              ? "today"
-              : `${b.days_since_traded}d ago`}
-        </span>
       </td>
     </tr>
   );

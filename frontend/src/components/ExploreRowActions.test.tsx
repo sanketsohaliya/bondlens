@@ -95,17 +95,22 @@ describe("explore row actions", () => {
   });
 
   it("separates only actually visible LTP fields and preserves single-field metadata", () => {
-    expect(text(cell(renderRow(), 2))).toBe("5.08%32.6% | ₹1,265");
+    // Trade recency rides with the price it qualifies; no Last traded column.
+    expect(text(cell(renderRow(), 2))).toBe("5.08%32.6% | ₹1,265 | 2d ago");
+    expect(text(cell(renderRow({ days_since_traded: 1 }), 2))).toBe("5.08%32.6% | ₹1,265 | today");
     expect(text(cell(renderRow({ valuation: { holding_period_return: 0 } }), 2))).toContain(
-      "0.0% | ₹1,265",
+      "0.0% | ₹1,265 | 2d ago",
     );
     for (const valuation of [null, {}, { holding_period_return: Number.NaN }]) {
-      expect(text(cell(renderRow({ valuation }), 2))).toBe("5.08%₹1,265");
+      expect(text(cell(renderRow({ valuation }), 2))).toBe("5.08%₹1,265 | 2d ago");
     }
     expect(text(cell(renderRow({ ltp: null }), 2))).toBe("5.08%32.6%");
-    expect(text(cell(renderRow({ ytm: null }), 2))).not.toContain("|");
+    expect(text(cell(renderRow({ ltp: null, days_since_traded: null }), 2))).toBe("5.08%32.6%");
+    expect(text(cell(renderRow({ ytm: null, valuation: null, ltp: null }), 2))).not.toContain("|");
     expect(text(cell(renderRow(), 4))).toBe("AAA/StableINDIA RATINGS (S)");
     expect(text(cell(renderRow(), 6))).not.toContain("|");
+    expect([...renderRow().matchAll(/<td[^>]*>/g)]).toHaveLength(7);
+    expect(renderRow()).not.toContain("never");
   });
 
   it("does not put a warning glyph beside a stale price; the hover still explains the age", () => {
@@ -122,6 +127,7 @@ describe("explore row actions", () => {
     // a doubt about the number, so no \u26a0 anywhere in this cell.
     expect(yieldCell).not.toContain("\u26a0");
     expect(yieldCell).toContain("No trades seen for 27 days");
+    expect(text(yieldCell)).toContain("| 27d ago");
   });
 
   it("renders an external link that opens safely in a new tab and explains itself", () => {
