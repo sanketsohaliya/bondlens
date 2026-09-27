@@ -10,6 +10,7 @@ from typing import Any
 from urllib.parse import parse_qsl, urlencode, urlsplit
 
 import requests
+from curl_cffi.requests import exceptions as curl_exc
 
 from . import bse, nse
 
@@ -451,7 +452,7 @@ def _retry_after(value: str) -> float | None:
 class ExchangeClient:
     def __init__(
         self,
-        session_factory: Callable[[], Any] = requests.Session,
+        session_factory: Callable[[], Any] | None = None,
         max_response_bytes: int = MAX_RESPONSE_BYTES,
     ):
         if type(max_response_bytes) is not int or max_response_bytes <= 0:
@@ -460,9 +461,17 @@ class ExchangeClient:
         self._max_response_bytes = max_response_bytes
         self._sessions: dict[str, Any] = {}
 
+    def _new_session(self, source: str) -> Any:
+        """An injected factory serves every source (tests); by default NSE
+        uses plain requests and BSE the Chrome-impersonating session its
+        Akamai front demands (backend.bse)."""
+        if self._session_factory is not None:
+            return self._session_factory()
+        return bse.new_session() if source == SOURCES[1] else requests.Session()
+
     def get(self, request: Request) -> Response:
         if request.source not in self._sessions:
-            session = self._session_factory()
+            session = self._new_session(request.source)
             session.headers.update(nse.HEADERS if request.source == SOURCES[0] else bse.HEADERS)
             session.headers.update({"Accept": "application/json, text/plain, */*"})
             self._sessions[request.source] = session
@@ -510,11 +519,11 @@ class ExchangeClient:
                     and raw.headers.get("Content-Encoding", "").lower() in {"", "identity"}
                 ):
                     result.error = "incomplete_body"
-        except requests.Timeout:
+        except (requests.Timeout, curl_exc.Timeout):
             result.error = "timeout"
-        except requests.ConnectionError:
+        except (requests.ConnectionError, curl_exc.ConnectionError):
             result.error = "connection_error"
-        except requests.RequestException:
+        except (requests.RequestException, curl_exc.RequestException):
             result.error = "transport_error"
         finally:
             if raw is not None:

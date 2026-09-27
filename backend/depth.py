@@ -20,15 +20,9 @@ from typing import Any
 
 import requests
 
-from . import kite, kite_connect
+from . import bse, kite, kite_connect
 
 BSE_DEPTH_URL = "https://api.bseindia.com/BseIndiaAPI/api/MarketDepth/w"
-BSE_HEADERS = {
-    "User-Agent": ("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
-                   "(KHTML, like Gecko) Chrome/120.0 Safari/537.36"),
-    "Referer": "https://www.bseindia.com/",
-    "Accept": "application/json, text/plain, */*",
-}
 
 NSE_BASE = "https://www.nseindia.com"
 NSE_TRADE_INFO_URL = NSE_BASE + "/api/quote-equity"
@@ -107,9 +101,11 @@ def parse_nse_depth(payload: dict) -> dict | None:
 
 
 def fetch_bse_depth(scrip_code: str | int) -> dict | None:
+    """BSE's API is Akamai-fronted and refuses non-browser TLS; go through
+    the Chrome-impersonating session from backend.bse."""
     try:
-        resp = requests.get(
-            BSE_DEPTH_URL, headers=BSE_HEADERS, timeout=10,
+        resp = bse.new_session().get(
+            BSE_DEPTH_URL, timeout=10,
             params={"quotetype": "EQ", "scripcode": str(scrip_code), "flag": "0"})
         resp.raise_for_status()
         return parse_bse_depth(resp.json())

@@ -2,20 +2,36 @@
 
 Reconstructed from bytecode after the source was lost in the v2 cleanup —
 only the functions the universe builder uses.
+
+api.bseindia.com sits behind Akamai, which from 24 Sept 2026 rejects
+anything whose TLS handshake does not look like a browser (HTTP 403
+"Access Denied" regardless of headers or cookies - four days of failed
+universe builds and corporate-action captures). Every BSE API call
+therefore goes through curl_cffi impersonating Chrome; the plain
+www.bseindia.com downloads (bhavcopies) are unaffected.
 """
 
 import time
 
-import requests
+from curl_cffi import requests
 
 BSE_HOME = "https://www.bseindia.com/"
 SCRIP_MASTER_URL = "https://api.bseindia.com/BseIndiaAPI/api/ListofScripData/w"
+IMPERSONATE = "chrome"  # curl_cffi's current Chrome TLS/HTTP2 fingerprint
 
 HEADERS = {
-    "User-Agent": ("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
-                   "(KHTML, like Gecko) Chrome/120.0 Safari/537.36"),
+    # Matches the fingerprint curl_cffi impersonates; Akamai scores TLS and
+    # header consistency together, so the two must agree.
+    "User-Agent": ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+                   "(KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36"),
     "Referer": BSE_HOME,
+    "Origin": "https://www.bseindia.com",
+    "Accept": "application/json, text/plain, */*",
+    "Accept-Language": "en-US,en;q=0.9",
 }
+
+# What callers should catch around a BSE call (plus ValueError for bad JSON).
+RequestError = (requests.exceptions.RequestException,)
 
 # Suspended bonds still matter: they carry ratings/default history and may
 # resume trading.
@@ -31,15 +47,20 @@ def _to_float(value):
         return None
 
 
-def _new_session() -> requests.Session:
-    session = requests.Session()
-    session.headers.update({**HEADERS,
-                            "Accept": "application/json, text/plain, */*"})
-    try:
-        session.get(BSE_HOME, timeout=30)
-    except requests.RequestException:
-        pass  # cookies are nice-to-have; the API often works without
+def new_session(handshake: bool = False) -> requests.Session:
+    """A Chrome-shaped session for api.bseindia.com."""
+    session = requests.Session(impersonate=IMPERSONATE)
+    session.headers.update(HEADERS)
+    if handshake:
+        try:
+            session.get(BSE_HOME, timeout=30)
+        except requests.exceptions.RequestException:
+            pass  # cookies are nice-to-have; the API works without
     return session
+
+
+def _new_session() -> requests.Session:
+    return new_session(handshake=True)
 
 
 def fetch_scrip_master_raw(statuses=LISTED_STATUSES, timeout: int = 60,
@@ -70,7 +91,7 @@ def fetch_scrip_master_raw(statuses=LISTED_STATUSES, timeout: int = 60,
                                    timeout=timeout)
                 resp.raise_for_status()
                 rows = resp.json()
-            except (requests.RequestException, ValueError) as exc:
+            except (*RequestError, ValueError) as exc:
                 last_exc = exc
                 continue
             if isinstance(rows, list):

@@ -12,6 +12,7 @@ dependencies = [
     "google-auth>=2.44",
     "pyjwt>=2.10",
     "websockets>=17.0.1",
+    "curl-cffi>=0.16.3,<0.17",
 ]
 
 [dependency-groups]
