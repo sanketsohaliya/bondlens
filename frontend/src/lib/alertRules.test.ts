@@ -28,22 +28,22 @@ describe("alert rules from the filter bar", () => {
 
   it("describes filters and conditions tersely", () => {
     expect(describeRuleFilters({ min_rating: "AA-", max_years: 3, payout: "bullet" })).toBe(
-      "rating ≥ AA- · maturity ≤ 3y · bullet",
+      "rating ≥ AA-, maturity ≤ 3y, bullet",
     );
     expect(describeRuleFilters({})).toBe("every listed bond");
     expect(
       describeConditions({ min_ask_ytm: 12, max_ticket: 200_000, max_price: null, min_qty: 5 }),
-    ).toBe("YTM @ Ask ≥ 12% · ticket ≤ ₹2.00 L · ≥ 5 units");
-    expect(suggestRuleName({ min_rating: "BBB-", min_years: 1 }, "12")).toBe(
-      "BBB-, 1y+, ask ≥ 12%",
+    ).toBe("YTM @ Ask ≥ 12%, ticket ≤ ₹2.00 L, ≥ 5 units");
+    expect(suggestRuleName({ min_rating: "BBB-", min_years: 0.5 }, "15")).toBe(
+      "Ask ≥ 15% — BBB- and above, 6mo+",
     );
-    expect(suggestRuleName({ min_years: 0.5, max_years: 3, payout: "bullet" }, "", "1050")).toBe(
-      "6mo–3y, bullet, price ≤ ₹1,050",
+    expect(suggestRuleName({ min_years: 1, max_years: 3, payout: "bullet" }, "", "1050")).toBe(
+      "Ask ≤ ₹1,050 — 1y–3y, bullet",
     );
-    expect(suggestRuleName({ max_years: 2, exchange: "NSE" }, "9.5")).toBe(
-      "≤2y, on NSE, ask ≥ 9.5%",
+    expect(suggestRuleName({ max_years: 2, exchange: "NSE" }, "9.5", "1000")).toBe(
+      "Ask ≥ 9.5%, ≤ ₹1,000 — ≤2y, on NSE",
     );
-    expect(suggestRuleName({}, "")).toBe("all bonds");
+    expect(suggestRuleName({}, "12")).toBe("Ask ≥ 12% — any bond");
     expect(suggestRuleName({ sector: "x".repeat(80) }, "").length).toBeLessThanOrEqual(60);
   });
 
@@ -120,7 +120,8 @@ describe("watcher status line", () => {
   });
   it("reads the heartbeat", () => {
     expect(watcherStatus(beat(20, "open; 1 user(s)"), 2, true, now)).toEqual({
-      label: "live · 5,759 instruments",
+      label: "live",
+      detail: "5,759 instruments",
       tone: "live",
     });
     expect(watcherStatus(beat(20, "idle"), 2, true, now).tone).toBe("idle");

@@ -3,8 +3,8 @@ import { useState } from "react";
 import { api, fmt } from "../api/client";
 import type { AlertRule, ExploreParams } from "../api/types";
 import {
+  compactFilterTokens,
   describeConditions,
-  describeRuleFilters,
   groupHits,
   type HitGroup,
   watcherStatus,
@@ -12,6 +12,8 @@ import {
 import { fmtIstTime } from "../lib/quoteValuation";
 import SaveAlertDialog from "./SaveAlertDialog";
 
+const PILL =
+  "text-[10px] px-1.5 py-0.5 rounded border border-zinc-700/70 text-zinc-400 whitespace-nowrap";
 const TAB = "text-xs font-medium px-3 py-2 border-b-2 transition-colors -mb-px " as const;
 
 /** The Alert chip's dropdown: status header, gear-hidden push topic, and
@@ -57,6 +59,7 @@ export default function AlertsPanel({
         <span className="flex items-center gap-1.5 text-[11px] text-zinc-500">
           <span className={`inline-block w-1.5 h-1.5 rounded-full ${dot}`} />
           {status.label}
+          {status.detail && <span className={PILL}>{status.detail}</span>}
         </span>
         <span className="flex-1" />
         <button
@@ -250,19 +253,31 @@ function RuleRow({
     mutationFn: () => api.alerts.deleteRule(rule.id),
     onSuccess: onChanged,
   });
-  const meta = [
-    describeRuleFilters(rule.filters ?? {}),
-    hitsToday ? `${hitsToday} hit${hitsToday === 1 ? "" : "s"} today` : null,
-    rule.last_hit_at ? `last ${fmtIstTime(rule.last_hit_at) ?? ""}` : null,
-  ].filter(Boolean);
+  const pills = compactFilterTokens(rule.filters ?? {});
   return (
-    <li className={`px-4 py-2.5 ${rule.enabled ? "" : "opacity-60"}`}>
+    <li className={`px-4 py-2.5 ${enabled ? "" : "opacity-60"}`}>
       <div className="flex items-center gap-3">
         <div className="flex-1 min-w-0">
           <div className="truncate text-zinc-200" title={describeConditions(rule)}>
             {rule.name}
           </div>
-          <div className="mt-0.5 truncate text-[11px] text-zinc-500">{meta.join(" · ")}</div>
+          <div className="mt-1 flex items-center gap-1.5">
+            <span className="flex flex-wrap items-center gap-1 min-w-0">
+              {(pills.length ? pills : ["any bond"]).map((t) => (
+                <span key={t} className={PILL}>
+                  {t}
+                </span>
+              ))}
+            </span>
+            <span className="ml-auto flex shrink-0 gap-3 text-[11px] text-zinc-500">
+              {hitsToday > 0 && (
+                <span>
+                  {hitsToday} hit{hitsToday === 1 ? "" : "s"} today
+                </span>
+              )}
+              {rule.last_hit_at && <span>last {fmtIstTime(rule.last_hit_at) ?? ""}</span>}
+            </span>
+          </div>
         </div>
         <Switch
           on={enabled}
@@ -342,12 +357,12 @@ function HitRow({ group: g, onOpen }: { group: HitGroup; onOpen: () => void }) {
           <span className="flex-1 truncate">
             {fmt.inrFull(h.price)} × {fmt.num(qty, 0)}
             {ticket}
-            {h.exchange ? ` · ${h.exchange}` : ""}
           </span>
+          {h.exchange && <span className={PILL}>{h.exchange}</span>}
           {g.count > 1 && (
             <span className="shrink-0">
               {g.count} {g.side === "ask" ? "asks" : "bids"} today
-              {g.bestYtm != null ? ` · best ${fmt.pct(g.bestYtm)}` : ""}
+              {g.bestYtm != null ? `, best ${fmt.pct(g.bestYtm)}` : ""}
             </span>
           )}
         </div>

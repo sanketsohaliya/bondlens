@@ -58,7 +58,7 @@ export function splitFilters(params: ExploreParams): {
   return { kept, dropped };
 }
 
-/** "rating ≥ BBB- · maturity ≥ 0.5y · bullet" for a rule's filters. */
+/** "rating ≥ BBB-, maturity ≥ 0.5y, bullet" for a rule's filters. */
 export function describeRuleFilters(filters: Record<string, unknown>): string {
   const parts: string[] = [];
   const f = filters as Partial<ExploreParams> & Record<string, unknown>;
@@ -76,10 +76,10 @@ export function describeRuleFilters(filters: Record<string, unknown>): string {
   if (f.unsecured_only) parts.push("unsecured");
   if (f.tax_free_only) parts.push("tax-free");
   if (f.downgraded_only) parts.push("downgraded recently");
-  return parts.length ? parts.join(" · ") : "every listed bond";
+  return parts.length ? parts.join(", ") : "every listed bond";
 }
 
-/** "YTM @ Ask ≥ 12% · ticket ≤ ₹2.00 L · price ≤ ₹1,050" */
+/** "YTM @ Ask ≥ 12%, ticket ≤ ₹2.00 L, price ≤ ₹1,050" */
 export function describeConditions(
   rule: Pick<AlertRule, "min_ask_ytm" | "max_ticket" | "max_price" | "min_qty">,
 ): string {
@@ -88,14 +88,15 @@ export function describeConditions(
   if (rule.max_price != null) parts.push(`price ≤ ${fmt.inrFull(rule.max_price)}`);
   if (rule.max_ticket != null) parts.push(`ticket ≤ ${fmt.inr(rule.max_ticket)}`);
   if (rule.min_qty != null && rule.min_qty > 1) parts.push(`≥ ${rule.min_qty} units`);
-  return parts.join(" · ");
+  return parts.join(", ");
 }
 
-/** Short tokens for a rule name: "BBB-", "1y+", "≤3y", "bullet", "on NSE". */
+/** Pill-ready phrases for a rule's filters: "BBB- and above", "6mo+",
+ * "1–3y", "≤2y", sector/payout words, "on NSE", "secured"... */
 export function compactFilterTokens(filters: Record<string, unknown>): string[] {
   const f = filters as Partial<ExploreParams> & Record<string, unknown>;
   const out: string[] = [];
-  if (f.min_rating) out.push(String(f.min_rating));
+  if (f.min_rating) out.push(`${String(f.min_rating)} and above`);
   if (f.rating) out.push(`~${String(f.rating)}`);
   const span = (y: number) => (y < 1 ? `${Math.round(y * 12)}mo` : `${Number(y.toFixed(1))}y`);
   if (f.min_years != null && f.max_years != null)
@@ -112,16 +113,22 @@ export function compactFilterTokens(filters: Record<string, unknown>): string[] 
   return out;
 }
 
-/** A default rule name, "BBB-, 1y+, ask ≥ 12%", capped at the API's 60 chars. */
+/** "Ask ≥ 15%" / "Ask ≤ ₹1,050" / "Ask ≥ 15%, ≤ ₹1,050" */
+export function describeAskLead(minYtm: string, maxPrice = ""): string {
+  const parts: string[] = [];
+  if (minYtm) parts.push(`≥ ${minYtm}%`);
+  if (maxPrice) parts.push(`≤ ₹${Number(maxPrice).toLocaleString("en-IN")}`);
+  return parts.length ? `Ask ${parts.join(", ")}` : "Ask";
+}
+
+/** A default rule name, "Ask ≥ 15% — BBB- and above, 6mo+", capped at 60 chars. */
 export function suggestRuleName(
   filters: Record<string, unknown>,
   minYtm: string,
   maxPrice = "",
 ): string {
   const tokens = compactFilterTokens(filters);
-  if (minYtm) tokens.push(`ask ≥ ${minYtm}%`);
-  else if (maxPrice) tokens.push(`price ≤ ₹${Number(maxPrice).toLocaleString("en-IN")}`);
-  const name = tokens.length ? tokens.join(", ") : "all bonds";
+  const name = `${describeAskLead(minYtm, maxPrice)} — ${tokens.length ? tokens.join(", ") : "any bond"}`;
   return name.length > 60 ? `${name.slice(0, 57)}…` : name;
 }
 
@@ -178,7 +185,7 @@ export function groupHits(hits: OpportunityHit[]): HitGroup[] {
   return [...groups.values()];
 }
 
-export type WatcherStatus = { label: string; tone: "live" | "idle" | "warn" };
+export type WatcherStatus = { label: string; detail?: string; tone: "live" | "idle" | "warn" };
 
 /** One-line status for the panel header from the heartbeat row. */
 export function watcherStatus(
@@ -196,5 +203,5 @@ export function watcherStatus(
   if (rulesCount > 0 && !kiteConnected) return { label: "Kite not connected", tone: "warn" };
   if (note.startsWith("solving")) return { label: "arming new rule…", tone: "live" };
   const n = Number(watcher.tokens ?? 0);
-  return { label: `live · ${n.toLocaleString("en-IN")} instruments`, tone: "live" };
+  return { label: "live", detail: `${n.toLocaleString("en-IN")} instruments`, tone: "live" };
 }
