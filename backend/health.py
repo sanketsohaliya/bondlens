@@ -9,12 +9,7 @@ import os
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
-import requests
-
-from . import db
-
-NTFY_TOPIC = os.environ.get("NTFY_TOPIC", "")
-NTFY_URL = os.environ.get("NTFY_URL", "https://ntfy.sh")
+from . import db, ntfy
 
 # A run row whose ok is still NULL after this long crashed mid-way.
 STUCK_AFTER_HOURS = 3
@@ -188,15 +183,5 @@ def check(now: datetime | None = None) -> list[str]:
 
 
 def notify(title: str, message: str, priority: str = "high") -> bool:
-    """Push to ntfy.sh; returns False (with a printed warning) if unset."""
-    if not NTFY_TOPIC:
-        print(f"NTFY_TOPIC unset — would have sent: [{title}] {message}")
-        return False
-    resp = requests.post(
-        f"{NTFY_URL}/{NTFY_TOPIC}",
-        data=message.encode(),
-        headers={"Title": title, "Priority": priority, "Tags": "warning,bondlens"},
-        timeout=15,
-    )
-    resp.raise_for_status()
-    return True
+    """Push to the ops ntfy topic; False (with a printed warning) if unset."""
+    return ntfy.notify_ops(title, message, priority)

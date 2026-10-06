@@ -37,8 +37,11 @@ from . import (
     kite_connect,
     kite_ticker,
     models,
+    ntfy,
+    opportunity_rules,
     queries,
     quote_time,
+    safe_errors,
 )
 from .analytics import portfolio as pf
 from .analytics import ratings, schedule, valuation, yields
@@ -245,6 +248,80 @@ def notifications_read(body: models.NotificationsReadRequest | None = None,
                        user_id: int = Depends(auth.require_user)):
     """Mark only the notification IDs explicitly acknowledged by the user."""
     db.mark_notifications_read(user_id, body.ids if body else [])
+    return {"ok": True}
+
+
+# --------------------------------------------------------------------------
+# Opportunity alerts (rules, exit targets, ntfy topic) — per user
+
+def _rules_call(fn, *args):
+    try:
+        return fn(*args)
+    except opportunity_rules.RuleError as e:
+        raise HTTPException(status_code=e.status, detail=e.detail) from e
+
+
+@router.get("/api/alerts", response_model=models.AlertsOverview)
+def alerts_overview(user_id: int = Depends(auth.require_user)):
+    """Everything the Alerts panel shows: rules, exit targets, the push
+    topic, recent hits with their push latency, and the watcher's pulse."""
+    return {"rules": opportunity_rules.list_rules(user_id),
+            "targets": opportunity_rules.list_targets(user_id),
+            "settings": {"ntfy_topic": opportunity_rules.get_topic(user_id)},
+            "recent": opportunity_rules.recent_hits(user_id),
+            "watcher": opportunity_rules.read_heartbeat()}
+
+
+@router.post("/api/alerts/rules", response_model=models.AlertRule, status_code=201)
+def alerts_create_rule(body: models.AlertRuleIn, user_id: int = Depends(auth.require_user)):
+    return _rules_call(opportunity_rules.create_rule, user_id, body.model_dump())
+
+
+@router.patch("/api/alerts/rules/{rule_id}", response_model=models.AlertRule)
+def alerts_update_rule(rule_id: int, body: models.AlertRulePatch,
+                       user_id: int = Depends(auth.require_user)):
+    return _rules_call(opportunity_rules.update_rule, user_id, rule_id,
+                       body.model_dump(exclude_unset=True))
+
+
+@router.delete("/api/alerts/rules/{rule_id}", response_model=models.Ok)
+def alerts_delete_rule(rule_id: int, user_id: int = Depends(auth.require_user)):
+    _rules_call(opportunity_rules.delete_rule, user_id, rule_id)
+    return {"ok": True}
+
+
+@router.put("/api/alerts/targets/{isin}", response_model=models.ExitTarget)
+def alerts_put_target(isin: str, body: models.ExitTargetIn,
+                      user_id: int = Depends(auth.require_user)):
+    isin = isin.strip().upper()
+    if queries.bond_row(isin) is None:
+        raise HTTPException(status_code=404, detail="Unknown ISIN")
+    return _rules_call(opportunity_rules.put_target, user_id, isin, body.model_dump())
+
+
+@router.delete("/api/alerts/targets/{isin}", response_model=models.Ok)
+def alerts_delete_target(isin: str, user_id: int = Depends(auth.require_user)):
+    _rules_call(opportunity_rules.delete_target, user_id, isin.strip().upper())
+    return {"ok": True}
+
+
+@router.put("/api/alerts/settings", response_model=models.AlertSettings)
+def alerts_put_settings(body: models.AlertSettings, user_id: int = Depends(auth.require_user)):
+    return {"ntfy_topic": _rules_call(opportunity_rules.set_topic, user_id, body.ntfy_topic)}
+
+
+@router.post("/api/alerts/test", response_model=models.Ok)
+def alerts_test_push(user_id: int = Depends(auth.require_user)):
+    """One test push to the user's topic so they can confirm the phone side."""
+    topic = opportunity_rules.get_topic(user_id)
+    if not topic:
+        raise HTTPException(status_code=400, detail="Set an ntfy topic first")
+    try:
+        ntfy.push(topic, "BondLens alerts are wired", "Opportunity pushes will arrive here. "
+                  "Turn on Instant delivery for this topic in the ntfy app for the fastest path.",
+                  priority=ntfy.PRIORITY_HIGH, tags="bell,bondlens")
+    except Exception as exc:  # noqa: BLE001 - ntfy outage is the user's answer, not a 500
+        raise HTTPException(status_code=502, detail=f"ntfy rejected the push: {safe_errors.error_summary(exc)}") from exc
     return {"ok": True}
 
 

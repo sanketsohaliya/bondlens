@@ -521,6 +521,80 @@ class Notification(BaseModel):
     legacy: bool = False
 
 
+# --- Opportunity alerts ------------------------------------------------------
+
+class AlertRuleIn(BaseModel):
+    """A saved Explore screen plus ask conditions. `filters` carries only
+    bond descriptors (rating, maturity, sector...); trade-history filters
+    are rejected with 400 because live asks are judged on the ask."""
+    name: str = Field(min_length=1, max_length=60)
+    filters: dict[str, Any] = Field(default_factory=dict)
+    min_ask_ytm: float | None = Field(default=None, gt=0)
+    max_ticket: float | None = Field(default=None, gt=0)
+    max_price: float | None = Field(default=None, gt=0)
+    min_qty: float | None = Field(default=None, gt=0)
+    enabled: bool = True
+
+
+class AlertRulePatch(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=60)
+    filters: dict[str, Any] | None = None
+    min_ask_ytm: float | None = None
+    max_ticket: float | None = None
+    max_price: float | None = None
+    min_qty: float | None = None
+    enabled: bool | None = None
+
+
+class AlertRule(AlertRuleIn):
+    id: int
+    created_at: datetime
+    updated_at: datetime
+    last_hit_at: datetime | None = None
+
+
+class ExitTargetIn(BaseModel):
+    min_bid_price: float | None = Field(default=None, gt=0)
+    max_bid_ytm: float | None = Field(default=None, gt=0)
+    enabled: bool = True
+
+
+class ExitTarget(ExitTargetIn):
+    isin: str
+    updated_at: datetime
+
+
+class AlertSettings(BaseModel):
+    ntfy_topic: str | None = None
+
+
+class OpportunityHit(BaseModel):
+    id: int
+    source: str
+    isin: str
+    side: Literal["ask", "bid"]
+    price: float
+    qty: float | None
+    ytm: float | None
+    exchange: str | None
+    trade_day: date
+    tick_at: datetime | None
+    fired_at: datetime
+    pushed_at: datetime | None
+    push_ms: int | None
+    issuer_name: str | None = None
+    nse_symbol: str | None = None
+    bse_scrip_id: str | None = None
+
+
+class AlertsOverview(BaseModel):
+    rules: list[AlertRule]
+    targets: list[ExitTarget]
+    settings: AlertSettings
+    recent: list[OpportunityHit]
+    watcher: dict[str, Any] | None = None
+
+
 class NotificationsReadRequest(BaseModel):
     ids: list[int] = Field(default_factory=list, max_length=200)
 
