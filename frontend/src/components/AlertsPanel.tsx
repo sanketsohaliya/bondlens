@@ -87,7 +87,7 @@ export default function AlertsPanel({
         </div>
         {rules.length === 0 && (
           <p className="mt-1.5 text-zinc-500">
-            None yet. Set filters on Explore and press <b>🔔 Alert</b>.
+            None yet. Set filters on Explore and press <b>Alert</b>.
           </p>
         )}
         <ul className="mt-1.5 divide-y divide-zinc-800/60">

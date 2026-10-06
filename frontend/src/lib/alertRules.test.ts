@@ -31,7 +31,16 @@ describe("alert rules from the filter bar", () => {
     expect(
       describeConditions({ min_ask_ytm: 12, max_ticket: 200_000, max_price: null, min_qty: 5 }),
     ).toBe("YTM @ Ask ≥ 12% · ticket ≤ ₹2.00 L · ≥ 5 units");
-    expect(suggestRuleName({ min_rating: "BBB-" }, "12")).toBe("rating ≥ BBB- ≥ 12%");
+    expect(suggestRuleName({ min_rating: "BBB-", min_years: 1 }, "12")).toBe(
+      "BBB-, 1y+, ask ≥ 12%",
+    );
+    expect(suggestRuleName({ min_years: 0.5, max_years: 3, payout: "bullet" }, "", "1050")).toBe(
+      "6mo–3y, bullet, price ≤ ₹1,050",
+    );
+    expect(suggestRuleName({ max_years: 2, exchange: "NSE" }, "9.5")).toBe(
+      "≤2y, on NSE, ask ≥ 9.5%",
+    );
+    expect(suggestRuleName({}, "")).toBe("all bonds");
     expect(suggestRuleName({ sector: "x".repeat(80) }, "").length).toBeLessThanOrEqual(60);
   });
 

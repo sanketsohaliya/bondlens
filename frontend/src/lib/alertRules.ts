@@ -91,10 +91,37 @@ export function describeConditions(
   return parts.join(" · ");
 }
 
-/** A default rule name from the filters, trimmed to the API's 60 chars. */
-export function suggestRuleName(filters: Record<string, unknown>, minYtm: string): string {
-  const base = describeRuleFilters(filters);
-  const name = minYtm ? `${base} ≥ ${minYtm}%` : base;
+/** Short tokens for a rule name: "BBB-", "1y+", "≤3y", "bullet", "on NSE". */
+export function compactFilterTokens(filters: Record<string, unknown>): string[] {
+  const f = filters as Partial<ExploreParams> & Record<string, unknown>;
+  const out: string[] = [];
+  if (f.min_rating) out.push(String(f.min_rating));
+  if (f.rating) out.push(`~${String(f.rating)}`);
+  const span = (y: number) => (y < 1 ? `${Math.round(y * 12)}mo` : `${Number(y.toFixed(1))}y`);
+  if (f.min_years != null && f.max_years != null)
+    out.push(`${span(f.min_years)}–${span(f.max_years)}`);
+  else if (f.min_years != null) out.push(`${span(f.min_years)}+`);
+  else if (f.max_years != null) out.push(`≤${span(f.max_years)}`);
+  for (const key of ["sector", "industry", "issuer", "payout", "frequency"] as const)
+    if (f[key]) out.push(String(f[key]));
+  if (f.exchange) out.push(`on ${f.exchange}`);
+  if (f.secured_only) out.push("secured");
+  if (f.unsecured_only) out.push("unsecured");
+  if (f.tax_free_only) out.push("tax-free");
+  if (f.downgraded_only) out.push("downgraded");
+  return out;
+}
+
+/** A default rule name, "BBB-, 1y+, ask ≥ 12%", capped at the API's 60 chars. */
+export function suggestRuleName(
+  filters: Record<string, unknown>,
+  minYtm: string,
+  maxPrice = "",
+): string {
+  const tokens = compactFilterTokens(filters);
+  if (minYtm) tokens.push(`ask ≥ ${minYtm}%`);
+  else if (maxPrice) tokens.push(`price ≤ ₹${Number(maxPrice).toLocaleString("en-IN")}`);
+  const name = tokens.length ? tokens.join(", ") : "all bonds";
   return name.length > 60 ? `${name.slice(0, 57)}…` : name;
 }
 

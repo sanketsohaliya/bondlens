@@ -24,7 +24,7 @@ export default function SaveAlertDialog({
   const save = useMutation({
     mutationFn: () =>
       api.alerts.createRule({
-        name: (name ?? suggestRuleName(kept, minYtm)).trim(),
+        name: (name ?? suggestRuleName(kept, minYtm, maxPrice)).trim(),
         filters: kept,
         min_ask_ytm: minYtm ? Number(minYtm) : null,
         max_ticket: maxTicket ? Number(maxTicket) : null,
@@ -37,7 +37,8 @@ export default function SaveAlertDialog({
     },
   });
   const valid =
-    Boolean(minYtm || maxPrice) && (name ?? suggestRuleName(kept, minYtm)).trim().length > 0;
+    Boolean(minYtm || maxPrice) &&
+    (name ?? suggestRuleName(kept, minYtm, maxPrice)).trim().length > 0;
   const input =
     "w-full rounded-md border border-zinc-700 bg-zinc-950 px-2 py-1.5 text-sm text-zinc-100 focus:border-emerald-500 focus:outline-none";
 
@@ -107,7 +108,7 @@ export default function SaveAlertDialog({
           <input
             className={`${input} mt-1`}
             maxLength={60}
-            value={name ?? suggestRuleName(kept, minYtm)}
+            value={name ?? suggestRuleName(kept, minYtm, maxPrice)}
             onChange={(e) => setName(e.target.value)}
           />
         </label>
