@@ -78,5 +78,26 @@ services:
       db:
         condition: service_healthy
 
+  # Opportunity watcher: Kite ticker sockets in, ntfy pushes out, for
+  # every user with alert rules. Its own process so a tick storm or a
+  # socket reconnect never touches the API; idles outside market hours.
+  watcher:
+    build: .
+    restart: unless-stopped
+    init: true
+    <<: *logging
+    command: ["python", "-m", "backend.opportunity_watcher"]
+    environment:
+      DATABASE_URL: postgresql://bondlens:bondlens@db:5432/bondlens
+      KITE_API_KEY: ${KITE_API_KEY:-}
+      KITE_API_SECRET: ${KITE_API_SECRET:-}
+      DOMAIN: ${DOMAIN:-localhost:3000}
+      NTFY_URL: ${NTFY_URL:-https://ntfy.sh}
+    depends_on:
+      db:
+        condition: service_healthy
+      jobs:
+        condition: service_started   # jobs runs the migrations first
+
 volumes:
   pgdata:

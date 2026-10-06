@@ -304,6 +304,12 @@ def delete_lot(user_id: int, lot_id: int) -> None:
 
 # --- Kite Connect sessions (per-user daily access tokens) -------------------
 
+def kite_session_user_ids() -> list[int]:
+    with _conn() as conn:
+        return [r["user_id"] for r in conn.execute(
+            "SELECT user_id FROM kite_sessions ORDER BY user_id").fetchall()]
+
+
 def get_kite_token(user_id: int) -> str | None:
     with _conn() as conn:
         row = conn.execute(

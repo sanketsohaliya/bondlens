@@ -6,8 +6,9 @@ log nobody reads. Wired into the crontab after the morning and evening
 job windows (scripts/healthcheck.py).
 """
 import os
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from . import db, ntfy
 
@@ -179,7 +180,40 @@ def check(now: datetime | None = None) -> list[str]:
 
         problems.extend(capture_health(Store().snapshot(), now))
 
+    # 7) Opportunity watcher: alive during market hours, thresholds built
+    #    before the open, pushes leaving quickly.
+    with db._conn() as conn:
+        table = conn.execute("SELECT to_regclass('watcher_heartbeat') AS name").fetchone()
+        beat = (conn.execute("SELECT * FROM watcher_heartbeat WHERE id = 1").fetchone()
+                if table and table["name"] else None)
+        rules = (conn.execute("SELECT count(*) AS n FROM alert_rules WHERE enabled").fetchone()
+                 if table and table["name"] else None)
+    if rules and rules["n"]:
+        problems.extend(watcher_problems(dict(beat) if beat else None, now))
+
     return problems
+
+
+WATCHER_STALE_MINUTES = 5
+PUSH_P99_LIMIT_MS = 2000
+
+
+def watcher_problems(beat: dict | None, now: datetime) -> list[str]:
+    """Pure verdict on the watcher heartbeat (only meaningful when rules exist)."""
+    ist = now.astimezone(ZoneInfo("Asia/Kolkata"))
+    in_hours = ist.weekday() < 5 and time(9, 0) <= ist.timetz().replace(tzinfo=None) < time(15, 45)
+    before_open = ist.weekday() < 5 and time(8, 45) <= ist.timetz().replace(tzinfo=None) < time(9, 0)
+    if beat is None:
+        return ["watcher: never reported a heartbeat"] if in_hours or before_open else []
+    out = []
+    age = now - beat["beat_at"]
+    if (in_hours or before_open) and age > timedelta(minutes=WATCHER_STALE_MINUTES):
+        out.append(f"watcher: no heartbeat since {beat['beat_at'].astimezone(ZoneInfo('Asia/Kolkata')):%H:%M} IST")
+    if (in_hours or before_open) and not beat.get("thresholds_ready"):
+        out.append("watcher: alert thresholds not fully built")
+    if in_hours and (beat.get("push_p99_ms") or 0) > PUSH_P99_LIMIT_MS:
+        out.append(f"watcher: push p99 {beat['push_p99_ms'] / 1000:.1f}s")
+    return out
 
 
 def notify(title: str, message: str, priority: str = "high") -> bool:

@@ -231,6 +231,17 @@ def modify_order(user_id: int, order_id: str, quantity: int,
     return str(new_id)
 
 
+def token_is_live(user_id: int) -> bool:
+    """Cheap liveness probe for a stored daily token (the watcher asks
+    before opening ticker sockets). A dead token is cleared by _request."""
+    _tokens.pop(user_id, None)  # another process may have refreshed it
+    try:
+        _request(user_id, "GET", "/user/profile")
+        return True
+    except KiteError:
+        return False
+
+
 def margins(user_id: int) -> dict[str, Any]:
     """Equity-segment funds snapshot (bonds trade in the equity
     segment): the four numbers the UI shows."""

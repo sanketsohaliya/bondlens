@@ -484,6 +484,15 @@ def bonds_symbols(isins: list[str]) -> dict[str, dict]:
     return {r["isin"]: dict(r) for r in rows}
 
 
+def bonds_brief(isins: list[str]) -> dict[str, dict]:
+    """isin -> the handful of fields an alert text needs."""
+    with db._conn() as conn:
+        rows = conn.execute(
+            "SELECT isin, issuer_name, nse_symbol, nse_series, bse_scrip_id, credit_rating, "
+            "maturity_date FROM bond_analytics WHERE isin = ANY(%s)", (isins,)).fetchall()
+    return {r["isin"]: dict(r) for r in rows}
+
+
 def ask_universe() -> list[str]:
     """Every bond that can carry a Kite quote (has an NSE or BSE symbol),
     best known yield first so the explorer's first ask page covers the
