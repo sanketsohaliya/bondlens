@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { api, fmt } from "../api/client";
 import type { ExploreParams, Filters } from "../api/types";
 import { nextListName, useWatchlists } from "../lib/lists";
+import AlertsPanel from "./AlertsPanel";
 import SaveAlertDialog from "./SaveAlertDialog";
 
 /* What a fresh screen starts with: decent yield, minimal liquidity,
@@ -64,12 +65,15 @@ export default function FilterBar({
   modes,
   onModes,
   dimReason,
+  onSelect,
 }: {
   params: ExploreParams;
   onChange: (p: ExploreParams) => void;
   modes: ListModes;
   onModes: (m: ListModes) => void;
   dimReason?: string;
+  /** Open a bond (alert hits and exit targets jump to its Order Book). */
+  onSelect?: (isin: string, tab?: "order book") => void;
 }) {
   const { data: filters } = useQuery({ queryKey: ["filters"], queryFn: api.filters });
 
@@ -86,6 +90,7 @@ export default function FilterBar({
       modes={modes}
       onModes={onModes}
       dimReason={dimReason}
+      onSelect={onSelect}
     />
   );
 }
@@ -152,6 +157,7 @@ function FilterFields({
   modes,
   onModes,
   dimReason,
+  onSelect,
 }: {
   params: ExploreParams;
   set: (patch: Partial<ExploreParams>) => void;
@@ -160,6 +166,7 @@ function FilterFields({
   modes: ListModes;
   onModes: (m: ListModes) => void;
   dimReason?: string;
+  onSelect?: (isin: string, tab?: "order book") => void;
 }) {
   const lbl = (active: boolean) =>
     `block text-[10px] font-semibold uppercase tracking-wider mb-1.5 whitespace-nowrap ${
@@ -275,7 +282,6 @@ function FilterFields({
     security: !!params.secured_only || !!params.unsecured_only,
   };
   const [added, setAdded] = useState<ExtraId[]>([]);
-  const [savingAlert, setSavingAlert] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
   const visible = EXTRAS.filter(([id]) => added.includes(id) || extraActive[id]);
 
@@ -511,29 +517,7 @@ function FilterFields({
 
       <span className="flex items-end gap-2 self-end">
         <WatchlistChip modes={modes} onModes={onModes} />
-        <button
-          type="button"
-          title="Watch live asks matching these filters and push an alert when one hits your yield or price"
-          onClick={() => setSavingAlert(true)}
-          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md border border-zinc-700 text-xs font-medium text-zinc-400 hover:border-zinc-500 hover:text-zinc-300 transition-colors whitespace-nowrap"
-        >
-          <svg
-            width="12"
-            height="12"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            aria-hidden="true"
-          >
-            <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" />
-            <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" />
-          </svg>
-          Alert
-        </button>
-        {savingAlert && <SaveAlertDialog params={params} onClose={() => setSavingAlert(false)} />}
+        <AlertChip params={params} onSelect={onSelect} />
         <button
           type="button"
           title="Reset filters and layout to the defaults"
@@ -726,6 +710,79 @@ function WatchlistChip({ modes, onModes }: { modes: ListModes; onModes: (m: List
           </div>
         </>
       )}
+    </span>
+  );
+}
+
+/* Split chip beside Watchlist: the label saves the current filters as an
+   alert rule; the caret opens the alerts panel (push topic, rules, exit
+   targets, recent hits). Same footprint and colours as WatchlistChip. */
+function AlertChip({
+  params,
+  onSelect,
+}: {
+  params: ExploreParams;
+  onSelect?: (isin: string, tab?: "order book") => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const idle = "border-zinc-700 text-zinc-400 hover:border-zinc-500 hover:text-zinc-300";
+  return (
+    <span
+      className={`relative flex items-stretch rounded-md border text-xs font-medium transition-colors ${idle}`}
+    >
+      <button
+        type="button"
+        title="Save the current filters as an alert rule: a push when a live ask hits your yield or price"
+        onClick={() => setSaving(true)}
+        className="flex items-center gap-1.5 pl-2.5 pr-2 py-1.5 rounded-l-md whitespace-nowrap hover:bg-zinc-800/60"
+      >
+        <svg
+          width="12"
+          height="12"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+        >
+          <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" />
+          <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" />
+        </svg>
+        Alert
+      </button>
+      <button
+        type="button"
+        title="Alert rules, push topic and recent hits"
+        onClick={() => setOpen(!open)}
+        className="px-1.5 rounded-r-md border-l border-zinc-700/70 hover:bg-zinc-800/60 flex items-center"
+      >
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+          <path
+            d="M4 6l4 4 4-4"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-20" onClick={() => setOpen(false)} aria-hidden="true" />
+          <div className="absolute right-0 top-full mt-2 z-30 w-[26rem] rounded-lg border border-zinc-700 bg-zinc-900 shadow-xl overflow-hidden text-left font-normal">
+            <AlertsPanel
+              onSelect={(isin, tab) => {
+                setOpen(false);
+                onSelect?.(isin, tab);
+              }}
+            />
+          </div>
+        </>
+      )}
+      {saving && <SaveAlertDialog params={params} onClose={() => setSaving(false)} />}
     </span>
   );
 }

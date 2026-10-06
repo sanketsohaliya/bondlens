@@ -49,7 +49,7 @@ export default function AlertsPanel({
         <div className="mt-1.5 flex items-center gap-2">
           <input
             className={input}
-            placeholder="e.g. bondlens-opps-x7k2m9 (keep it private)"
+            placeholder="ntfy topic (keep it private)"
             value={shownTopic}
             onChange={(e) => setTopic(e.target.value)}
           />
@@ -65,7 +65,7 @@ export default function AlertsPanel({
             type="button"
             disabled={!settings.ntfy_topic || test.isPending}
             onClick={() => test.mutate()}
-            title="Send one test push to this topic"
+            title="Send one test push. In the ntfy app, switch this topic to Instant delivery for the fastest path; alerts arrive as urgent."
             className="px-2 py-1 rounded-md border border-zinc-700 text-zinc-300 hover:border-zinc-500 disabled:opacity-40"
           >
             {test.isPending ? "Sending…" : test.isSuccess ? "Sent ✓" : "Test"}
@@ -74,11 +74,6 @@ export default function AlertsPanel({
         {(saveTopic.isError || test.isError) && (
           <p className="mt-1 text-red-400">{((saveTopic.error || test.error) as Error).message}</p>
         )}
-        <p className="mt-1.5 text-[11px] text-zinc-600">
-          Subscribe to the topic in the ntfy app and switch it to <b>Instant delivery</b> — that is
-          where most push latency hides. Alerts arrive as urgent (they break through Do Not
-          Disturb).
-        </p>
       </section>
 
       <section className="px-3 py-2.5 border-b border-zinc-800">
@@ -86,9 +81,7 @@ export default function AlertsPanel({
           Rules ({rules.length})
         </div>
         {rules.length === 0 && (
-          <p className="mt-1.5 text-zinc-500">
-            None yet. Set filters on Explore and press <b>Alert</b>.
-          </p>
+          <p className="mt-1.5 text-zinc-500">None yet — set filters and press Alert.</p>
         )}
         <ul className="mt-1.5 divide-y divide-zinc-800/60">
           {rules.map((r) => (

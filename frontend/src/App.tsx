@@ -187,6 +187,7 @@ export default function App() {
                 onChange={setParams}
                 modes={modes}
                 onModes={setModes}
+                onSelect={(isin, tab) => setSelected({ isin, tab })}
                 dimReason={
                   params.q
                     ? "Filters are ignored while searching"
