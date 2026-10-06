@@ -26,12 +26,31 @@ class RuleError(ValueError):
         self.status, self.detail = status, detail
 
 
+# --- Change marker ----------------------------------------------------------
+
+def touch(user_id: int) -> None:
+    """Record that this user's rules/targets/topic changed (watcher polls)."""
+    with db._conn() as conn:
+        conn.execute(
+            "INSERT INTO alert_changes (user_id, changed_at) VALUES (%s, now()) "
+            "ON CONFLICT (user_id) DO UPDATE SET changed_at = now()", (user_id,))
+
+
+def changed_since(since) -> dict[int, Any]:
+    """user_id -> changed_at for users whose alert setup changed after `since`."""
+    with db._conn() as conn:
+        rows = conn.execute(
+            "SELECT user_id, changed_at FROM alert_changes WHERE changed_at > %s",
+            (since,)).fetchall()
+    return {r["user_id"]: r["changed_at"] for r in rows}
+
+
 # --- Rules ------------------------------------------------------------------
 
 def _row(r: Any) -> dict:
     d = dict(r)
     for k in ("min_ask_ytm", "max_ticket", "max_price", "min_qty",
-              "min_bid_price", "max_bid_ytm"):
+              "min_bid_price", "max_bid_ytm", "below_threshold"):
         if k in d and d[k] is not None:
             d[k] = float(d[k])
     return d
@@ -86,6 +105,7 @@ def create_rule(user_id: int, payload: dict) -> dict:
             (user_id, v["name"], Jsonb(v["filters"]), v["min_ask_ytm"], v["max_ticket"],
              v["max_price"], v["min_qty"], v["enabled"])).fetchone()
     assert r is not None
+    touch(user_id)
     return _row(r)
 
 
@@ -105,6 +125,7 @@ def update_rule(user_id: int, rule_id: int, payload: dict) -> dict:
             (v["name"], Jsonb(v["filters"]), v["min_ask_ytm"], v["max_ticket"], v["max_price"],
              v["min_qty"], v["enabled"], rule_id, user_id)).fetchone()
     assert r is not None
+    touch(user_id)
     return _row(r)
 
 
@@ -114,6 +135,7 @@ def delete_rule(user_id: int, rule_id: int) -> None:
                            (rule_id, user_id))
         if cur.rowcount == 0:
             raise RuleError(404, "rule not found")
+    touch(user_id)
 
 
 def all_enabled_rules() -> list[dict]:
@@ -159,6 +181,7 @@ def put_target(user_id: int, isin: str, payload: dict) -> dict:
             " enabled = EXCLUDED.enabled, updated_at = now() RETURNING *",
             (user_id, isin, v["min_bid_price"], v["max_bid_ytm"], v["enabled"])).fetchone()
     assert r is not None
+    touch(user_id)
     return _row(r)
 
 
@@ -168,6 +191,7 @@ def delete_target(user_id: int, isin: str) -> None:
                            (user_id, isin))
         if cur.rowcount == 0:
             raise RuleError(404, "target not found")
+    touch(user_id)
 
 
 def all_enabled_targets() -> list[dict]:
@@ -190,6 +214,7 @@ def set_topic(user_id: int, topic: str | None) -> str | None:
         raise RuleError(400, "topic must be 6-64 letters, digits, '-' or '_'")
     with db._conn() as conn:
         conn.execute("UPDATE users SET ntfy_topic = %s WHERE id = %s", (topic, user_id))
+    touch(user_id)
     return topic
 
 
@@ -237,14 +262,15 @@ def todays_hits(user_id: int, today: date) -> dict[tuple[str, str], dict]:
 
 
 def record_hit(user_id: int, hit: opportunities.Hit, today: date, *, tick_at=None,
-               pushed_at=None, push_ms: int | None = None) -> int:
+               pushed_at=None, push_ms: int | None = None,
+               below_threshold: float | None = None) -> int:
     with db._conn() as conn:
         r = conn.execute(
             "INSERT INTO opportunity_alerts (user_id, source, isin, side, price, qty, ytm, "
-            " exchange, trade_day, tick_at, pushed_at, push_ms) "
-            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id",
+            " exchange, trade_day, tick_at, pushed_at, push_ms, below_threshold) "
+            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id",
             (user_id, hit.source, hit.isin, hit.side, hit.price, hit.qty, hit.ytm,
-             hit.exchange, today, tick_at, pushed_at, push_ms)).fetchone()
+             hit.exchange, today, tick_at, pushed_at, push_ms, below_threshold)).fetchone()
         if hit.source.startswith("rule:"):
             conn.execute("UPDATE alert_rules SET last_hit_at = now() WHERE id = %s",
                          (int(hit.source.split(":", 1)[1]),))

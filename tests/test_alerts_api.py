@@ -181,3 +181,38 @@ def test_ntfy_header_encoding_round_trips_non_latin_titles():
     assert ntfy._header_value("plain") == "plain"
     enc = ntfy._header_value("12.40% @ ₹950 — DEV")
     assert enc.startswith("=?UTF-8?B?") and enc.endswith("?=")
+
+
+def test_every_alert_write_touches_the_change_marker(monkeypatch):
+    touched: list[int] = []
+    monkeypatch.setattr(rules, "touch", touched.append)
+    conns: list = []
+
+    class Cur:
+        rowcount = 1
+
+        def fetchone(self):
+            return {"id": 1, "user_id": 1, "name": "r", "filters": {}, "min_ask_ytm": 12,
+                    "max_ticket": None, "max_price": None, "min_qty": None, "enabled": True,
+                    "created_at": NOW, "updated_at": NOW, "last_hit_at": None,
+                    "isin": "INE000A01001", "min_bid_price": 1, "max_bid_ytm": None}
+
+    class Conn:
+        def execute(self, *a):
+            conns.append(a[0])
+            return Cur()
+
+    class Ctx:
+        def __enter__(self):
+            return Conn()
+
+        def __exit__(self, *exc):
+            return False
+    monkeypatch.setattr(rules.db, "_conn", lambda: Ctx())
+    rules.create_rule(1, {"name": "r", "filters": {}, "min_ask_ytm": 12})
+    rules.update_rule(1, 1, {"enabled": False})
+    rules.delete_rule(1, 1)
+    rules.put_target(1, "INE000A01001", {"min_bid_price": 1})
+    rules.delete_target(1, "INE000A01001")
+    rules.set_topic(1, "bondlens-x1y2z3")
+    assert touched == [1] * 6

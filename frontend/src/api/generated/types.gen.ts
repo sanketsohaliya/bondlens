@@ -1824,6 +1824,10 @@ export type OpportunityHit = {
      */
     push_ms: number | null;
     /**
+     * Below Threshold
+     */
+    below_threshold?: number | null;
+    /**
      * Issuer Name
      */
     issuer_name?: string | null;

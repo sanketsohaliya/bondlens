@@ -53,6 +53,7 @@ NUDGE_AT = dtime(9, 15)
 CLOSE = dtime(15, 45)
 PREP = dtime(8, 30)
 REFRESH_SECONDS = 600
+CHANGE_POLL_SECONDS = 5
 HEARTBEAT_SECONDS = 30
 TOKENS_PER_CONN = 3000
 MAX_CONNS = 3
@@ -266,14 +267,15 @@ class UserSession:
             price, qty = ask
             for rule in opp.match_ask(rules, price, qty):
                 hit = opp.Hit(source=f"rule:{rule.rule_id}", isin=isin, side="ask", price=price,
-                              qty=qty, exchange=exchange, rule_name=rule.name)
+                              qty=qty, exchange=exchange, rule_name=rule.name,
+                              ytm_bound=rule.min_ask_ytm)
                 self._maybe_fire(hit, received, tick.get("exchange_timestamp"))
         target = self.thresholds.bids.get(isin)
         if target and (bid := opp.best_bid(tick["bids"])):
             price, qty = bid
             if opp.match_bid(target, price):
                 hit = opp.Hit(source="target", isin=isin, side="bid", price=price, qty=qty,
-                              exchange=exchange)
+                              exchange=exchange, ytm_bound=target.max_bid_ytm)
                 self._maybe_fire(hit, received, tick.get("exchange_timestamp"))
 
     def _maybe_fire(self, hit: opp.Hit, received: float, exchange_ts: str | None) -> None:
@@ -320,11 +322,18 @@ class UserSession:
             title, body, _ = opp.render(full, self.bonds.get(hit.isin, {}), domain=DOMAIN, tick_at=tick_at)
         kind = "ask_opportunity" if hit.side == "ask" else "bid_opportunity"
         day = self.today.isoformat()
+        # Safety net: the push judged a precomputed price; the exact yield
+        # must agree with the rule. A shortfall is recorded, not belled.
+        short = opp.shortfall(full)
+        if short is not None:
+            log.warning("user %s: %s at %.2f yields %.2f%%, short of the rule by %.2f pt",
+                        self.user_id, hit.isin, hit.price, full.ytm or 0, short)
         try:
-            db.add_notification(self.user_id, kind, "info", hit.isin, title, body,
-                                f"opp:{day}:{hit.source}:{hit.isin}:{hit.price:.2f}")
+            if short is None:
+                db.add_notification(self.user_id, kind, "info", hit.isin, title, body,
+                                    f"opp:{day}:{hit.source}:{hit.isin}:{hit.price:.2f}")
             rules_db.record_hit(self.user_id, full, self.today, tick_at=tick_at,
-                                pushed_at=pushed_at, push_ms=push_ms)
+                                pushed_at=pushed_at, push_ms=push_ms, below_threshold=short)
         except Exception as exc:  # noqa: BLE001
             log.warning("user %s: persisting %s failed: %s", self.user_id, hit.isin, exc)
         return full
@@ -363,6 +372,7 @@ class Watcher:
         self.sessions: dict[int, UserSession] = {}
         self.thresholds_ready = False
         self.note = "starting"
+        self._changes_seen = datetime.now(UTC)
 
     async def heartbeat_forever(self) -> None:
         loop = asyncio.get_running_loop()
@@ -390,29 +400,53 @@ class Watcher:
                 await self.sessions.pop(uid).disconnect()
         ready = True
         for uid in users:
-            session = self.sessions.get(uid)
-            if session is None or session.today != now_ist().date():
-                if session is not None:
-                    await session.disconnect()
-                session = self.sessions[uid] = UserSession(uid, None, self.pusher, self.latency)
-            try:
-                prepared = await loop.run_in_executor(None, session.prepare)
-            except Exception as exc:  # noqa: BLE001 - one user's data must not stop the others
-                log.exception("user %s: prepare failed: %s", uid, exc)
-                continue
-            if prepared["token"] is not None and not await loop.run_in_executor(
-                    None, kite_connect.token_is_live, uid):
-                prepared["token"] = None
-            session.apply(prepared)
-            ready = ready and prepared["missing"] == 0
-            if session.topic:
-                await loop.run_in_executor(None, self.pusher.warm, session.topic)
-            if market_phase(now_ist()) == "open":
-                await session.reconcile_connections()
-            log.info("user %s: %d bonds, %d tokens, %d thresholds pending, token %s",
-                     uid, len(session.thresholds.isins), len(session.token_map),
-                     prepared["missing"], "live" if session.access_token else "none")
+            ready = await self.refresh_user(uid) and ready
         self.thresholds_ready = ready
+        self.note = f"{market_phase(now_ist())}; {len(users)} user(s)"
+
+    async def refresh_user(self, uid: int) -> bool:
+        """Prepare/apply one user and reconcile their sockets. Returns
+        whether every threshold they need is solved."""
+        loop = asyncio.get_running_loop()
+        session = self.sessions.get(uid)
+        if session is None or session.today != now_ist().date():
+            if session is not None:
+                await session.disconnect()
+            session = self.sessions[uid] = UserSession(uid, None, self.pusher, self.latency)
+        try:
+            prepared = await loop.run_in_executor(None, session.prepare)
+        except Exception as exc:  # noqa: BLE001 - one user's data must not stop the others
+            log.exception("user %s: prepare failed: %s", uid, exc)
+            return False
+        if prepared["token"] is not None and not await loop.run_in_executor(
+                None, kite_connect.token_is_live, uid):
+            prepared["token"] = None
+        session.apply(prepared)
+        if session.topic:
+            await loop.run_in_executor(None, self.pusher.warm, session.topic)
+        if market_phase(now_ist()) == "open":
+            await session.reconcile_connections()
+        log.info("user %s: %d bonds, %d tokens, %d thresholds pending, token %s",
+                 uid, len(session.thresholds.isins), len(session.token_map),
+                 prepared["missing"], "live" if session.access_token else "none")
+        return prepared["missing"] == 0
+
+    async def apply_changes(self) -> None:
+        """Rules/targets/topic edits take effect within a poll, not a refresh."""
+        loop = asyncio.get_running_loop()
+        changed = await loop.run_in_executor(None, rules_db.changed_since, self._changes_seen)
+        if not changed:
+            return
+        self._changes_seen = max(changed.values())
+        users = set(await loop.run_in_executor(None, self.eligible_users))
+        for uid in changed:
+            if uid in users:
+                log.info("user %s: alert setup changed; refreshing now", uid)
+                self.note = f"solving thresholds for user {uid}"
+                await self.refresh_user(uid)
+            elif uid in self.sessions:
+                log.info("user %s: no rules left; disconnecting", uid)
+                await self.sessions.pop(uid).disconnect()
         self.note = f"{market_phase(now_ist())}; {len(users)} user(s)"
 
     async def run(self) -> None:
@@ -432,10 +466,13 @@ class Watcher:
             if phase == "open" and t.timetz().replace(tzinfo=None) >= NUDGE_AT:
                 for session in self.sessions.values():
                     session.nudge_if_disconnected()
-            if phase == "prep":
-                await asyncio.sleep(min(seconds_until(t, OPEN), REFRESH_SECONDS))
-            else:
-                await asyncio.sleep(min(seconds_until(t, CLOSE), REFRESH_SECONDS))
+            # Between full refreshes, poll the change marker every few seconds.
+            boundary = seconds_until(t, OPEN if phase == "prep" else CLOSE)
+            deadline = time.monotonic() + min(boundary, REFRESH_SECONDS)
+            while time.monotonic() < deadline:
+                await asyncio.sleep(min(CHANGE_POLL_SECONDS, max(0.0, deadline - time.monotonic())))
+                with contextlib.suppress(Exception):
+                    await self.apply_changes()
 
 
 def main() -> int:

@@ -135,11 +135,13 @@ class AskRule:
     max_price: float | None
     max_ticket: float | None
     min_qty: float
+    min_ask_ytm: float | None = None   # the rule's own yield, for the post-push recheck
 
 
 @dataclass(frozen=True)
 class BidTarget:
     min_bid_price: float | None   # max(min_bid_price, price for max_bid_ytm)
+    max_bid_ytm: float | None = None
 
 
 @dataclass
@@ -183,7 +185,7 @@ def build_thresholds(rules: list[dict], candidates: dict[int, list[str]],
             th.asks.setdefault(isin, []).append(AskRule(
                 rule_id=rule["id"], name=rule["name"], max_ask_price=max_ask_price,
                 max_price=_f(rule.get("max_price")), max_ticket=_f(rule.get("max_ticket")),
-                min_qty=_f(rule.get("min_qty")) or 1.0))
+                min_qty=_f(rule.get("min_qty")) or 1.0, min_ask_ytm=_f(min_ytm)))
     for target in targets:
         if not target.get("enabled", True):
             continue
@@ -199,7 +201,7 @@ def build_thresholds(rules: list[dict], candidates: dict[int, list[str]],
             if by_yield is not None:
                 floor = by_yield if floor is None else max(floor, by_yield)
         if floor is not None:
-            th.bids[isin] = BidTarget(min_bid_price=floor)
+            th.bids[isin] = BidTarget(min_bid_price=floor, max_bid_ytm=_f(max_ytm))
     return th, missing
 
 
@@ -267,6 +269,17 @@ class Hit:
     exchange: str | None
     rule_name: str | None = None
     ytm: float | None = None
+    # The rule's yield bound (min for asks, max for bids), for the recheck.
+    ytm_bound: float | None = None
+
+
+def shortfall(hit: Hit) -> float | None:
+    """How far the exact yield misses the rule's bound (None = clears it or
+    unknown). A basis point of tolerance absorbs the solver's paisa rounding."""
+    if hit.ytm is None or hit.ytm_bound is None:
+        return None
+    gap = (hit.ytm_bound - hit.ytm) if hit.side == "ask" else (hit.ytm - hit.ytm_bound)
+    return round(gap, 2) if gap > 0.01 else None
 
 
 def should_fire(previous: Hit | None, hit: Hit) -> bool:

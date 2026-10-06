@@ -65,7 +65,8 @@ def make_session(monkeypatch, pusher=None):
     s = w.UserSession(1, "topic-abcdef", pusher, w.Latency())  # type: ignore[arg-type]
     s.thresholds = opp.Thresholds(
         asks={"INE000A": [opp.AskRule(rule_id=7, name="BBB 12%", max_ask_price=950.0,
-                                      max_price=None, max_ticket=None, min_qty=1.0)]},
+                                      max_price=None, max_ticket=None, min_qty=1.0,
+                                      min_ask_ytm=12.0)]},
         bids={"INE000H": opp.BidTarget(min_bid_price=1010.0)})
     s.token_map = {101: ("INE000A", "BSE"), 202: ("INE000H", "NSE")}
     s.bonds = {"INE000A": {"issuer_name": "ALPHA LTD", "bse_scrip_id": "ALPHA27"},
@@ -74,7 +75,7 @@ def make_session(monkeypatch, pusher=None):
     monkeypatch.setattr(w.db, "add_notification",
                         lambda *a, **k: recorded.append(("bell", a[1], a[3], a[4])) or True)
     monkeypatch.setattr(w.rules_db, "record_hit",
-                        lambda uid, hit, today, **k: recorded.append(("ledger", hit.source, hit.isin, hit.ytm, k["push_ms"])) or 1)
+                        lambda uid, hit, today, **k: recorded.append(("ledger", hit.source, hit.isin, hit.ytm, k["push_ms"], k.get("below_threshold"))) or 1)
 
     class Calc:
         def __init__(self, isin):
@@ -179,6 +180,50 @@ def test_nudge_once_when_rules_exist_but_kite_is_disconnected(monkeypatch):
     s2.access_token = "live"
     s2.nudge_if_disconnected()
     assert pusher2.calls == []
+
+
+def test_a_hit_whose_exact_yield_misses_the_rule_is_recorded_not_belled(monkeypatch):
+    async def run():
+        s, pusher, recorded = make_session(monkeypatch)
+
+        class LowCalc:
+            def __init__(self, isin):
+                pass
+
+            def values(self, prices, today):
+                return [{"ytm": 11.6}]   # rule says >= 12
+        monkeypatch.setattr(w.ask_ytm, "PriceCalculator", LowCalc)
+        s.on_tick(tick(101, asks=[(940.0, 3)]))
+        await settle()
+        assert len(pusher.calls) == 1                     # speed first: the push already went
+        assert [r[0] for r in recorded] == ["ledger"]     # no bell row
+        assert recorded[0][5] == 0.4                      # short by 0.4 pt
+    asyncio.run(run())
+
+
+def test_rule_changes_refresh_only_that_user(monkeypatch):
+    async def run():
+        wt = w.Watcher(pusher=FakePusher())  # type: ignore[arg-type]
+        refreshed: list[int] = []
+        disconnected: list[int] = []
+
+        async def fake_refresh_user(uid):
+            refreshed.append(uid)
+            return True
+        wt.refresh_user = fake_refresh_user  # type: ignore[method-assign]
+        monkeypatch.setattr(w.rules_db, "changed_since", lambda since: {9: since, 4: since})
+        monkeypatch.setattr(wt, "eligible_users", lambda: [9])
+
+        class Gone:
+            async def disconnect(self):
+                disconnected.append(4)
+        wt.sessions[4] = Gone()  # type: ignore[assignment]
+        await wt.apply_changes()
+        assert refreshed == [9] and disconnected == [4] and 4 not in wt.sessions
+        monkeypatch.setattr(w.rules_db, "changed_since", lambda since: {})
+        await wt.apply_changes()
+        assert refreshed == [9]
+    asyncio.run(run())
 
 
 # --- connections -------------------------------------------------------------------

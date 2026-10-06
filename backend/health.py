@@ -190,12 +190,20 @@ def check(now: datetime | None = None) -> list[str]:
                  if table and table["name"] else None)
     if rules and rules["n"]:
         problems.extend(watcher_problems(dict(beat) if beat else None, now))
+        with db._conn() as conn:
+            short = conn.execute(
+                "SELECT count(*) AS n FROM opportunity_alerts WHERE trade_day = %s "
+                "AND below_threshold IS NOT NULL",
+                (now.astimezone(ZoneInfo("Asia/Kolkata")).date(),)).fetchone()
+        if short and short["n"] > SHORT_HITS_LIMIT:
+            problems.append(f"watcher: {short['n']} hits today fell short of their rule's yield")
 
     return problems
 
 
 WATCHER_STALE_MINUTES = 5
 PUSH_P99_LIMIT_MS = 2000
+SHORT_HITS_LIMIT = 5
 
 
 def watcher_problems(beat: dict | None, now: datetime) -> list[str]:

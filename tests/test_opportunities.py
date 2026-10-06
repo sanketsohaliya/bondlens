@@ -153,3 +153,23 @@ def test_render_names_the_opportunity_and_links_to_the_order_book():
                                             (float("inf"), None)])
 def test_float_coercion(value, expected):
     assert opp._f(value) == expected
+
+
+def test_shortfall_only_when_the_exact_yield_misses_the_rule():
+    assert opp.shortfall(hit(ytm=15.24, ytm_bound=15.0)) is None
+    assert opp.shortfall(hit(ytm=15.0, ytm_bound=15.0)) is None
+    assert opp.shortfall(hit(ytm=14.995, ytm_bound=15.0)) is None      # within a basis point
+    assert opp.shortfall(hit(ytm=14.7, ytm_bound=15.0)) == 0.3
+    assert opp.shortfall(hit(ytm=None, ytm_bound=15.0)) is None
+    assert opp.shortfall(hit(ytm=14.7, ytm_bound=None)) is None
+    # Bids are bounded from above.
+    assert opp.shortfall(hit(side="bid", ytm=8.5, ytm_bound=9.0)) is None
+    assert opp.shortfall(hit(side="bid", ytm=9.4, ytm_bound=9.0)) == 0.4
+
+
+def test_thresholds_carry_the_rule_yield_for_the_recheck():
+    th, _ = opp.build_thresholds([RULE], {7: ["A"]}, [], {("A", 12.0): 950.0})
+    assert th.asks["A"][0].min_ask_ytm == 12.0
+    targets = [{"isin": "H", "enabled": True, "min_bid_price": None, "max_bid_ytm": 9.0}]
+    th, _ = opp.build_thresholds([], {}, targets, {("H", 9.0): 1030.0})
+    assert th.bids["H"].max_bid_ytm == 9.0

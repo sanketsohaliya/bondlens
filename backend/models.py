@@ -582,6 +582,7 @@ class OpportunityHit(BaseModel):
     fired_at: datetime
     pushed_at: datetime | None
     push_ms: int | None
+    below_threshold: float | None = None
     issuer_name: str | None = None
     nse_symbol: str | None = None
     bse_scrip_id: str | None = None

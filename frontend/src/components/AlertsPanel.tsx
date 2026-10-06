@@ -227,6 +227,11 @@ function HitRow({ hit, onOpen }: { hit: OpportunityHit; onOpen: () => void }) {
             {lead} — {name}
           </span>
           <span className="text-[10px] text-zinc-600 shrink-0">
+            {hit.below_threshold != null && (
+              <span className="text-amber-500/80" title="Exact yield came in under the rule">
+                short by {hit.below_threshold} pt ·{" "}
+              </span>
+            )}
             {fmtIstTime(hit.fired_at) ?? ""}
             {hit.push_ms != null ? ` · ${hit.push_ms} ms` : ""}
           </span>
