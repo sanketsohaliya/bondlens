@@ -12,6 +12,7 @@ import type { Tab as DrawerTab } from "../components/BondDrawer";
 import CopyBtn from "../components/CopyBtn";
 import CopyText from "../components/CopyText";
 import Donut from "../components/Donut";
+import ExitTargetEditor from "../components/ExitTargetEditor";
 import { BookmarkIcon } from "../components/ExploreTable";
 import InlineMetadata, { MetadataSeparator } from "../components/InlineMetadata";
 import LotsPanel from "../components/LotsPanel";
@@ -620,6 +621,9 @@ function PositionRow({
       {open && (
         <tr className="border-b border-zinc-800/60 bg-zinc-900/40">
           <td colSpan={11} className="px-3 py-2">
+            <div className="mb-2">
+              <ExitTargetEditor isin={p.isin} />
+            </div>
             <LotsPanel p={p} onViewBond={onSelect} />
           </td>
         </tr>
