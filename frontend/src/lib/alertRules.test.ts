@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { OpportunityHit } from "../api/types";
 import {
+  alertClickTarget,
   groupHits,
   groupHitsByRule,
   parseDeepLink,
@@ -51,6 +52,12 @@ describe("alert rules from the filter bar", () => {
     );
     expect(previewLabel({ filters: {}, max_ticket: 25_000_000 })).toBe("Ticket ≤ ₹2.5 Cr");
     expect(previewLabel({ filters: {} })).toBe("Any ask");
+  });
+
+  it("routes alert clicks to the Explore row, other tabs to the drawer", () => {
+    expect(alertClickTarget("order book")).toBe("row");
+    expect(alertClickTarget("chart")).toBe("drawer");
+    expect(alertClickTarget(undefined)).toBe("drawer");
   });
 
   it("parses the push deep link and rejects junk", () => {

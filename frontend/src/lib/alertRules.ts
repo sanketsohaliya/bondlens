@@ -103,6 +103,13 @@ export function previewLabel(rule: {
   return parts.length ? parts.join(", ") : "Any ask";
 }
 
+/** Where an alert-related click lands: opportunity hits/pushes ask for
+ * the Order Book and get the bond's Explore row instead (search = ISIN);
+ * anything else opens the drawer on the requested tab. */
+export function alertClickTarget(tab: string | undefined): "row" | "drawer" {
+  return tab === "order book" ? "row" : "drawer";
+}
+
 /** Parse the `?bond=ISIN&tab=` deep link an alert push opens. */
 export function parseDeepLink(search: string): { isin: string; tab?: string } | null {
   const qs = new URLSearchParams(search);

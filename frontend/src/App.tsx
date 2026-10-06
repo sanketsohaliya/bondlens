@@ -9,7 +9,7 @@ import ExploreTable, { type SortState } from "./components/ExploreTable";
 import FilterBar, { DEFAULT_FILTERS, type ListModes } from "./components/FilterBar";
 import Logo from "./components/Logo";
 import NotificationsBell from "./components/NotificationsBell";
-import { parseDeepLink } from "./lib/alertRules";
+import { alertClickTarget, parseDeepLink } from "./lib/alertRules";
 import { useAuth } from "./lib/auth";
 import { unionIsins, useWatchlists } from "./lib/lists";
 import Orders from "./pages/Orders";
@@ -38,22 +38,41 @@ function loadSaved<T extends object>(key: string, fallback: T): T {
 
 export default function App() {
   const [page, setPage] = useState<Page>("explore");
-  const [params, setParams] = useState<ExploreParams>(() =>
-    loadSaved(SAVED_FILTERS_KEY, DEFAULT_FILTERS),
-  );
+  // A deep link (/?bond=ISIN[&tab=]) is read once at load and the query
+  // dropped so a reload is a plain load. Alert pushes ask for the bond's
+  // row (search = ISIN); other tabs open the drawer.
+  const [deepLink] = useState(() => {
+    const link = parseDeepLink(window.location.search);
+    if (link) window.history.replaceState(null, "", window.location.pathname);
+    return link;
+  });
+  const [params, setParams] = useState<ExploreParams>(() => {
+    const saved = loadSaved<ExploreParams>(SAVED_FILTERS_KEY, DEFAULT_FILTERS);
+    return deepLink && alertClickTarget(deepLink.tab) === "row"
+      ? { ...saved, q: deepLink.isin }
+      : saved;
+  });
   const [modes, setModes] = useState<ListModes>({
     watchlist: false,
     watchlistId: null,
   });
-  // An alert push deep-links to /?bond=ISIN&tab=order%20book: open that
-  // bond straight away, then drop the query so a reload is a plain load.
-  const [selected, setSelected] = useState<{ isin: string; tab?: Tab } | null>(() => {
-    const link = parseDeepLink(window.location.search);
-    if (!link) return null;
-    window.history.replaceState(null, "", window.location.pathname);
-    return { isin: link.isin, tab: link.tab as Tab | undefined };
-  });
+  const [selected, setSelected] = useState<{ isin: string; tab?: Tab } | null>(() =>
+    deepLink && alertClickTarget(deepLink.tab) === "drawer"
+      ? { isin: deepLink.isin, tab: deepLink.tab as Tab | undefined }
+      : null,
+  );
   const [sort, setSort] = useState<SortState>(() => loadSaved(SAVED_SORT_KEY, DEFAULT_SORT));
+
+  // Isolate one bond on Explore: the search path shows just that row with
+  // its live ask. Used by alert hits, exit targets, opportunity
+  // notifications and the push deep link.
+  const showBond = (isin: string) => {
+    setPage("explore");
+    setParams((p) => ({ ...p, q: isin }));
+    setSelected(null);
+  };
+  const openFromAlert = (isin: string, tab?: Tab) =>
+    alertClickTarget(tab) === "row" ? showBond(isin) : setSelected({ isin, tab });
   const { lists: watchlists } = useWatchlists();
 
   useEffect(() => {
@@ -170,7 +189,7 @@ export default function App() {
                 </button>
               )}
             </div>
-            <NotificationsBell onSelect={(isin, tab) => setSelected({ isin, tab })} />
+            <NotificationsBell onSelect={openFromAlert} />
             <UserMenu />
           </div>
         </header>
@@ -187,7 +206,7 @@ export default function App() {
                 onChange={setParams}
                 modes={modes}
                 onModes={setModes}
-                onSelect={(isin, tab) => setSelected({ isin, tab })}
+                onSelect={(isin) => showBond(isin)}
                 dimReason={
                   params.q
                     ? "Filters are ignored while searching"
