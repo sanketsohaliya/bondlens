@@ -9,6 +9,7 @@ per-bond detail view computes yields live (it supports what-if pricing).
 import asyncio
 import contextlib
 from datetime import UTC, date, datetime, timedelta
+from zoneinfo import ZoneInfo
 
 from fastapi import (
     APIRouter,
@@ -254,6 +255,10 @@ def notifications_read(body: models.NotificationsReadRequest | None = None,
 # --------------------------------------------------------------------------
 # Opportunity alerts (rules, exit targets, ntfy topic) — per user
 
+def _ist_today() -> date:
+    return datetime.now(ZoneInfo("Asia/Kolkata")).date()
+
+
 def _rules_call(fn, *args):
     try:
         return fn(*args)
@@ -269,6 +274,7 @@ def alerts_overview(user_id: int = Depends(auth.require_user)):
             "targets": opportunity_rules.list_targets(user_id),
             "settings": {"ntfy_topic": opportunity_rules.get_topic(user_id)},
             "recent": opportunity_rules.recent_hits(user_id),
+            "hits_today": opportunity_rules.hits_today(user_id, _ist_today()),
             "watcher": opportunity_rules.read_heartbeat()}
 
 

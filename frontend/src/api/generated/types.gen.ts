@@ -160,6 +160,12 @@ export type AlertsOverview = {
      */
     recent: Array<OpportunityHit>;
     /**
+     * Hits Today
+     */
+    hits_today?: {
+        [key: string]: number;
+    };
+    /**
      * Watcher
      */
     watcher?: {

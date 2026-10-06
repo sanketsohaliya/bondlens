@@ -278,7 +278,16 @@ def record_hit(user_id: int, hit: opportunities.Hit, today: date, *, tick_at=Non
     return r["id"]
 
 
-def recent_hits(user_id: int, limit: int = 50) -> list[dict]:
+def hits_today(user_id: int, today: date) -> dict[str, int]:
+    """source -> number of alerts fired today (the panel's 'N hits today')."""
+    with db._conn() as conn:
+        rows = conn.execute(
+            "SELECT source, count(*) AS n FROM opportunity_alerts "
+            "WHERE user_id = %s AND trade_day = %s GROUP BY source", (user_id, today)).fetchall()
+    return {r["source"]: int(r["n"]) for r in rows}
+
+
+def recent_hits(user_id: int, limit: int = 200) -> list[dict]:
     with db._conn() as conn:
         return [_row(r) for r in conn.execute(
             "SELECT a.*, b.issuer_name, b.nse_symbol, b.bse_scrip_id "

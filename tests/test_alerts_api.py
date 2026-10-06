@@ -71,8 +71,11 @@ class FakeStore:
         self.topics[user_id] = topic
         return topic
 
-    def recent_hits(self, user_id, limit=50):
+    def recent_hits(self, user_id, limit=200):
         return []
+
+    def hits_today(self, user_id, today):
+        return {"rule:1": 3}
 
     def read_heartbeat(self):
         return None
@@ -83,7 +86,7 @@ def client(monkeypatch):
     store = FakeStore()
     for name in ("list_rules", "create_rule", "update_rule", "delete_rule", "list_targets",
                  "put_target", "delete_target", "get_topic", "set_topic", "recent_hits",
-                 "read_heartbeat"):
+                 "hits_today", "read_heartbeat"):
         monkeypatch.setattr(rules, name, getattr(store, name))
     monkeypatch.setattr(queries, "bond_row", lambda isin: {"isin": isin} if isin.startswith("INE") else None)
     monkeypatch.setattr(ntfy, "push", lambda topic, title, body, **kw: store.pushed.append((topic, title)) or 12)
@@ -111,6 +114,7 @@ def test_rule_lifecycle_and_overview(client):
     over = c.get("/api/alerts").json()
     assert [x["id"] for x in over["rules"]] == [1] and over["settings"] == {"ntfy_topic": None}
     assert over["targets"] == [] and over["recent"] == [] and over["watcher"] is None
+    assert over["hits_today"] == {"rule:1": 3}
     assert c.delete("/api/alerts/rules/1").json() == {"ok": True}
     assert c.delete("/api/alerts/rules/1").status_code == 404
 

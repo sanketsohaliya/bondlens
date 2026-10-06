@@ -1,44 +1,53 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { api } from "../api/client";
-import type { ExploreParams } from "../api/types";
+import type { AlertRule, ExploreParams } from "../api/types";
 import { describeRuleFilters, splitFilters, suggestRuleName } from "../lib/alertRules";
 
-/** Turn the current Explore filters into an alert rule. The bond-describing
- * filters travel with the rule; trade-history filters are shown as dropped
- * so what gets watched is never a surprise. */
+const num = (v: number | null | undefined) => (v == null ? "" : String(v));
+
+/** Create a rule from the current Explore filters, or edit an existing one.
+ * Creating: bond-describing filters travel with the rule and trade-history
+ * filters are listed as dropped. Editing: filters are read-only (they come
+ * from the bar), thresholds and name change in place. */
 export default function SaveAlertDialog({
   params,
+  rule,
   onClose,
 }: {
-  params: ExploreParams;
+  params?: ExploreParams;
+  rule?: AlertRule;
   onClose: () => void;
 }) {
-  const { kept, dropped } = splitFilters(params);
-  const [minYtm, setMinYtm] = useState("");
-  const [maxTicket, setMaxTicket] = useState("");
-  const [maxPrice, setMaxPrice] = useState("");
-  const [minQty, setMinQty] = useState("");
-  const [name, setName] = useState<string | null>(null);
+  const editing = rule != null;
+  const { kept, dropped } = editing
+    ? { kept: rule.filters ?? {}, dropped: [] as string[] }
+    : splitFilters(params ?? {});
+  const [minYtm, setMinYtm] = useState(num(rule?.min_ask_ytm));
+  const [maxTicket, setMaxTicket] = useState(num(rule?.max_ticket));
+  const [maxPrice, setMaxPrice] = useState(num(rule?.max_price));
+  const [minQty, setMinQty] = useState(num(rule?.min_qty));
+  const [name, setName] = useState<string | null>(rule?.name ?? null);
   const qc = useQueryClient();
+  const finalName = () => (name ?? suggestRuleName(kept, minYtm, maxPrice)).trim();
+  const body = () => ({
+    name: finalName(),
+    min_ask_ytm: minYtm ? Number(minYtm) : null,
+    max_ticket: maxTicket ? Number(maxTicket) : null,
+    max_price: maxPrice ? Number(maxPrice) : null,
+    min_qty: minQty ? Number(minQty) : null,
+  });
   const save = useMutation({
     mutationFn: () =>
-      api.alerts.createRule({
-        name: (name ?? suggestRuleName(kept, minYtm, maxPrice)).trim(),
-        filters: kept,
-        min_ask_ytm: minYtm ? Number(minYtm) : null,
-        max_ticket: maxTicket ? Number(maxTicket) : null,
-        max_price: maxPrice ? Number(maxPrice) : null,
-        min_qty: minQty ? Number(minQty) : null,
-      }),
+      editing
+        ? api.alerts.updateRule(rule.id, body())
+        : api.alerts.createRule({ ...body(), filters: kept }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["alerts"] });
       onClose();
     },
   });
-  const valid =
-    Boolean(minYtm || maxPrice) &&
-    (name ?? suggestRuleName(kept, minYtm, maxPrice)).trim().length > 0;
+  const valid = Boolean(minYtm || maxPrice) && finalName().length > 0;
   const input =
     "w-full rounded-md border border-zinc-700 bg-zinc-950 px-2 py-1.5 text-sm text-zinc-100 focus:border-emerald-500 focus:outline-none";
 
@@ -47,13 +56,20 @@ export default function SaveAlertDialog({
       <div className="fixed inset-0 z-40 bg-black/60" onClick={onClose} aria-hidden="true" />
       <div
         role="dialog"
-        aria-label="Save as alert"
+        aria-label={editing ? "Edit alert" : "Save as alert"}
         className="fixed left-1/2 top-24 z-50 w-[28rem] -translate-x-1/2 rounded-lg border border-zinc-700 bg-zinc-900 p-5 shadow-2xl"
       >
-        <h2 className="text-sm font-bold uppercase tracking-wider text-zinc-200">Save as alert</h2>
+        <h2 className="text-sm font-bold uppercase tracking-wider text-zinc-200">
+          {editing ? "Edit alert" : "Save as alert"}
+        </h2>
         <p className="mt-1 text-xs text-zinc-400">
           Watches every live ask in:{" "}
           <span className="text-zinc-200">{describeRuleFilters(kept)}</span>
+          {editing && (
+            <span className="block mt-0.5 text-[11px] text-zinc-600">
+              Filters come from the Explore bar — to change them, set the bar and save a new rule.
+            </span>
+          )}
         </p>
         {dropped.length > 0 && (
           <p className="mt-1 text-[11px] text-amber-400/90">
@@ -129,13 +145,14 @@ export default function SaveAlertDialog({
             onClick={() => save.mutate()}
             className="px-3 py-1.5 rounded-md border border-emerald-500/60 text-xs font-medium text-emerald-400 hover:bg-emerald-500/10 disabled:opacity-40"
           >
-            {save.isPending ? "Saving…" : "Save alert"}
+            {save.isPending ? "Saving…" : editing ? "Save changes" : "Save alert"}
           </button>
         </div>
-        <p className="mt-3 text-[11px] text-zinc-600">
-          Pushes go to the ntfy topic set under the bell → Alerts. Needs your Kite login for the
-          day.
-        </p>
+        {!editing && (
+          <p className="mt-3 text-[11px] text-zinc-600">
+            Pushes go to the ntfy topic under Alert ▾ → ⚙. Needs your Kite login for the day.
+          </p>
+        )}
       </div>
     </>
   );

@@ -772,8 +772,9 @@ function AlertChip({
       {open && (
         <>
           <div className="fixed inset-0 z-20" onClick={() => setOpen(false)} aria-hidden="true" />
-          <div className="absolute right-0 top-full mt-2 z-30 w-[26rem] rounded-lg border border-zinc-700 bg-zinc-900 shadow-xl overflow-hidden text-left font-normal">
+          <div className="absolute right-0 top-full mt-2 z-30 w-[28rem] rounded-lg border border-zinc-700 bg-zinc-900 shadow-xl overflow-hidden text-left font-normal">
             <AlertsPanel
+              params={params}
               onSelect={(isin, tab) => {
                 setOpen(false);
                 onSelect?.(isin, tab);

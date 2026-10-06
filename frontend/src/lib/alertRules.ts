@@ -8,7 +8,7 @@
 // honest about what it saved.
 
 import { fmt } from "../api/client";
-import type { AlertRule, ExploreParams } from "../api/types";
+import type { AlertRule, ExploreParams, OpportunityHit } from "../api/types";
 
 export const STATIC_FILTER_KEYS = [
   "min_rating",
@@ -132,4 +132,69 @@ export function parseDeepLink(search: string): { isin: string; tab?: string } | 
   if (!isin || !/^[A-Z0-9]{12}$/.test(isin)) return null;
   const tab = qs.get("tab")?.trim() || undefined;
   return { isin, tab };
+}
+
+/** One row per bond per trading day: the latest quote plus how many times
+ * it fired and the best yield seen. Newest group first. */
+export type HitGroup = {
+  key: string;
+  isin: string;
+  name: string;
+  side: "ask" | "bid";
+  latest: OpportunityHit;
+  count: number;
+  bestYtm: number | null;
+  short: boolean;
+};
+
+export function groupHits(hits: OpportunityHit[]): HitGroup[] {
+  const groups = new Map<string, HitGroup>();
+  const sorted = [...hits].sort((a, b) => b.fired_at.localeCompare(a.fired_at));
+  for (const h of sorted) {
+    const key = `${h.isin}:${h.trade_day}:${h.side}`;
+    const g = groups.get(key);
+    const ytm = h.ytm ?? null;
+    if (!g) {
+      groups.set(key, {
+        key,
+        isin: h.isin,
+        name: h.issuer_name ?? h.nse_symbol ?? h.bse_scrip_id ?? h.isin,
+        side: h.side,
+        latest: h,
+        count: 1,
+        bestYtm: ytm,
+        short: h.below_threshold != null,
+      });
+      continue;
+    }
+    g.count += 1;
+    if (
+      ytm != null &&
+      (g.bestYtm == null || (h.side === "ask" ? ytm > g.bestYtm : ytm < g.bestYtm))
+    )
+      g.bestYtm = ytm;
+    g.short = g.short && h.below_threshold != null;
+  }
+  return [...groups.values()];
+}
+
+export type WatcherStatus = { label: string; tone: "live" | "idle" | "warn" };
+
+/** One-line status for the panel header from the heartbeat row. */
+export function watcherStatus(
+  watcher: Record<string, unknown> | null | undefined,
+  rulesCount: number,
+  kiteConnected: boolean,
+  now: number = Date.now(),
+): WatcherStatus {
+  if (!watcher) return { label: "watcher not reporting", tone: rulesCount ? "warn" : "idle" };
+  const beatAge = now - new Date(String(watcher.beat_at)).getTime();
+  if (beatAge > 5 * 60_000) return { label: "watcher silent", tone: "warn" };
+  const note = String(watcher.note ?? "");
+  if (!note.startsWith("open") && !note.startsWith("solving"))
+    return { label: "idle until 09:00", tone: "idle" };
+  if (rulesCount > 0 && !kiteConnected) return { label: "Kite not connected", tone: "warn" };
+  if (note.startsWith("solving")) return { label: "arming new rule…", tone: "live" };
+  const n = Number(watcher.tokens ?? 0);
+  return { label: `live · ${n.toLocaleString("en-IN")} instruments`, tone: "live" };
 }

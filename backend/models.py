@@ -593,6 +593,7 @@ class AlertsOverview(BaseModel):
     targets: list[ExitTarget]
     settings: AlertSettings
     recent: list[OpportunityHit]
+    hits_today: dict[str, int] = Field(default_factory=dict)   # source -> count
     watcher: dict[str, Any] | None = None
 
 
