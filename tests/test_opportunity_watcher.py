@@ -64,7 +64,7 @@ def make_session(monkeypatch, pusher=None):
     pusher = pusher or FakePusher()
     s = w.UserSession(1, "topic-abcdef", pusher, w.Latency())  # type: ignore[arg-type]
     s.thresholds = opp.Thresholds(
-        asks={"INE000A": [opp.AskRule(rule_id=7, name="BBB 12%", max_ask_price=950.0,
+        asks={"INE000A": [opp.AskRule(rule_id=7, label="Ask YTM ≥ 12%", max_ask_price=950.0,
                                       max_price=None, max_ticket=None, min_qty=1.0,
                                       min_ask_ytm=12.0)]},
         bids={"INE000H": opp.BidTarget(min_bid_price=1010.0)})

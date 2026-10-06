@@ -58,7 +58,7 @@ def test_schedule_fingerprint_changes_with_inputs_only():
 
 # --- thresholds -----------------------------------------------------------------
 
-RULE = {"id": 7, "name": "BBB 12%", "enabled": True, "min_ask_ytm": 12.0,
+RULE = {"id": 7, "enabled": True, "min_ask_ytm": 12.0, "filters": {"min_rating": "BBB-"},
         "max_ticket": 200_000, "max_price": None, "min_qty": None}
 
 
@@ -99,13 +99,13 @@ def test_best_levels_ignore_empty_slots():
 
 
 def test_match_ask_applies_every_condition():
-    r = opp.AskRule(rule_id=1, name="r", max_ask_price=950.0, max_price=None,
+    r = opp.AskRule(rule_id=1, label="r", max_ask_price=950.0, max_price=None,
                     max_ticket=10_000.0, min_qty=2.0)
     assert opp.match_ask([r], 940.0, 5) == [r]
     assert opp.match_ask([r], 960.0, 5) == []       # yield too low (price too high)
     assert opp.match_ask([r], 940.0, 1) == []       # one unit, min_qty 2
     assert opp.match_ask([r], 940.0, 20) == []      # ticket 18,800 > 10,000
-    bare = opp.AskRule(rule_id=2, name="x", max_ask_price=None, max_price=None,
+    bare = opp.AskRule(rule_id=2, label="x", max_ask_price=None, max_price=None,
                        max_ticket=None, min_qty=1.0)
     assert opp.match_ask([bare], 1.0, 1) == []      # nothing to compare: never fires
 
@@ -118,7 +118,7 @@ def test_match_bid():
 
 def hit(**kw) -> opp.Hit:
     base = {"source": "rule:7", "isin": "A", "side": "ask", "price": 950.0, "qty": 4,
-            "exchange": "BSE", "rule_name": "BBB 12%", "ytm": 12.4}
+            "exchange": "BSE", "rule_label": "Ask YTM ≥ 12%, Rating ≥ BBB-", "ytm": 12.4}
     return opp.Hit(**{**base, **kw})
 
 
@@ -140,13 +140,16 @@ def test_render_names_the_opportunity_and_links_to_the_order_book():
     at = datetime(2026, 10, 5, 4, 1, 41, tzinfo=ZoneInfo("UTC"))  # 09:31:41 IST
     title, body, url = opp.render(hit(), bond, domain="bondlens.in", tick_at=at)
     assert title == "12.40% @ ₹950.00 × 4 — DEV ACCELERATOR LIMITED"
-    assert "1175DAL29 · A" in body and "ACUITE: BBB/Stable" in body
+    assert "1175DAL29, A" in body and "ACUITE: BBB/Stable" in body
     assert "matures Aug 2029" in body and "ticket ₹3,800" in body
-    assert "rule: BBB 12%" in body and body.endswith("as of 09:31:41 IST")
+    first, rule_line = body.split("\n")
+    assert first.endswith("as of 09:31:41 IST")
+    assert rule_line == "Rule: Ask YTM ≥ 12%, Rating ≥ BBB-"   # the one label, verbatim
     assert url == "https://bondlens.in/?bond=A&tab=order%20book"
     title, body, _ = opp.render(hit(side="bid", source="target", price=1015.0, qty=10, ytm=None,
-                                    rule_name=None), bond, domain="x")
-    assert title == "Bid ₹1,015.00 × 10 for your 1175DAL29" and "exit target" in body
+                                    rule_label="Exit target: Bid ≥ ₹1,010"), bond, domain="x")
+    assert title == "Bid ₹1,015.00 × 10 for your 1175DAL29"
+    assert body.endswith("\nRule: Exit target: Bid ≥ ₹1,010")
 
 
 @pytest.mark.parametrize("value,expected", [("12", 12.0), (None, None), ("x", None),
@@ -167,9 +170,25 @@ def test_shortfall_only_when_the_exact_yield_misses_the_rule():
     assert opp.shortfall(hit(side="bid", ytm=9.4, ytm_bound=9.0)) == 0.4
 
 
+def test_rule_label_is_fixed_order_field_op_value():
+    assert opp.rule_label({"min_ask_ytm": 15, "filters": {"min_rating": "bbb-", "min_years": 0.5}}) \
+        == "Ask YTM ≥ 15%, Rating ≥ BBB-, Maturity ≥ 6mo"
+    assert opp.rule_label({"min_ask_ytm": 12.5, "max_ticket": 200_000, "max_price": 1050, "min_qty": 5,
+                           "filters": {"min_years": 1, "max_years": 3, "payout": "bullet",
+                                       "exchange": "NSE", "secured_only": True}}) \
+        == ("Ask YTM ≥ 12.5%, Ask price ≤ ₹1,050, Ticket ≤ ₹2 L, Units ≥ 5, "
+            "Maturity 1y–3y, Payout: bullet, Exchange: NSE, Secured")
+    assert opp.rule_label({"max_price": 95_000, "filters": {"max_years": 2.5, "sector": "NBFC"}}) \
+        == "Ask price ≤ ₹95,000, Maturity ≤ 2.5y, Sector: NBFC"
+    assert opp.rule_label({"max_ticket": 25_000_000, "filters": {}}) == "Ticket ≤ ₹2.5 Cr"
+    assert opp.rule_label({"filters": {}, "min_qty": 1}) == "Any ask"
+    assert opp.target_label({"min_bid_price": 1010, "max_bid_ytm": 9}) == "Exit target: Bid ≥ ₹1,010, Bid YTM ≤ 9%"
+
+
 def test_thresholds_carry_the_rule_yield_for_the_recheck():
     th, _ = opp.build_thresholds([RULE], {7: ["A"]}, [], {("A", 12.0): 950.0})
     assert th.asks["A"][0].min_ask_ytm == 12.0
+    assert th.asks["A"][0].label == "Ask YTM ≥ 12%, Ticket ≤ ₹2 L, Rating ≥ BBB-"
     targets = [{"isin": "H", "enabled": True, "min_bid_price": None, "max_bid_ytm": 9.0}]
     th, _ = opp.build_thresholds([], {}, targets, {("H", 9.0): 1030.0})
-    assert th.bids["H"].max_bid_ytm == 9.0
+    assert th.bids["H"].max_bid_ytm == 9.0 and th.bids["H"].label == "Exit target: Bid YTM ≤ 9%"

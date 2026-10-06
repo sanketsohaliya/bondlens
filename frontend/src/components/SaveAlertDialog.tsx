@@ -2,7 +2,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { api } from "../api/client";
 import type { AlertRule, ExploreParams } from "../api/types";
-import { describeRuleFilters, splitFilters, suggestRuleName } from "../lib/alertRules";
+import { previewLabel, splitFilters } from "../lib/alertRules";
 
 const num = (v: number | null | undefined) => (v == null ? "" : String(v));
 
@@ -27,11 +27,8 @@ export default function SaveAlertDialog({
   const [maxTicket, setMaxTicket] = useState(num(rule?.max_ticket));
   const [maxPrice, setMaxPrice] = useState(num(rule?.max_price));
   const [minQty, setMinQty] = useState(num(rule?.min_qty));
-  const [name, setName] = useState<string | null>(rule?.name ?? null);
   const qc = useQueryClient();
-  const finalName = () => (name ?? suggestRuleName(kept, minYtm, maxPrice)).trim();
   const body = () => ({
-    name: finalName(),
     min_ask_ytm: minYtm ? Number(minYtm) : null,
     max_ticket: maxTicket ? Number(maxTicket) : null,
     max_price: maxPrice ? Number(maxPrice) : null,
@@ -47,7 +44,8 @@ export default function SaveAlertDialog({
       onClose();
     },
   });
-  const valid = Boolean(minYtm || maxPrice) && finalName().length > 0;
+  const valid = Boolean(minYtm || maxPrice);
+  const label = previewLabel({ filters: kept, ...body() });
   const input =
     "w-full rounded-md border border-zinc-700 bg-zinc-950 px-2 py-1.5 text-sm text-zinc-100 focus:border-emerald-500 focus:outline-none";
 
@@ -63,13 +61,8 @@ export default function SaveAlertDialog({
           {editing ? "Edit alert" : "Save as alert"}
         </h2>
         <p className="mt-1 text-xs text-zinc-400">
-          Watches every live ask in:{" "}
-          <span className="text-zinc-200">{describeRuleFilters(kept)}</span>
-          {editing && (
-            <span className="block mt-0.5 text-[11px] text-zinc-600">
-              Filters come from the Explore bar — to change them, set the bar and save a new rule.
-            </span>
-          )}
+          Set the ask conditions; the filters come from the Explore bar.
+          {editing && " To change filters, set the bar and save a new rule."}
         </p>
         {dropped.length > 0 && (
           <p className="mt-1 text-[11px] text-amber-400/90">
@@ -119,15 +112,12 @@ export default function SaveAlertDialog({
             />
           </label>
         </div>
-        <label className="mt-3 block text-[11px] text-zinc-400">
-          Name
-          <input
-            className={`${input} mt-1`}
-            maxLength={60}
-            value={name ?? suggestRuleName(kept, minYtm, maxPrice)}
-            onChange={(e) => setName(e.target.value)}
-          />
-        </label>
+        <div className="mt-3 text-[11px] text-zinc-400">
+          Shown everywhere as
+          <div className="mt-1 rounded-md border border-zinc-800 bg-zinc-950/60 px-2 py-1.5 text-xs text-zinc-200 leading-snug">
+            {label}
+          </div>
+        </div>
         {save.isError && (
           <p className="mt-2 text-xs text-red-400">{(save.error as Error).message}</p>
         )}

@@ -29,6 +29,7 @@ class FakeStore:
         v = rules.validate_rule(payload)
         row = {**v, "id": self.next_id, "user_id": user_id, "created_at": NOW,
                "updated_at": NOW, "last_hit_at": None}
+        row["label"] = rules.opportunities.rule_label(row)
         self.rules[self.next_id] = row
         self.next_id += 1
         return row
@@ -39,6 +40,7 @@ class FakeStore:
             raise rules.RuleError(404, "rule not found")
         v = rules.validate_rule({**row, **payload})
         row.update(v)
+        row["label"] = rules.opportunities.rule_label(row)
         return row
 
     def delete_rule(self, user_id, rule_id):
@@ -52,7 +54,8 @@ class FakeStore:
 
     def put_target(self, user_id, isin, payload):
         v = rules.validate_target(payload)
-        row = {**v, "isin": isin, "user_id": user_id, "updated_at": NOW}
+        row = {**v, "isin": isin, "user_id": user_id, "updated_at": NOW,
+               "label": rules.opportunities.target_label(v)}
         self.targets[(user_id, isin)] = row
         return row
 
@@ -98,8 +101,7 @@ def client(monkeypatch):
         app.dependency_overrides.pop(require_user, None)
 
 
-RULE = {"name": "BBB 12%", "filters": {"min_rating": "BBB-", "min_years": 0.5},
-        "min_ask_ytm": 12, "max_ticket": 200000}
+RULE = {"filters": {"min_rating": "BBB-", "min_years": 0.5}, "min_ask_ytm": 12, "max_ticket": 200000}
 
 
 def test_rule_lifecycle_and_overview(client):
@@ -108,6 +110,7 @@ def test_rule_lifecycle_and_overview(client):
     assert r.status_code == 201, r.text
     rule = r.json()
     assert rule["id"] == 1 and rule["filters"] == {"min_rating": "BBB-", "min_years": 0.5}
+    assert rule["label"] == "Ask YTM ≥ 12%, Ticket ≤ ₹2 L, Rating ≥ BBB-, Maturity ≥ 6mo"
     assert rule["min_qty"] is None and rule["enabled"] is True
     r = c.patch("/api/alerts/rules/1", json={"enabled": False, "max_price": 1050})
     assert r.status_code == 200 and r.json()["enabled"] is False and r.json()["max_price"] == 1050
@@ -123,7 +126,7 @@ def test_rules_refuse_trade_history_filters_and_empty_conditions(client):
     c, _, _ = client
     r = c.post("/api/alerts/rules", json={**RULE, "filters": {"min_rating": "BBB-", "traded_within": 5, "min_ytm": 5}})
     assert r.status_code == 400 and "min_ytm, traded_within" in r.json()["detail"]
-    r = c.post("/api/alerts/rules", json={"name": "x", "filters": {}, "max_ticket": 1000})
+    r = c.post("/api/alerts/rules", json={"filters": {}, "max_ticket": 1000})
     assert r.status_code == 400 and "minimum YTM @ Ask or a maximum price" in r.json()["detail"]
     r = c.post("/api/alerts/rules", json={**RULE, "filters": {"min_rating": "ZZZ"}})
     assert r.status_code == 400 and "unknown rating" in r.json()["detail"]
@@ -165,14 +168,12 @@ def test_topic_settings_and_test_push(client):
 
 
 def test_validate_rule_normalises_numbers_and_filters():
-    v = rules.validate_rule({"name": " r ", "filters": {"min_rating": "aa-", "sector": ""},
+    v = rules.validate_rule({"filters": {"min_rating": "aa-", "sector": ""},
                              "min_ask_ytm": "12.5", "min_qty": None})
-    assert v["name"] == "r" and v["min_ask_ytm"] == 12.5 and v["min_qty"] is None
+    assert v["min_ask_ytm"] == 12.5 and v["min_qty"] is None
     assert v["filters"] == {"min_rating": "aa-"}
     with pytest.raises(rules.RuleError):
-        rules.validate_rule({"name": "", "min_ask_ytm": 1})
-    with pytest.raises(rules.RuleError):
-        rules.validate_rule({"name": "x", "min_ask_ytm": "lots"})
+        rules.validate_rule({"min_ask_ytm": "lots"})
 
 
 def test_explorer_params_map_like_the_bonds_endpoint():
@@ -196,7 +197,7 @@ def test_every_alert_write_touches_the_change_marker(monkeypatch):
         rowcount = 1
 
         def fetchone(self):
-            return {"id": 1, "user_id": 1, "name": "r", "filters": {}, "min_ask_ytm": 12,
+            return {"id": 1, "user_id": 1, "filters": {}, "min_ask_ytm": 12,
                     "max_ticket": None, "max_price": None, "min_qty": None, "enabled": True,
                     "created_at": NOW, "updated_at": NOW, "last_hit_at": None,
                     "isin": "INE000A01001", "min_bid_price": 1, "max_bid_ytm": None}
@@ -213,7 +214,7 @@ def test_every_alert_write_touches_the_change_marker(monkeypatch):
         def __exit__(self, *exc):
             return False
     monkeypatch.setattr(rules.db, "_conn", lambda: Ctx())
-    rules.create_rule(1, {"name": "r", "filters": {}, "min_ask_ytm": 12})
+    rules.create_rule(1, {"filters": {}, "min_ask_ytm": 12})
     rules.update_rule(1, 1, {"enabled": False})
     rules.delete_rule(1, 1)
     rules.put_target(1, "INE000A01001", {"min_bid_price": 1})

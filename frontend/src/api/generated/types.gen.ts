@@ -9,10 +9,6 @@ export type ClientOptions = {
  */
 export type AlertRule = {
     /**
-     * Name
-     */
-    name: string;
-    /**
      * Filters
      */
     filters?: {
@@ -43,6 +39,10 @@ export type AlertRule = {
      */
     id: number;
     /**
+     * Label
+     */
+    label: string;
+    /**
      * Created At
      */
     created_at: string;
@@ -64,10 +64,6 @@ export type AlertRule = {
  * are rejected with 400 because live asks are judged on the ask.
  */
 export type AlertRuleIn = {
-    /**
-     * Name
-     */
-    name: string;
     /**
      * Filters
      */
@@ -100,10 +96,6 @@ export type AlertRuleIn = {
  * AlertRulePatch
  */
 export type AlertRulePatch = {
-    /**
-     * Name
-     */
-    name?: string | null;
     /**
      * Filters
      */
@@ -1294,6 +1286,10 @@ export type ExitTarget = {
      */
     isin: string;
     /**
+     * Label
+     */
+    label: string;
+    /**
      * Updated At
      */
     updated_at: string;
@@ -1833,6 +1829,10 @@ export type OpportunityHit = {
      * Below Threshold
      */
     below_threshold?: number | null;
+    /**
+     * Rule Label
+     */
+    rule_label?: string | null;
     /**
      * Issuer Name
      */

@@ -53,14 +53,15 @@ def _row(r: Any) -> dict:
               "min_bid_price", "max_bid_ytm", "below_threshold"):
         if k in d and d[k] is not None:
             d[k] = float(d[k])
+    if "filters" in d and "min_ask_ytm" in d:          # an alert_rules row
+        d["label"] = opportunities.rule_label(d)
+    elif "min_bid_price" in d and "isin" in d and "source" not in d:   # an exit_targets row
+        d["label"] = opportunities.target_label(d)
     return d
 
 
 def validate_rule(payload: dict) -> dict:
     """Normalise and check a rule body; raises RuleError(400)."""
-    name = str(payload.get("name") or "").strip()
-    if not 1 <= len(name) <= 60:
-        raise RuleError(400, "name must be 1-60 characters")
     filters = payload.get("filters") or {}
     if not isinstance(filters, dict):
         raise RuleError(400, "filters must be an object")
@@ -71,7 +72,7 @@ def validate_rule(payload: dict) -> dict:
     if filters.get("min_rating") and ratings.RATING_RANK.get(
             str(filters["min_rating"]).strip().upper()) is None:
         raise RuleError(400, f"unknown rating grade {filters['min_rating']!r}")
-    out = {"name": name, "filters": opportunities.static_filters(filters),
+    out = {"filters": opportunities.static_filters(filters),
            "enabled": bool(payload.get("enabled", True))}
     for k in ("min_ask_ytm", "max_ticket", "max_price", "min_qty"):
         v = payload.get(k)
@@ -100,9 +101,9 @@ def create_rule(user_id: int, payload: dict) -> dict:
     v = validate_rule(payload)
     with db._conn() as conn:
         r = conn.execute(
-            "INSERT INTO alert_rules (user_id, name, filters, min_ask_ytm, max_ticket, "
-            " max_price, min_qty, enabled) VALUES (%s, %s, %s, %s, %s, %s, %s, %s) RETURNING *",
-            (user_id, v["name"], Jsonb(v["filters"]), v["min_ask_ytm"], v["max_ticket"],
+            "INSERT INTO alert_rules (user_id, filters, min_ask_ytm, max_ticket, "
+            " max_price, min_qty, enabled) VALUES (%s, %s, %s, %s, %s, %s, %s) RETURNING *",
+            (user_id, Jsonb(v["filters"]), v["min_ask_ytm"], v["max_ticket"],
              v["max_price"], v["min_qty"], v["enabled"])).fetchone()
     assert r is not None
     touch(user_id)
@@ -119,10 +120,10 @@ def update_rule(user_id: int, rule_id: int, payload: dict) -> dict:
         merged = {**_row(current), **payload}
         v = validate_rule(merged)
         r = conn.execute(
-            "UPDATE alert_rules SET name = %s, filters = %s, min_ask_ytm = %s, max_ticket = %s, "
+            "UPDATE alert_rules SET filters = %s, min_ask_ytm = %s, max_ticket = %s, "
             " max_price = %s, min_qty = %s, enabled = %s, updated_at = now() "
             "WHERE id = %s AND user_id = %s RETURNING *",
-            (v["name"], Jsonb(v["filters"]), v["min_ask_ytm"], v["max_ticket"], v["max_price"],
+            (Jsonb(v["filters"]), v["min_ask_ytm"], v["max_ticket"], v["max_price"],
              v["min_qty"], v["enabled"], rule_id, user_id)).fetchone()
     assert r is not None
     touch(user_id)
@@ -267,10 +268,11 @@ def record_hit(user_id: int, hit: opportunities.Hit, today: date, *, tick_at=Non
     with db._conn() as conn:
         r = conn.execute(
             "INSERT INTO opportunity_alerts (user_id, source, isin, side, price, qty, ytm, "
-            " exchange, trade_day, tick_at, pushed_at, push_ms, below_threshold) "
-            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id",
+            " exchange, trade_day, tick_at, pushed_at, push_ms, below_threshold, rule_label) "
+            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id",
             (user_id, hit.source, hit.isin, hit.side, hit.price, hit.qty, hit.ytm,
-             hit.exchange, today, tick_at, pushed_at, push_ms, below_threshold)).fetchone()
+             hit.exchange, today, tick_at, pushed_at, push_ms, below_threshold,
+             hit.rule_label)).fetchone()
         if hit.source.startswith("rule:"):
             conn.execute("UPDATE alert_rules SET last_hit_at = now() WHERE id = %s",
                          (int(hit.source.split(":", 1)[1]),))

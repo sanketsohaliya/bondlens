@@ -2,13 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { api, fmt } from "../api/client";
 import type { AlertRule, ExploreParams } from "../api/types";
-import {
-  compactFilterTokens,
-  describeConditions,
-  groupHits,
-  type HitGroup,
-  watcherStatus,
-} from "../lib/alertRules";
+import { groupHits, type HitGroup, watcherStatus } from "../lib/alertRules";
 import { fmtIstTime } from "../lib/quoteValuation";
 import SaveAlertDialog from "./SaveAlertDialog";
 
@@ -253,31 +247,22 @@ function RuleRow({
     mutationFn: () => api.alerts.deleteRule(rule.id),
     onSuccess: onChanged,
   });
-  const pills = compactFilterTokens(rule.filters ?? {});
+  const stats = [
+    hitsToday ? `${hitsToday} hit${hitsToday === 1 ? "" : "s"} today` : null,
+    rule.last_hit_at ? `last ${fmtIstTime(rule.last_hit_at) ?? ""}` : null,
+  ].filter(Boolean);
   return (
     <li className={`px-4 py-2.5 ${enabled ? "" : "opacity-60"}`}>
       <div className="flex items-center gap-3">
         <div className="flex-1 min-w-0">
-          <div className="truncate text-zinc-200" title={describeConditions(rule)}>
-            {rule.name}
-          </div>
-          <div className="mt-1 flex items-center gap-1.5">
-            <span className="flex flex-wrap items-center gap-1 min-w-0">
-              {(pills.length ? pills : ["any bond"]).map((t) => (
-                <span key={t} className={PILL}>
-                  {t}
-                </span>
+          <div className="text-zinc-200 leading-snug">{rule.label}</div>
+          {stats.length > 0 && (
+            <div className="mt-0.5 flex gap-3 text-[11px] text-zinc-500">
+              {stats.map((x) => (
+                <span key={x}>{x}</span>
               ))}
-            </span>
-            <span className="ml-auto flex shrink-0 gap-3 text-[11px] text-zinc-500">
-              {hitsToday > 0 && (
-                <span>
-                  {hitsToday} hit{hitsToday === 1 ? "" : "s"} today
-                </span>
-              )}
-              {rule.last_hit_at && <span>last {fmtIstTime(rule.last_hit_at) ?? ""}</span>}
-            </span>
-          </div>
+            </div>
+          )}
         </div>
         <Switch
           on={enabled}
@@ -287,7 +272,7 @@ function RuleRow({
         <button
           type="button"
           onClick={onEdit}
-          title="Edit thresholds or name"
+          title="Edit thresholds"
           className="text-zinc-500 hover:text-zinc-200"
         >
           ✎
@@ -366,6 +351,9 @@ function HitRow({ group: g, onOpen }: { group: HitGroup; onOpen: () => void }) {
             </span>
           )}
         </div>
+        {h.rule_label && (
+          <div className="mt-0.5 text-[11px] text-zinc-600 leading-snug">{h.rule_label}</div>
+        )}
       </button>
     </li>
   );

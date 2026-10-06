@@ -7,8 +7,7 @@
 // whole point of an alert. The API refuses them too; this keeps the dialog
 // honest about what it saved.
 
-import { fmt } from "../api/client";
-import type { AlertRule, ExploreParams, OpportunityHit } from "../api/types";
+import type { ExploreParams, OpportunityHit } from "../api/types";
 
 export const STATIC_FILTER_KEYS = [
   "min_rating",
@@ -58,78 +57,50 @@ export function splitFilters(params: ExploreParams): {
   return { kept, dropped };
 }
 
-/** "rating ≥ BBB-, maturity ≥ 0.5y, bullet" for a rule's filters. */
-export function describeRuleFilters(filters: Record<string, unknown>): string {
-  const parts: string[] = [];
-  const f = filters as Partial<ExploreParams> & Record<string, unknown>;
-  if (f.min_rating) parts.push(`rating ≥ ${f.min_rating}`);
-  if (f.rating) parts.push(`rating ~ ${String(f.rating)}`);
-  if (f.min_years != null) parts.push(`maturity ≥ ${f.min_years}y`);
-  if (f.max_years != null) parts.push(`maturity ≤ ${f.max_years}y`);
-  if (f.sector) parts.push(String(f.sector));
-  if (f.industry) parts.push(String(f.industry));
-  if (f.issuer) parts.push(`issuer ~ ${String(f.issuer)}`);
-  if (f.exchange) parts.push(`on ${f.exchange}`);
-  if (f.frequency) parts.push(`pays ${f.frequency}`);
-  if (f.payout) parts.push(String(f.payout));
-  if (f.secured_only) parts.push("secured");
-  if (f.unsecured_only) parts.push("unsecured");
-  if (f.tax_free_only) parts.push("tax-free");
-  if (f.downgraded_only) parts.push("downgraded recently");
-  return parts.length ? parts.join(", ") : "every listed bond";
-}
+const inrShort = (v: number): string => {
+  if (v >= 1e7) return `₹${(v / 1e7).toFixed(1).replace(/\.0$/, "")} Cr`;
+  if (v >= 1e5) return `₹${(v / 1e5).toFixed(1).replace(/\.0$/, "")} L`;
+  return `₹${v.toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
+};
+const tenor = (y: number): string =>
+  y < 1 ? `${Math.round(y * 12)}mo` : `${String(Number(y.toFixed(1)))}y`;
 
-/** "YTM @ Ask ≥ 12%, ticket ≤ ₹2.00 L, price ≤ ₹1,050" */
-export function describeConditions(
-  rule: Pick<AlertRule, "min_ask_ytm" | "max_ticket" | "max_price" | "min_qty">,
-): string {
+/** Client-side mirror of the backend's rule_label(), used only to preview
+ * the label in the Save dialog before the rule exists. The server's label
+ * is the one shown everywhere afterwards. Keep the two in step. */
+export function previewLabel(rule: {
+  filters: Record<string, unknown>;
+  min_ask_ytm?: number | null;
+  max_price?: number | null;
+  max_ticket?: number | null;
+  min_qty?: number | null;
+}): string {
   const parts: string[] = [];
-  if (rule.min_ask_ytm != null) parts.push(`YTM @ Ask ≥ ${rule.min_ask_ytm}%`);
-  if (rule.max_price != null) parts.push(`price ≤ ${fmt.inrFull(rule.max_price)}`);
-  if (rule.max_ticket != null) parts.push(`ticket ≤ ${fmt.inr(rule.max_ticket)}`);
-  if (rule.min_qty != null && rule.min_qty > 1) parts.push(`≥ ${rule.min_qty} units`);
-  return parts.join(", ");
-}
-
-/** Pill-ready phrases for a rule's filters: "BBB- and above", "6mo+",
- * "1–3y", "≤2y", sector/payout words, "on NSE", "secured"... */
-export function compactFilterTokens(filters: Record<string, unknown>): string[] {
-  const f = filters as Partial<ExploreParams> & Record<string, unknown>;
-  const out: string[] = [];
-  if (f.min_rating) out.push(`${String(f.min_rating)} and above`);
-  if (f.rating) out.push(`~${String(f.rating)}`);
-  const span = (y: number) => (y < 1 ? `${Math.round(y * 12)}mo` : `${Number(y.toFixed(1))}y`);
+  if (rule.min_ask_ytm != null) parts.push(`Ask YTM ≥ ${rule.min_ask_ytm}%`);
+  if (rule.max_price != null) parts.push(`Ask price ≤ ${inrShort(rule.max_price)}`);
+  if (rule.max_ticket != null) parts.push(`Ticket ≤ ${inrShort(rule.max_ticket)}`);
+  if (rule.min_qty != null && rule.min_qty > 1) parts.push(`Units ≥ ${rule.min_qty}`);
+  const f = rule.filters as Partial<ExploreParams> & Record<string, unknown>;
+  if (f.min_rating) parts.push(`Rating ≥ ${String(f.min_rating).toUpperCase()}`);
+  if (f.rating) parts.push(`Rating ~ ${String(f.rating)}`);
   if (f.min_years != null && f.max_years != null)
-    out.push(`${span(f.min_years)}–${span(f.max_years)}`);
-  else if (f.min_years != null) out.push(`${span(f.min_years)}+`);
-  else if (f.max_years != null) out.push(`≤${span(f.max_years)}`);
-  for (const key of ["sector", "industry", "issuer", "payout", "frequency"] as const)
-    if (f[key]) out.push(String(f[key]));
-  if (f.exchange) out.push(`on ${f.exchange}`);
-  if (f.secured_only) out.push("secured");
-  if (f.unsecured_only) out.push("unsecured");
-  if (f.tax_free_only) out.push("tax-free");
-  if (f.downgraded_only) out.push("downgraded");
-  return out;
-}
-
-/** "Ask ≥ 15%" / "Ask ≤ ₹1,050" / "Ask ≥ 15%, ≤ ₹1,050" */
-export function describeAskLead(minYtm: string, maxPrice = ""): string {
-  const parts: string[] = [];
-  if (minYtm) parts.push(`≥ ${minYtm}%`);
-  if (maxPrice) parts.push(`≤ ₹${Number(maxPrice).toLocaleString("en-IN")}`);
-  return parts.length ? `Ask ${parts.join(", ")}` : "Ask";
-}
-
-/** A default rule name, "Ask ≥ 15% — BBB- and above, 6mo+", capped at 60 chars. */
-export function suggestRuleName(
-  filters: Record<string, unknown>,
-  minYtm: string,
-  maxPrice = "",
-): string {
-  const tokens = compactFilterTokens(filters);
-  const name = `${describeAskLead(minYtm, maxPrice)} — ${tokens.length ? tokens.join(", ") : "any bond"}`;
-  return name.length > 60 ? `${name.slice(0, 57)}…` : name;
+    parts.push(`Maturity ${tenor(f.min_years)}–${tenor(f.max_years)}`);
+  else if (f.min_years != null) parts.push(`Maturity ≥ ${tenor(f.min_years)}`);
+  else if (f.max_years != null) parts.push(`Maturity ≤ ${tenor(f.max_years)}`);
+  for (const [key, label] of [
+    ["sector", "Sector"],
+    ["industry", "Industry"],
+    ["payout", "Payout"],
+    ["frequency", "Frequency"],
+    ["exchange", "Exchange"],
+  ] as const)
+    if (f[key]) parts.push(`${label}: ${String(f[key])}`);
+  if (f.issuer) parts.push(`Issuer ~ ${String(f.issuer)}`);
+  if (f.secured_only) parts.push("Secured");
+  if (f.unsecured_only) parts.push("Unsecured");
+  if (f.tax_free_only) parts.push("Tax-free");
+  if (f.downgraded_only) parts.push("Downgraded recently");
+  return parts.length ? parts.join(", ") : "Any ask";
 }
 
 /** Parse the `?bond=ISIN&tab=` deep link an alert push opens. */

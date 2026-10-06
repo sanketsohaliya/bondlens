@@ -527,7 +527,6 @@ class AlertRuleIn(BaseModel):
     """A saved Explore screen plus ask conditions. `filters` carries only
     bond descriptors (rating, maturity, sector...); trade-history filters
     are rejected with 400 because live asks are judged on the ask."""
-    name: str = Field(min_length=1, max_length=60)
     filters: dict[str, Any] = Field(default_factory=dict)
     min_ask_ytm: float | None = Field(default=None, gt=0)
     max_ticket: float | None = Field(default=None, gt=0)
@@ -537,7 +536,6 @@ class AlertRuleIn(BaseModel):
 
 
 class AlertRulePatch(BaseModel):
-    name: str | None = Field(default=None, min_length=1, max_length=60)
     filters: dict[str, Any] | None = None
     min_ask_ytm: float | None = None
     max_ticket: float | None = None
@@ -548,6 +546,7 @@ class AlertRulePatch(BaseModel):
 
 class AlertRule(AlertRuleIn):
     id: int
+    label: str      # derived from the fields; the one name shown everywhere
     created_at: datetime
     updated_at: datetime
     last_hit_at: datetime | None = None
@@ -561,6 +560,7 @@ class ExitTargetIn(BaseModel):
 
 class ExitTarget(ExitTargetIn):
     isin: str
+    label: str
     updated_at: datetime
 
 
@@ -583,6 +583,7 @@ class OpportunityHit(BaseModel):
     pushed_at: datetime | None
     push_ms: int | None
     below_threshold: float | None = None
+    rule_label: str | None = None
     issuer_name: str | None = None
     nse_symbol: str | None = None
     bse_scrip_id: str | None = None

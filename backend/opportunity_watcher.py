@@ -267,7 +267,7 @@ class UserSession:
             price, qty = ask
             for rule in opp.match_ask(rules, price, qty):
                 hit = opp.Hit(source=f"rule:{rule.rule_id}", isin=isin, side="ask", price=price,
-                              qty=qty, exchange=exchange, rule_name=rule.name,
+                              qty=qty, exchange=exchange, rule_label=rule.label,
                               ytm_bound=rule.min_ask_ytm)
                 self._maybe_fire(hit, received, tick.get("exchange_timestamp"))
         target = self.thresholds.bids.get(isin)
@@ -275,7 +275,8 @@ class UserSession:
             price, qty = bid
             if opp.match_bid(target, price):
                 hit = opp.Hit(source="target", isin=isin, side="bid", price=price, qty=qty,
-                              exchange=exchange, ytm_bound=target.max_bid_ytm)
+                              exchange=exchange, ytm_bound=target.max_bid_ytm,
+                              rule_label=target.label)
                 self._maybe_fire(hit, received, tick.get("exchange_timestamp"))
 
     def _maybe_fire(self, hit: opp.Hit, received: float, exchange_ts: str | None) -> None:

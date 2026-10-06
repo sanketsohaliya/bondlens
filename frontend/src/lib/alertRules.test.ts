@@ -1,14 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { OpportunityHit } from "../api/types";
-import {
-  describeConditions,
-  describeRuleFilters,
-  groupHits,
-  parseDeepLink,
-  splitFilters,
-  suggestRuleName,
-  watcherStatus,
-} from "./alertRules";
+import { groupHits, parseDeepLink, previewLabel, splitFilters, watcherStatus } from "./alertRules";
 
 describe("alert rules from the filter bar", () => {
   it("keeps bond descriptors and names the trade-history filters it drops", () => {
@@ -26,25 +18,32 @@ describe("alert rules from the filter bar", () => {
     expect(dropped).toEqual(["Min LTP YTM", "Retail turnover", "Last traded"]);
   });
 
-  it("describes filters and conditions tersely", () => {
-    expect(describeRuleFilters({ min_rating: "AA-", max_years: 3, payout: "bullet" })).toBe(
-      "rating ≥ AA-, maturity ≤ 3y, bullet",
+  it("previews the label exactly as the server will build it", () => {
+    expect(previewLabel({ filters: { min_rating: "bbb-", min_years: 0.5 }, min_ask_ytm: 15 })).toBe(
+      "Ask YTM ≥ 15%, Rating ≥ BBB-, Maturity ≥ 6mo",
     );
-    expect(describeRuleFilters({})).toBe("every listed bond");
     expect(
-      describeConditions({ min_ask_ytm: 12, max_ticket: 200_000, max_price: null, min_qty: 5 }),
-    ).toBe("YTM @ Ask ≥ 12%, ticket ≤ ₹2.00 L, ≥ 5 units");
-    expect(suggestRuleName({ min_rating: "BBB-", min_years: 0.5 }, "15")).toBe(
-      "Ask ≥ 15% — BBB- and above, 6mo+",
+      previewLabel({
+        filters: {
+          min_years: 1,
+          max_years: 3,
+          payout: "bullet",
+          exchange: "NSE",
+          secured_only: true,
+        },
+        min_ask_ytm: 12.5,
+        max_ticket: 200_000,
+        max_price: 1050,
+        min_qty: 5,
+      }),
+    ).toBe(
+      "Ask YTM ≥ 12.5%, Ask price ≤ ₹1,050, Ticket ≤ ₹2 L, Units ≥ 5, Maturity 1y–3y, Payout: bullet, Exchange: NSE, Secured",
     );
-    expect(suggestRuleName({ min_years: 1, max_years: 3, payout: "bullet" }, "", "1050")).toBe(
-      "Ask ≤ ₹1,050 — 1y–3y, bullet",
+    expect(previewLabel({ filters: { max_years: 2.5, sector: "NBFC" }, max_price: 95_000 })).toBe(
+      "Ask price ≤ ₹95,000, Maturity ≤ 2.5y, Sector: NBFC",
     );
-    expect(suggestRuleName({ max_years: 2, exchange: "NSE" }, "9.5", "1000")).toBe(
-      "Ask ≥ 9.5%, ≤ ₹1,000 — ≤2y, on NSE",
-    );
-    expect(suggestRuleName({}, "12")).toBe("Ask ≥ 12% — any bond");
-    expect(suggestRuleName({ sector: "x".repeat(80) }, "").length).toBeLessThanOrEqual(60);
+    expect(previewLabel({ filters: {}, max_ticket: 25_000_000 })).toBe("Ticket ≤ ₹2.5 Cr");
+    expect(previewLabel({ filters: {} })).toBe("Any ask");
   });
 
   it("parses the push deep link and rejects junk", () => {

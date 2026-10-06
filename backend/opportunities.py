@@ -125,12 +125,83 @@ def price_for_yield(sched: schedule.Schedule, terms: dict | None, ytm: float,
     return round(lo, 2)
 
 
+# --- The rule's one label -------------------------------------------------------
+
+def _inr_short(v: float) -> str:
+    """₹95,000 / ₹2 L / ₹2.5 L / ₹1.2 Cr - the explorer's own shorthand."""
+    if v >= 1e7:
+        n = v / 1e7
+        return f"₹{n:.1f} Cr".replace(".0 Cr", " Cr")
+    if v >= 1e5:
+        n = v / 1e5
+        return f"₹{n:.1f} L".replace(".0 L", " L")
+    return f"₹{v:,.0f}"
+
+
+def _tenor(years: float) -> str:
+    if years < 1:
+        return f"{round(years * 12)}mo"
+    text = f"{years:.1f}".rstrip("0").rstrip(".")
+    return f"{text}y"
+
+
+def rule_label(rule: dict[str, Any]) -> str:
+    """The single human label for a rule, used verbatim everywhere: ask
+    conditions first, then the filters in the bar's order, every part a
+    'Field op value'. Never truncated - tight surfaces put it on its own line."""
+    parts: list[str] = []
+    if (v := _f(rule.get("min_ask_ytm"))) is not None:
+        parts.append(f"Ask YTM ≥ {v:g}%")
+    if (v := _f(rule.get("max_price"))) is not None:
+        parts.append(f"Ask price ≤ {_inr_short(v)}")
+    if (v := _f(rule.get("max_ticket"))) is not None:
+        parts.append(f"Ticket ≤ {_inr_short(v)}")
+    if (v := _f(rule.get("min_qty"))) is not None and v > 1:
+        parts.append(f"Units ≥ {v:g}")
+    f = rule.get("filters") or {}
+    if f.get("min_rating"):
+        parts.append(f"Rating ≥ {str(f['min_rating']).upper()}")
+    if f.get("rating"):
+        parts.append(f"Rating ~ {f['rating']}")
+    lo, hi = _f(f.get("min_years")), _f(f.get("max_years"))
+    if lo is not None and hi is not None:
+        parts.append(f"Maturity {_tenor(lo)}–{_tenor(hi)}")
+    elif lo is not None:
+        parts.append(f"Maturity ≥ {_tenor(lo)}")
+    elif hi is not None:
+        parts.append(f"Maturity ≤ {_tenor(hi)}")
+    for key, label in (("sector", "Sector"), ("industry", "Industry"), ("payout", "Payout"),
+                       ("frequency", "Frequency"), ("exchange", "Exchange")):
+        if f.get(key):
+            parts.append(f"{label}: {f[key]}")
+    if f.get("issuer"):
+        parts.append(f"Issuer ~ {f['issuer']}")
+    if f.get("secured_only"):
+        parts.append("Secured")
+    if f.get("unsecured_only"):
+        parts.append("Unsecured")
+    if f.get("tax_free_only"):
+        parts.append("Tax-free")
+    if f.get("downgraded_only"):
+        parts.append("Downgraded recently")
+    return ", ".join(parts) if parts else "Any ask"
+
+
+def target_label(target: dict[str, Any]) -> str:
+    parts = []
+    if (v := _f(target.get("min_bid_price"))) is not None:
+        parts.append(f"Bid ≥ {_inr_short(v)}")
+    if (v := _f(target.get("max_bid_ytm"))) is not None:
+        parts.append(f"Bid YTM ≤ {v:g}%")
+    return "Exit target: " + ", ".join(parts) if parts else "Exit target"
+
+
 # --- Thresholds ---------------------------------------------------------------
 
 @dataclass(frozen=True)
 class AskRule:
     rule_id: int
-    name: str
+    label: str
     max_ask_price: float | None   # from min_ask_ytm via the cache; None = no yield condition
     max_price: float | None
     max_ticket: float | None
@@ -142,6 +213,7 @@ class AskRule:
 class BidTarget:
     min_bid_price: float | None   # max(min_bid_price, price for max_bid_ytm)
     max_bid_ytm: float | None = None
+    label: str = "Exit target"
 
 
 @dataclass
@@ -183,7 +255,7 @@ def build_thresholds(rules: list[dict], candidates: dict[int, list[str]],
                 if max_ask_price is None and rule.get("max_price") is None:
                     continue
             th.asks.setdefault(isin, []).append(AskRule(
-                rule_id=rule["id"], name=rule["name"], max_ask_price=max_ask_price,
+                rule_id=rule["id"], label=rule_label(rule), max_ask_price=max_ask_price,
                 max_price=_f(rule.get("max_price")), max_ticket=_f(rule.get("max_ticket")),
                 min_qty=_f(rule.get("min_qty")) or 1.0, min_ask_ytm=_f(min_ytm)))
     for target in targets:
@@ -201,7 +273,8 @@ def build_thresholds(rules: list[dict], candidates: dict[int, list[str]],
             if by_yield is not None:
                 floor = by_yield if floor is None else max(floor, by_yield)
         if floor is not None:
-            th.bids[isin] = BidTarget(min_bid_price=floor, max_bid_ytm=_f(max_ytm))
+            th.bids[isin] = BidTarget(min_bid_price=floor, max_bid_ytm=_f(max_ytm),
+                                      label=target_label(target))
     return th, missing
 
 
@@ -267,7 +340,7 @@ class Hit:
     price: float
     qty: float
     exchange: str | None
-    rule_name: str | None = None
+    rule_label: str | None = None
     ytm: float | None = None
     # The rule's yield bound (min for asks, max for bids), for the recheck.
     ytm_bound: float | None = None
@@ -311,14 +384,14 @@ def render(hit: Hit, bond: dict[str, Any], *, domain: str,
         title = f"{lead} for your {symbol}" + (f" ({hit.ytm:.2f}%)" if hit.ytm is not None else "")
     when = (tick_at or datetime.now(IST)).astimezone(IST).strftime("%H:%M:%S")
     parts = [
-        f"{symbol} · {hit.isin}",
+        f"{symbol}, {hit.isin}",
         bond.get("credit_rating") or None,
         f"matures {bond['maturity_date']:%b %Y}" if isinstance(bond.get("maturity_date"), date) else None,
         f"ticket ₹{hit.price * hit.qty:,.0f}",
         f"on {hit.exchange}" if hit.exchange else None,
-        f"rule: {hit.rule_name}" if hit.rule_name else ("exit target" if hit.side == "bid" else None),
         f"as of {when} IST",
     ]
-    body = " · ".join(p for p in parts if p)
+    body = ", ".join(p for p in parts if p)
+    body += f"\nRule: {hit.rule_label}" if hit.rule_label else ""
     url = f"https://{domain}/?bond={hit.isin}&tab=order%20book"
     return title, body, url
