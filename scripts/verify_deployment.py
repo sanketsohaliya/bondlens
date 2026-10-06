@@ -14,6 +14,9 @@ from urllib.request import urlopen
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 
+LATEST_MIGRATION = "0023_opportunity_alerts.sql"
+
+
 class VerificationError(Exception):
     pass
 
@@ -34,7 +37,11 @@ def verify_ui(site):
                if src.startswith("/assets/") and src.endswith(".js")]
     ensure(bool(bundles), "Frontend module bundle not found")
     bundle = "\n".join(fetch(urljoin(site, src)) for src in bundles)
-    for marker in ("Ask AI", "Mark loaded as read", "calculation_version", "expires_at", "Market comparison"):
+    # String literals that survive minification, one per feature that must
+    # have shipped. ("expires_at" was here until quotes stopped expiring on
+    # 15 Sept 2026; it failed every deploy's final step for three weeks.)
+    for marker in ("Ask AI", "Mark loaded as read", "calculation_version", "Market comparison",
+                   "book unchanged since", "Save as alert", "Instant delivery"):
         ensure(marker in bundle, f"Frontend marker missing: {marker}")
     try:
         fetch(urljoin(site, "/api/auth/me"))
@@ -61,12 +68,12 @@ def verify_database(wait_migration=False):
             deadline = time.monotonic() + 120
             while time.monotonic() < deadline:
                 found = conn.execute("SELECT 1 FROM public.schema_migrations WHERE filename = %s",
-                                     ("0021_valuation_context.sql",)).fetchone()
+                                     (LATEST_MIGRATION,)).fetchone()
                 if found:
-                    print("Migration 0021 is applied")
+                    print(f"Migration {LATEST_MIGRATION} is applied")
                     return
                 time.sleep(2)
-            raise VerificationError("Migration 0021 did not finish")
+            raise VerificationError(f"Migration {LATEST_MIGRATION} did not finish")
         conn.rollback()
         conn.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
 
