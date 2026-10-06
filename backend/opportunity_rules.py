@@ -289,13 +289,42 @@ def hits_today(user_id: int, today: date) -> dict[str, int]:
     return {r["source"]: int(r["n"]) for r in rows}
 
 
-def recent_hits(user_id: int, limit: int = 200) -> list[dict]:
+def recent_hits(user_id: int, *, today: date | None = None, limit: int = 200) -> list[dict]:
+    """Fired alerts, newest first - today's only when `today` is given.
+    Hits that predate stored labels get theirs derived from the rule (or
+    target) they came from, so every hit reads the same."""
+    args: list[Any] = [user_id, today, today, limit]
     with db._conn() as conn:
-        return [_row(r) for r in conn.execute(
-            "SELECT a.*, b.issuer_name, b.nse_symbol, b.bse_scrip_id "
-            "FROM opportunity_alerts a LEFT JOIN bond_analytics b ON b.isin = a.isin "
-            "WHERE a.user_id = %s AND a.source <> 'nudge' "
-            "ORDER BY a.fired_at DESC LIMIT %s", (user_id, limit)).fetchall()]
+        rows = conn.execute(
+            "SELECT a.*, b.issuer_name, b.nse_symbol, b.bse_scrip_id, "
+            " r.filters AS r_filters, r.min_ask_ytm AS r_min_ask_ytm, r.max_ticket AS r_max_ticket, "
+            " r.max_price AS r_max_price, r.min_qty AS r_min_qty, "
+            " t.min_bid_price AS t_min_bid_price, t.max_bid_ytm AS t_max_bid_ytm "
+            "FROM opportunity_alerts a "
+            "LEFT JOIN bond_analytics b ON b.isin = a.isin "
+            "LEFT JOIN alert_rules r ON a.source = 'rule:' || r.id "
+            "LEFT JOIN exit_targets t ON a.source = 'target' AND t.user_id = a.user_id AND t.isin = a.isin "
+            "WHERE a.user_id = %s AND a.source <> 'nudge' AND (%s::date IS NULL OR a.trade_day = %s) "
+            "ORDER BY a.fired_at DESC LIMIT %s", args).fetchall()
+    out = []
+    for r in rows:
+        d = dict(r)
+        if not d.get("rule_label"):
+            if d.get("r_filters") is not None or d.get("r_min_ask_ytm") is not None:
+                d["rule_label"] = opportunities.rule_label({
+                    "filters": d["r_filters"], "min_ask_ytm": d["r_min_ask_ytm"],
+                    "max_ticket": d["r_max_ticket"], "max_price": d["r_max_price"],
+                    "min_qty": d["r_min_qty"]})
+            elif d["source"] == "target":
+                d["rule_label"] = opportunities.target_label({
+                    "min_bid_price": d["t_min_bid_price"], "max_bid_ytm": d["t_max_bid_ytm"]})
+            else:
+                d["rule_label"] = f"Deleted rule #{d['source'].split(':')[-1]}"
+        for k in list(d):
+            if k.startswith(("r_", "t_")):
+                del d[k]
+        out.append(_row(d))
+    return out
 
 
 # --- Heartbeat --------------------------------------------------------------

@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { api, fmt } from "../api/client";
 import type { AlertRule, ExploreParams } from "../api/types";
-import { groupHits, type HitGroup, watcherStatus } from "../lib/alertRules";
+import { groupHitsByRule, type HitGroup, watcherStatus } from "../lib/alertRules";
 import { fmtIstTime } from "../lib/quoteValuation";
 import SaveAlertDialog from "./SaveAlertDialog";
 
@@ -21,13 +21,19 @@ export default function AlertsPanel({
   onSelect: (isin: string, tab?: "order book") => void;
 }) {
   const qc = useQueryClient();
-  const overview = useQuery({ queryKey: ["alerts"], queryFn: api.alerts.overview });
+  const overview = useQuery({ queryKey: ["alerts"], queryFn: () => api.alerts.overview() });
   const { data: kite } = useQuery({
     queryKey: ["kite-status"],
     queryFn: api.kite.status,
     staleTime: 120_000,
   });
   const [tab, setTab] = useState<"rules" | "hits">("rules");
+  const [scope, setScope] = useState<"today" | "all">("today");
+  const earlier = useQuery({
+    queryKey: ["alerts", "hits", "all"],
+    queryFn: () => api.alerts.overview("all"),
+    enabled: scope === "all",
+  });
   const [settings, setSettings] = useState(false);
   const [dialog, setDialog] = useState<{ params?: ExploreParams; rule?: AlertRule } | null>(null);
 
@@ -35,9 +41,10 @@ export default function AlertsPanel({
   if (overview.isError || !overview.data)
     return <div className="p-4 text-xs text-amber-400">Could not load alerts.</div>;
   const { rules, recent, hits_today, watcher } = overview.data;
-  const groups = groupHits(recent);
-  const today = recent[0]?.trade_day;
-  const todayCount = recent.filter((h) => h.trade_day === today).length;
+  const shownHits = scope === "all" && earlier.data ? earlier.data.recent : recent;
+  const buckets = groupHitsByRule(shownHits);
+  const todayCount = recent.length;
+  const todayKey = recent[0]?.trade_day;
   const status = watcherStatus(watcher, rules.length, kite?.connected ?? false);
   const dot =
     status.tone === "live"
@@ -128,14 +135,38 @@ export default function AlertsPanel({
         )}
         {tab === "hits" && (
           <>
-            {groups.length === 0 && (
-              <p className="px-4 py-6 text-center text-zinc-500">Nothing has fired yet.</p>
+            {buckets.length === 0 && (
+              <p className="px-4 py-6 text-center text-zinc-500">
+                {scope === "today" ? "Nothing has fired today." : "Nothing has fired yet."}
+              </p>
             )}
-            <ul className="divide-y divide-zinc-800/60">
-              {groups.map((g) => (
-                <HitRow key={g.key} group={g} onOpen={() => onSelect(g.isin, "order book")} />
-              ))}
-            </ul>
+            {buckets.map((b) => (
+              <section key={b.key} className="border-b border-zinc-800/60 last:border-b-0">
+                <div className="flex items-center gap-2 px-4 pt-2.5 pb-1 text-[11px] text-zinc-400">
+                  <span className="min-w-0 flex-1 leading-snug">{b.label}</span>
+                  {scope === "all" && b.day !== todayKey && (
+                    <span className="shrink-0 text-zinc-600">{fmtDay(b.day)}</span>
+                  )}
+                  <span className={PILL}>{b.groups.length}</span>
+                </div>
+                <ul>
+                  {b.groups.map((g) => (
+                    <HitRow key={g.key} group={g} onOpen={() => onSelect(g.isin, "order book")} />
+                  ))}
+                </ul>
+              </section>
+            ))}
+            <button
+              type="button"
+              onClick={() => setScope(scope === "today" ? "all" : "today")}
+              className="w-full px-4 py-2.5 text-left text-zinc-500 hover:text-zinc-300 border-t border-zinc-800/60"
+            >
+              {scope === "today"
+                ? "Show earlier"
+                : earlier.isPending
+                  ? "Loading…"
+                  : "Show today only"}
+            </button>
           </>
         )}
       </div>
@@ -310,6 +341,13 @@ function RuleRow({
   );
 }
 
+function fmtDay(day: string): string {
+  return new Date(`${day}T00:00:00+05:30`).toLocaleDateString("en-IN", {
+    day: "numeric",
+    month: "short",
+  });
+}
+
 function HitRow({ group: g, onOpen }: { group: HitGroup; onOpen: () => void }) {
   const h = g.latest;
   const pill = g.short
@@ -318,42 +356,35 @@ function HitRow({ group: g, onOpen }: { group: HitGroup; onOpen: () => void }) {
       ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/30"
       : "bg-sky-500/15 text-sky-400 border-sky-500/30";
   const qty = h.qty ?? 0;
-  const ticket = qty > 0 ? ` = ${fmt.inrFull(h.price * qty)}` : "";
+  const details = [
+    qty > 0 ? `ticket ${fmt.inrFull(h.price * qty)}` : null,
+    h.exchange,
+    g.count > 1 && g.bestYtm != null ? `best ${fmt.pct(g.bestYtm)}` : null,
+    h.push_ms != null ? `tick → push ${h.push_ms} ms` : null,
+    g.short ? "exact yield came in under the rule" : null,
+  ]
+    .filter(Boolean)
+    .join(", ");
   return (
     <li>
       <button
         type="button"
         onClick={onOpen}
-        title={h.push_ms != null ? `tick → push ${h.push_ms} ms` : undefined}
-        className="w-full px-4 py-2.5 text-left hover:bg-zinc-800/50"
+        title={details}
+        className="flex w-full items-center gap-2 px-4 py-1.5 text-left hover:bg-zinc-800/50"
       >
-        <div className="flex items-center gap-2">
-          <span className="flex-1 truncate text-zinc-200">{g.name}</span>
-          <span
-            className={`shrink-0 text-[10px] px-1.5 py-0.5 rounded border ${pill}`}
-            title={g.short ? "Exact yield came in under the rule" : undefined}
-          >
-            {g.side === "bid" ? "bid " : ""}
-            {h.ytm != null ? fmt.pct(h.ytm) : "–"}
-          </span>
-          <span className="shrink-0 text-[10px] text-zinc-600">{fmtIstTime(h.fired_at) ?? ""}</span>
-        </div>
-        <div className="mt-0.5 flex items-center gap-2 text-[11px] text-zinc-500">
-          <span className="flex-1 truncate">
-            {fmt.inrFull(h.price)} × {fmt.num(qty, 0)}
-            {ticket}
-          </span>
-          {h.exchange && <span className={PILL}>{h.exchange}</span>}
-          {g.count > 1 && (
-            <span className="shrink-0">
-              {g.count} {g.side === "ask" ? "asks" : "bids"} today
-              {g.bestYtm != null ? `, best ${fmt.pct(g.bestYtm)}` : ""}
-            </span>
-          )}
-        </div>
-        {h.rule_label && (
-          <div className="mt-0.5 text-[11px] text-zinc-600 leading-snug">{h.rule_label}</div>
-        )}
+        <span className="min-w-0 flex-1 truncate text-zinc-200">{g.name}</span>
+        {g.count > 1 && <span className={PILL}>×{g.count}</span>}
+        <span className={`shrink-0 text-[10px] px-1.5 py-0.5 rounded border ${pill}`}>
+          {g.side === "bid" ? "bid " : ""}
+          {h.ytm != null ? fmt.pct(h.ytm) : "–"}
+        </span>
+        <span className="w-28 shrink-0 text-right text-[11px] text-zinc-400 tabular-nums">
+          {fmt.inrFull(h.price)} × {fmt.num(qty, 0)}
+        </span>
+        <span className="w-10 shrink-0 text-right text-[10px] text-zinc-600 tabular-nums">
+          {fmtIstTime(h.fired_at) ?? ""}
+        </span>
       </button>
     </li>
   );

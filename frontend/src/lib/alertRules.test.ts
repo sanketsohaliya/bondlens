@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 import type { OpportunityHit } from "../api/types";
-import { groupHits, parseDeepLink, previewLabel, splitFilters, watcherStatus } from "./alertRules";
+import {
+  groupHits,
+  groupHitsByRule,
+  parseDeepLink,
+  previewLabel,
+  splitFilters,
+  watcherStatus,
+} from "./alertRules";
 
 describe("alert rules from the filter bar", () => {
   it("keeps bond descriptors and names the trade-history filters it drops", () => {
@@ -97,6 +104,27 @@ describe("hits grouped per bond per day", () => {
       ["FINKURVE", 1, 3, 15.95],
       ["ICL FINCORP LIMITED", 2, 2, 15.24],
       ["ICL FINCORP LIMITED", 1, 4, 15.95],
+    ]);
+  });
+
+  it("buckets bond groups under their rule label, newest first", () => {
+    const buckets = groupHitsByRule([
+      hit({ id: 1, rule_label: "Ask YTM ≥ 15%", fired_at: "2026-10-06T07:00:00+00:00" }),
+      hit({ id: 2, isin: "B", rule_label: "Ask YTM ≥ 18%", fired_at: "2026-10-06T08:00:00+00:00" }),
+      hit({ id: 3, isin: "C", rule_label: "Ask YTM ≥ 15%", fired_at: "2026-10-06T07:30:00+00:00" }),
+      hit({
+        id: 4,
+        isin: "D",
+        rule_label: null,
+        source: "rule:9",
+        trade_day: "2026-10-05",
+        fired_at: "2026-10-05T07:30:00+00:00",
+      }),
+    ]);
+    expect(buckets.map((b) => [b.label, b.day, b.groups.map((g) => g.isin)])).toEqual([
+      ["Ask YTM ≥ 18%", "2026-10-06", ["B"]],
+      ["Ask YTM ≥ 15%", "2026-10-06", ["C", "INE000A"]],
+      ["rule:9", "2026-10-05", ["D"]],
     ]);
   });
 

@@ -156,6 +156,23 @@ export function groupHits(hits: OpportunityHit[]): HitGroup[] {
   return [...groups.values()];
 }
 
+/** Hit groups bucketed under the rule label they fired for, newest rule
+ * activity first; within a rule, newest bond first. Day is kept on each
+ * bucket so an "all days" view can label older sections. */
+export type RuleBucket = { key: string; label: string; day: string; groups: HitGroup[] };
+
+export function groupHitsByRule(hits: OpportunityHit[]): RuleBucket[] {
+  const buckets = new Map<string, RuleBucket>();
+  for (const g of groupHits(hits)) {
+    const label = g.latest.rule_label ?? g.latest.source;
+    const key = `${g.latest.trade_day}:${label}`;
+    const b = buckets.get(key);
+    if (b) b.groups.push(g);
+    else buckets.set(key, { key, label, day: g.latest.trade_day, groups: [g] });
+  }
+  return [...buckets.values()];
+}
+
 export type WatcherStatus = { label: string; detail?: string; tone: "live" | "idle" | "warn" };
 
 /** One-line status for the panel header from the heartbeat row. */

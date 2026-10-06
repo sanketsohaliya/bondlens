@@ -9,6 +9,7 @@ per-bond detail view computes yields live (it supports what-if pricing).
 import asyncio
 import contextlib
 from datetime import UTC, date, datetime, timedelta
+from typing import Literal
 from zoneinfo import ZoneInfo
 
 from fastapi import (
@@ -267,13 +268,16 @@ def _rules_call(fn, *args):
 
 
 @router.get("/api/alerts", response_model=models.AlertsOverview)
-def alerts_overview(user_id: int = Depends(auth.require_user)):
+def alerts_overview(hits: Literal["today", "all"] = Query("today"),
+                    user_id: int = Depends(auth.require_user)):
     """Everything the Alerts panel shows: rules, exit targets, the push
-    topic, recent hits with their push latency, and the watcher's pulse."""
+    topic, recent hits with their push latency, and the watcher's pulse.
+    `hits=today` (default) limits the hit list to the current IST day."""
     return {"rules": opportunity_rules.list_rules(user_id),
             "targets": opportunity_rules.list_targets(user_id),
             "settings": {"ntfy_topic": opportunity_rules.get_topic(user_id)},
-            "recent": opportunity_rules.recent_hits(user_id),
+            "recent": opportunity_rules.recent_hits(
+                user_id, today=_ist_today() if hits == "today" else None),
             "hits_today": opportunity_rules.hits_today(user_id, _ist_today()),
             "watcher": opportunity_rules.read_heartbeat()}
 

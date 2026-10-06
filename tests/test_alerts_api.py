@@ -74,7 +74,8 @@ class FakeStore:
         self.topics[user_id] = topic
         return topic
 
-    def recent_hits(self, user_id, limit=200):
+    def recent_hits(self, user_id, *, today=None, limit=200):
+        self.recent_scope = "today" if today else "all"
         return []
 
     def hits_today(self, user_id, today):
@@ -117,7 +118,10 @@ def test_rule_lifecycle_and_overview(client):
     over = c.get("/api/alerts").json()
     assert [x["id"] for x in over["rules"]] == [1] and over["settings"] == {"ntfy_topic": None}
     assert over["targets"] == [] and over["recent"] == [] and over["watcher"] is None
-    assert over["hits_today"] == {"rule:1": 3}
+    assert over["hits_today"] == {"rule:1": 3} and store.recent_scope == "today"
+    c.get("/api/alerts?hits=all")
+    assert store.recent_scope == "all"
+    assert c.get("/api/alerts?hits=sometimes").status_code == 422
     assert c.delete("/api/alerts/rules/1").json() == {"ok": True}
     assert c.delete("/api/alerts/rules/1").status_code == 404
 
@@ -221,3 +225,43 @@ def test_every_alert_write_touches_the_change_marker(monkeypatch):
     rules.delete_target(1, "INE000A01001")
     rules.set_topic(1, "bondlens-x1y2z3")
     assert touched == [1] * 6
+
+
+def test_recent_hits_derives_labels_for_hits_without_one(monkeypatch):
+    rows = [
+        {"id": 1, "source": "rule:4", "isin": "A", "side": "ask", "price": 997, "qty": 10, "ytm": 15.95,
+         "exchange": "BSE", "trade_day": NOW.date(), "tick_at": None, "fired_at": NOW, "pushed_at": None,
+         "push_ms": 49, "below_threshold": None, "rule_label": None, "issuer_name": "ICL", "nse_symbol": None,
+         "bse_scrip_id": None, "r_filters": {"min_rating": "BBB-"}, "r_min_ask_ytm": 15, "r_max_ticket": None,
+         "r_max_price": None, "r_min_qty": None, "t_min_bid_price": None, "t_max_bid_ytm": None},
+        {"id": 2, "source": "rule:2", "isin": "B", "side": "ask", "price": 1, "qty": 1, "ytm": None,
+         "exchange": None, "trade_day": NOW.date(), "tick_at": None, "fired_at": NOW, "pushed_at": None,
+         "push_ms": None, "below_threshold": None, "rule_label": None, "issuer_name": None, "nse_symbol": None,
+         "bse_scrip_id": None, "r_filters": None, "r_min_ask_ytm": None, "r_max_ticket": None,
+         "r_max_price": None, "r_min_qty": None, "t_min_bid_price": None, "t_max_bid_ytm": None},
+        {"id": 3, "source": "target", "isin": "C", "side": "bid", "price": 1015, "qty": 5, "ytm": 8.9,
+         "exchange": "NSE", "trade_day": NOW.date(), "tick_at": None, "fired_at": NOW, "pushed_at": None,
+         "push_ms": 30, "below_threshold": None, "rule_label": "stored", "issuer_name": None, "nse_symbol": None,
+         "bse_scrip_id": None, "r_filters": None, "r_min_ask_ytm": None, "r_max_ticket": None,
+         "r_max_price": None, "r_min_qty": None, "t_min_bid_price": 1010, "t_max_bid_ytm": None},
+    ]
+
+    class Conn:
+        def execute(self, sql, args):
+            assert "a.trade_day = %s" in sql and len(args) == 4
+            return self
+
+        def fetchall(self):
+            return rows
+
+    class Ctx:
+        def __enter__(self):
+            return Conn()
+
+        def __exit__(self, *exc):
+            return False
+    monkeypatch.setattr(rules.db, "_conn", lambda: Ctx())
+    out = rules.recent_hits(1, today=NOW.date())
+    assert [h["rule_label"] for h in out] == ["Ask YTM ≥ 15%, Rating ≥ BBB-", "Deleted rule #2", "stored"]
+    assert all(not k.startswith(("r_", "t_")) for h in out for k in h)
+    rules.recent_hits(1)   # no day filter: NULL day binds match every row

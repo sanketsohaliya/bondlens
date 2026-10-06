@@ -7,7 +7,7 @@ import { api, fmt } from "../api/client";
  * in the holding's expanded row on Portfolio. */
 export default function ExitTargetEditor({ isin }: { isin: string }) {
   const qc = useQueryClient();
-  const overview = useQuery({ queryKey: ["alerts"], queryFn: api.alerts.overview });
+  const overview = useQuery({ queryKey: ["alerts"], queryFn: () => api.alerts.overview() });
   const current = overview.data?.targets.find((t) => t.isin === isin) ?? null;
   const [editing, setEditing] = useState(false);
   const [price, setPrice] = useState("");
