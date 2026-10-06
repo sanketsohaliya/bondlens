@@ -1,8 +1,15 @@
 import type {
+  AlertRule,
+  AlertRuleIn,
+  AlertRulePatch,
+  AlertSettings,
+  AlertsOverview,
   AskYtmResponse,
   BondDetail,
   BondsResponse,
   CashflowEvidenceResponse,
+  ExitTarget,
+  ExitTargetIn,
   ExploreParams,
   Filters,
   KiteMargins,
@@ -99,6 +106,20 @@ export const api = {
     askYtm: (isins: string[]) => request<AskYtmResponse>("POST", "/api/kite/ask-ytm", { isins }),
     /** One page of the whole listed universe's best asks (1,000 bonds). */
     askYtmPage: (page: number) => request<AskYtmResponse>("POST", "/api/kite/ask-ytm", { page }),
+  },
+  alerts: {
+    overview: () => get<AlertsOverview>("/api/alerts"),
+    createRule: (body: AlertRuleIn) => request<AlertRule>("POST", "/api/alerts/rules", body),
+    updateRule: (id: number, body: AlertRulePatch) =>
+      request<AlertRule>("PATCH", `/api/alerts/rules/${id}`, body),
+    deleteRule: (id: number) => request<{ ok: boolean }>("DELETE", `/api/alerts/rules/${id}`),
+    putTarget: (isin: string, body: ExitTargetIn) =>
+      request<ExitTarget>("PUT", `/api/alerts/targets/${isin}`, body),
+    deleteTarget: (isin: string) =>
+      request<{ ok: boolean }>("DELETE", `/api/alerts/targets/${isin}`),
+    putSettings: (body: AlertSettings) =>
+      request<AlertSettings>("PUT", "/api/alerts/settings", body),
+    test: () => request<{ ok: boolean }>("POST", "/api/alerts/test"),
   },
   notifications: {
     get: (limit?: number, offset?: number) =>

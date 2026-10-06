@@ -5,6 +5,169 @@ export type ClientOptions = {
 };
 
 /**
+ * AlertRule
+ */
+export type AlertRule = {
+    /**
+     * Name
+     */
+    name: string;
+    /**
+     * Filters
+     */
+    filters?: {
+        [key: string]: unknown;
+    };
+    /**
+     * Min Ask Ytm
+     */
+    min_ask_ytm?: number | null;
+    /**
+     * Max Ticket
+     */
+    max_ticket?: number | null;
+    /**
+     * Max Price
+     */
+    max_price?: number | null;
+    /**
+     * Min Qty
+     */
+    min_qty?: number | null;
+    /**
+     * Enabled
+     */
+    enabled?: boolean;
+    /**
+     * Id
+     */
+    id: number;
+    /**
+     * Created At
+     */
+    created_at: string;
+    /**
+     * Updated At
+     */
+    updated_at: string;
+    /**
+     * Last Hit At
+     */
+    last_hit_at?: string | null;
+};
+
+/**
+ * AlertRuleIn
+ *
+ * A saved Explore screen plus ask conditions. `filters` carries only
+ * bond descriptors (rating, maturity, sector...); trade-history filters
+ * are rejected with 400 because live asks are judged on the ask.
+ */
+export type AlertRuleIn = {
+    /**
+     * Name
+     */
+    name: string;
+    /**
+     * Filters
+     */
+    filters?: {
+        [key: string]: unknown;
+    };
+    /**
+     * Min Ask Ytm
+     */
+    min_ask_ytm?: number | null;
+    /**
+     * Max Ticket
+     */
+    max_ticket?: number | null;
+    /**
+     * Max Price
+     */
+    max_price?: number | null;
+    /**
+     * Min Qty
+     */
+    min_qty?: number | null;
+    /**
+     * Enabled
+     */
+    enabled?: boolean;
+};
+
+/**
+ * AlertRulePatch
+ */
+export type AlertRulePatch = {
+    /**
+     * Name
+     */
+    name?: string | null;
+    /**
+     * Filters
+     */
+    filters?: {
+        [key: string]: unknown;
+    } | null;
+    /**
+     * Min Ask Ytm
+     */
+    min_ask_ytm?: number | null;
+    /**
+     * Max Ticket
+     */
+    max_ticket?: number | null;
+    /**
+     * Max Price
+     */
+    max_price?: number | null;
+    /**
+     * Min Qty
+     */
+    min_qty?: number | null;
+    /**
+     * Enabled
+     */
+    enabled?: boolean | null;
+};
+
+/**
+ * AlertSettings
+ */
+export type AlertSettings = {
+    /**
+     * Ntfy Topic
+     */
+    ntfy_topic?: string | null;
+};
+
+/**
+ * AlertsOverview
+ */
+export type AlertsOverview = {
+    /**
+     * Rules
+     */
+    rules: Array<AlertRule>;
+    /**
+     * Targets
+     */
+    targets: Array<ExitTarget>;
+    settings: AlertSettings;
+    /**
+     * Recent
+     */
+    recent: Array<OpportunityHit>;
+    /**
+     * Watcher
+     */
+    watcher?: {
+        [key: string]: unknown;
+    } | null;
+};
+
+/**
  * AskYtm
  */
 export type AskYtm = {
@@ -1105,6 +1268,50 @@ export type ExchangeNotice = {
 };
 
 /**
+ * ExitTarget
+ */
+export type ExitTarget = {
+    /**
+     * Min Bid Price
+     */
+    min_bid_price?: number | null;
+    /**
+     * Max Bid Ytm
+     */
+    max_bid_ytm?: number | null;
+    /**
+     * Enabled
+     */
+    enabled?: boolean;
+    /**
+     * Isin
+     */
+    isin: string;
+    /**
+     * Updated At
+     */
+    updated_at: string;
+};
+
+/**
+ * ExitTargetIn
+ */
+export type ExitTargetIn = {
+    /**
+     * Min Bid Price
+     */
+    min_bid_price?: number | null;
+    /**
+     * Max Bid Ytm
+     */
+    max_bid_ytm?: number | null;
+    /**
+     * Enabled
+     */
+    enabled?: boolean;
+};
+
+/**
  * Filters
  */
 export type Filters = {
@@ -1558,6 +1765,76 @@ export type Ok = {
      * Ok
      */
     ok: boolean;
+};
+
+/**
+ * OpportunityHit
+ */
+export type OpportunityHit = {
+    /**
+     * Id
+     */
+    id: number;
+    /**
+     * Source
+     */
+    source: string;
+    /**
+     * Isin
+     */
+    isin: string;
+    /**
+     * Side
+     */
+    side: 'ask' | 'bid';
+    /**
+     * Price
+     */
+    price: number;
+    /**
+     * Qty
+     */
+    qty: number | null;
+    /**
+     * Ytm
+     */
+    ytm: number | null;
+    /**
+     * Exchange
+     */
+    exchange: string | null;
+    /**
+     * Trade Day
+     */
+    trade_day: string;
+    /**
+     * Tick At
+     */
+    tick_at: string | null;
+    /**
+     * Fired At
+     */
+    fired_at: string;
+    /**
+     * Pushed At
+     */
+    pushed_at: string | null;
+    /**
+     * Push Ms
+     */
+    push_ms: number | null;
+    /**
+     * Issuer Name
+     */
+    issuer_name?: string | null;
+    /**
+     * Nse Symbol
+     */
+    nse_symbol?: string | null;
+    /**
+     * Bse Scrip Id
+     */
+    bse_scrip_id?: string | null;
 };
 
 /**
@@ -2862,6 +3139,226 @@ export type NotificationsReadApiNotificationsReadPostResponses = {
 };
 
 export type NotificationsReadApiNotificationsReadPostResponse = NotificationsReadApiNotificationsReadPostResponses[keyof NotificationsReadApiNotificationsReadPostResponses];
+
+export type AlertsOverviewApiAlertsGetData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/alerts';
+};
+
+export type AlertsOverviewApiAlertsGetErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type AlertsOverviewApiAlertsGetError = AlertsOverviewApiAlertsGetErrors[keyof AlertsOverviewApiAlertsGetErrors];
+
+export type AlertsOverviewApiAlertsGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: AlertsOverview;
+};
+
+export type AlertsOverviewApiAlertsGetResponse = AlertsOverviewApiAlertsGetResponses[keyof AlertsOverviewApiAlertsGetResponses];
+
+export type AlertsCreateRuleApiAlertsRulesPostData = {
+    body: AlertRuleIn;
+    path?: never;
+    query?: never;
+    url: '/api/alerts/rules';
+};
+
+export type AlertsCreateRuleApiAlertsRulesPostErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type AlertsCreateRuleApiAlertsRulesPostError = AlertsCreateRuleApiAlertsRulesPostErrors[keyof AlertsCreateRuleApiAlertsRulesPostErrors];
+
+export type AlertsCreateRuleApiAlertsRulesPostResponses = {
+    /**
+     * Successful Response
+     */
+    201: AlertRule;
+};
+
+export type AlertsCreateRuleApiAlertsRulesPostResponse = AlertsCreateRuleApiAlertsRulesPostResponses[keyof AlertsCreateRuleApiAlertsRulesPostResponses];
+
+export type AlertsDeleteRuleApiAlertsRulesRuleIdDeleteData = {
+    body?: never;
+    path: {
+        /**
+         * Rule Id
+         */
+        rule_id: number;
+    };
+    query?: never;
+    url: '/api/alerts/rules/{rule_id}';
+};
+
+export type AlertsDeleteRuleApiAlertsRulesRuleIdDeleteErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type AlertsDeleteRuleApiAlertsRulesRuleIdDeleteError = AlertsDeleteRuleApiAlertsRulesRuleIdDeleteErrors[keyof AlertsDeleteRuleApiAlertsRulesRuleIdDeleteErrors];
+
+export type AlertsDeleteRuleApiAlertsRulesRuleIdDeleteResponses = {
+    /**
+     * Successful Response
+     */
+    200: Ok;
+};
+
+export type AlertsDeleteRuleApiAlertsRulesRuleIdDeleteResponse = AlertsDeleteRuleApiAlertsRulesRuleIdDeleteResponses[keyof AlertsDeleteRuleApiAlertsRulesRuleIdDeleteResponses];
+
+export type AlertsUpdateRuleApiAlertsRulesRuleIdPatchData = {
+    body: AlertRulePatch;
+    path: {
+        /**
+         * Rule Id
+         */
+        rule_id: number;
+    };
+    query?: never;
+    url: '/api/alerts/rules/{rule_id}';
+};
+
+export type AlertsUpdateRuleApiAlertsRulesRuleIdPatchErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type AlertsUpdateRuleApiAlertsRulesRuleIdPatchError = AlertsUpdateRuleApiAlertsRulesRuleIdPatchErrors[keyof AlertsUpdateRuleApiAlertsRulesRuleIdPatchErrors];
+
+export type AlertsUpdateRuleApiAlertsRulesRuleIdPatchResponses = {
+    /**
+     * Successful Response
+     */
+    200: AlertRule;
+};
+
+export type AlertsUpdateRuleApiAlertsRulesRuleIdPatchResponse = AlertsUpdateRuleApiAlertsRulesRuleIdPatchResponses[keyof AlertsUpdateRuleApiAlertsRulesRuleIdPatchResponses];
+
+export type AlertsDeleteTargetApiAlertsTargetsIsinDeleteData = {
+    body?: never;
+    path: {
+        /**
+         * Isin
+         */
+        isin: string;
+    };
+    query?: never;
+    url: '/api/alerts/targets/{isin}';
+};
+
+export type AlertsDeleteTargetApiAlertsTargetsIsinDeleteErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type AlertsDeleteTargetApiAlertsTargetsIsinDeleteError = AlertsDeleteTargetApiAlertsTargetsIsinDeleteErrors[keyof AlertsDeleteTargetApiAlertsTargetsIsinDeleteErrors];
+
+export type AlertsDeleteTargetApiAlertsTargetsIsinDeleteResponses = {
+    /**
+     * Successful Response
+     */
+    200: Ok;
+};
+
+export type AlertsDeleteTargetApiAlertsTargetsIsinDeleteResponse = AlertsDeleteTargetApiAlertsTargetsIsinDeleteResponses[keyof AlertsDeleteTargetApiAlertsTargetsIsinDeleteResponses];
+
+export type AlertsPutTargetApiAlertsTargetsIsinPutData = {
+    body: ExitTargetIn;
+    path: {
+        /**
+         * Isin
+         */
+        isin: string;
+    };
+    query?: never;
+    url: '/api/alerts/targets/{isin}';
+};
+
+export type AlertsPutTargetApiAlertsTargetsIsinPutErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type AlertsPutTargetApiAlertsTargetsIsinPutError = AlertsPutTargetApiAlertsTargetsIsinPutErrors[keyof AlertsPutTargetApiAlertsTargetsIsinPutErrors];
+
+export type AlertsPutTargetApiAlertsTargetsIsinPutResponses = {
+    /**
+     * Successful Response
+     */
+    200: ExitTarget;
+};
+
+export type AlertsPutTargetApiAlertsTargetsIsinPutResponse = AlertsPutTargetApiAlertsTargetsIsinPutResponses[keyof AlertsPutTargetApiAlertsTargetsIsinPutResponses];
+
+export type AlertsPutSettingsApiAlertsSettingsPutData = {
+    body: AlertSettings;
+    path?: never;
+    query?: never;
+    url: '/api/alerts/settings';
+};
+
+export type AlertsPutSettingsApiAlertsSettingsPutErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type AlertsPutSettingsApiAlertsSettingsPutError = AlertsPutSettingsApiAlertsSettingsPutErrors[keyof AlertsPutSettingsApiAlertsSettingsPutErrors];
+
+export type AlertsPutSettingsApiAlertsSettingsPutResponses = {
+    /**
+     * Successful Response
+     */
+    200: AlertSettings;
+};
+
+export type AlertsPutSettingsApiAlertsSettingsPutResponse = AlertsPutSettingsApiAlertsSettingsPutResponses[keyof AlertsPutSettingsApiAlertsSettingsPutResponses];
+
+export type AlertsTestPushApiAlertsTestPostData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/alerts/test';
+};
+
+export type AlertsTestPushApiAlertsTestPostErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type AlertsTestPushApiAlertsTestPostError = AlertsTestPushApiAlertsTestPostErrors[keyof AlertsTestPushApiAlertsTestPostErrors];
+
+export type AlertsTestPushApiAlertsTestPostResponses = {
+    /**
+     * Successful Response
+     */
+    200: Ok;
+};
+
+export type AlertsTestPushApiAlertsTestPostResponse = AlertsTestPushApiAlertsTestPostResponses[keyof AlertsTestPushApiAlertsTestPostResponses];
 
 export type BondsApiBondsGetData = {
     body?: never;

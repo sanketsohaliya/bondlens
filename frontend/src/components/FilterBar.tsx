@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { api, fmt } from "../api/client";
 import type { ExploreParams, Filters } from "../api/types";
 import { nextListName, useWatchlists } from "../lib/lists";
+import SaveAlertDialog from "./SaveAlertDialog";
 
 /* What a fresh screen starts with: decent yield, minimal liquidity,
    investment-grade, six months to run, traded within the week. */
@@ -274,6 +275,7 @@ function FilterFields({
     security: !!params.secured_only || !!params.unsecured_only,
   };
   const [added, setAdded] = useState<ExtraId[]>([]);
+  const [savingAlert, setSavingAlert] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
   const visible = EXTRAS.filter(([id]) => added.includes(id) || extraActive[id]);
 
@@ -509,6 +511,15 @@ function FilterFields({
 
       <span className="flex items-end gap-2 self-end">
         <WatchlistChip modes={modes} onModes={onModes} />
+        <button
+          type="button"
+          title="Watch live asks matching these filters and push an alert when one hits your yield or price"
+          onClick={() => setSavingAlert(true)}
+          className="px-2.5 py-1.5 rounded-md border border-zinc-700 text-xs font-medium text-zinc-400 hover:border-emerald-500 hover:text-emerald-400 transition-colors whitespace-nowrap"
+        >
+          🔔 Alert
+        </button>
+        {savingAlert && <SaveAlertDialog params={params} onClose={() => setSavingAlert(false)} />}
         <button
           type="button"
           title="Reset filters and layout to the defaults"

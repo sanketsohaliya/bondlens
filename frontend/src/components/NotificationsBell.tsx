@@ -2,6 +2,7 @@ import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-q
 import { useState } from "react";
 import { api } from "../api/client";
 import type { Notification } from "../api/types";
+import AlertsPanel from "./AlertsPanel";
 
 /** Kind → glyph for the feed rows. */
 function kindIcon(n: Notification): { glyph: string; className: string } {
@@ -28,6 +29,10 @@ function kindIcon(n: Notification): { glyph: string; className: string } {
       };
     case "anomaly":
       return { glyph: "≈", className: n.severity === "warn" ? "text-amber-400" : "text-zinc-400" };
+    case "ask_opportunity":
+      return { glyph: "▲", className: "text-emerald-400" };
+    case "bid_opportunity":
+      return { glyph: "▼", className: "text-sky-400" };
     default: // pay_upcoming / pay_today
       return { glyph: "₹", className: "text-sky-400" };
   }
@@ -51,8 +56,15 @@ function relativeTime(iso: string): string {
   return new Date(iso).toLocaleDateString("en-IN", { day: "2-digit", month: "short" });
 }
 
-export default function NotificationsBell({ onSelect }: { onSelect: (isin: string) => void }) {
+const OPPORTUNITY_KINDS = new Set(["ask_opportunity", "bid_opportunity"]);
+
+export default function NotificationsBell({
+  onSelect,
+}: {
+  onSelect: (isin: string, tab?: "order book") => void;
+}) {
   const [open, setOpen] = useState(false);
+  const [view, setView] = useState<"feed" | "alerts">("feed");
   // Ids that were unread when the panel opened stay highlighted until close.
   const [freshIds, setFreshIds] = useState<Set<number>>(new Set());
   const queryClient = useQueryClient();
@@ -123,95 +135,133 @@ export default function NotificationsBell({ onSelect }: { onSelect: (isin: strin
         <>
           <div className="fixed inset-0 z-20" onClick={toggle} aria-hidden="true" />
           <div className="absolute right-0 top-full mt-2 z-30 w-96 rounded-lg border border-zinc-700 bg-zinc-900 shadow-xl overflow-hidden">
-            <div className="px-3 py-2 border-b border-zinc-800 text-xs font-bold text-zinc-200 uppercase tracking-wider">
-              Notifications
+            <div className="flex items-center gap-3 px-3 py-2 border-b border-zinc-800 text-xs font-bold uppercase tracking-wider">
               <button
                 type="button"
-                className="ml-3 font-normal normal-case text-zinc-400 hover:text-zinc-200"
-                disabled={markRead.isPending || !items.some((item) => item.read_at === null)}
-                onClick={() =>
-                  markRead.mutate(
-                    items.filter((item) => item.read_at === null).map((item) => item.id),
-                  )
-                }
+                onClick={() => setView("feed")}
+                className={view === "feed" ? "text-zinc-200" : "text-zinc-500 hover:text-zinc-300"}
               >
-                Mark loaded as read
+                Notifications
               </button>
-            </div>
-            {feed.isError && (
-              <div className="p-3 text-xs text-amber-400">
-                Could not refresh notifications.{" "}
-                <button type="button" onClick={() => feed.refetch()} className="underline">
-                  Retry
-                </button>
-              </div>
-            )}
-            {markRead.isError && (
-              <div className="p-3 text-xs text-amber-400">
-                Read status could not be saved. Please retry.
-              </div>
-            )}
-            {feed.isPending && (
-              <div className="p-3 text-xs text-zinc-500">Loading notifications…</div>
-            )}
-            <div className="max-h-96 overflow-y-auto divide-y divide-zinc-800/60">
-              {items.length === 0 && !feed.isPending && !feed.isError && (
-                <div className="px-3 py-6 text-center text-xs text-zinc-500">
-                  No notifications yet
-                </div>
-              )}
-              {items.map((n) => {
-                const icon = kindIcon(n);
-                const fresh = freshIds.has(n.id) || n.read_at === null;
-                return (
-                  <button
-                    key={n.id}
-                    type="button"
-                    onClick={() => {
-                      if (n.read_at === null) markRead.mutate([n.id]);
-                      onSelect(n.isin);
-                      toggle();
-                    }}
-                    className="relative w-full flex items-start gap-2.5 px-3 py-2.5 text-left hover:bg-zinc-800/60 transition-colors"
-                  >
-                    {fresh && (
-                      <span
-                        className={`absolute left-0 top-0 bottom-0 w-0.5 ${severityBar(n.severity)}`}
-                      />
-                    )}
-                    <span className={`mt-px w-4 text-center text-sm shrink-0 ${icon.className}`}>
-                      {icon.glyph}
-                    </span>
-                    <span className="flex-1 min-w-0">
-                      {n.legacy && (
-                        <span className="block text-[11px] text-amber-400">
-                          Legacy payment alert — verify against the current source and bank credit.
-                        </span>
-                      )}
-                      <span className="block text-xs text-zinc-200 leading-snug">{n.title}</span>
-                      {n.body && (
-                        <span className="block mt-0.5 text-[11px] text-zinc-500 leading-snug">
-                          {n.body}
-                        </span>
-                      )}
-                    </span>
-                    <span className="text-[10px] text-zinc-600 shrink-0 mt-px">
-                      {relativeTime(n.created_at)}
-                    </span>
-                  </button>
-                );
-              })}
-              {feed.hasNextPage && (
+              <button
+                type="button"
+                onClick={() => setView("alerts")}
+                className={
+                  view === "alerts" ? "text-zinc-200" : "text-zinc-500 hover:text-zinc-300"
+                }
+                title="Opportunity alert rules, push topic and recent hits"
+              >
+                Alerts
+              </button>
+              {view === "feed" && (
                 <button
                   type="button"
-                  disabled={feed.isFetchingNextPage}
-                  onClick={() => feed.fetchNextPage()}
-                  className="w-full p-3 text-xs text-zinc-400 hover:text-zinc-200"
+                  className="ml-auto font-normal normal-case text-zinc-400 hover:text-zinc-200"
+                  disabled={markRead.isPending || !items.some((item) => item.read_at === null)}
+                  onClick={() =>
+                    markRead.mutate(
+                      items.filter((item) => item.read_at === null).map((item) => item.id),
+                    )
+                  }
                 >
-                  {feed.isFetchingNextPage ? "Loading…" : "Load older notifications"}
+                  Mark loaded as read
                 </button>
               )}
             </div>
+            {view === "alerts" && (
+              <AlertsPanel
+                onSelect={(isin, tab) => {
+                  onSelect(isin, tab);
+                  toggle();
+                }}
+              />
+            )}
+            {view === "feed" && (
+              <>
+                {feed.isError && (
+                  <div className="p-3 text-xs text-amber-400">
+                    Could not refresh notifications.{" "}
+                    <button type="button" onClick={() => feed.refetch()} className="underline">
+                      Retry
+                    </button>
+                  </div>
+                )}
+                {markRead.isError && (
+                  <div className="p-3 text-xs text-amber-400">
+                    Read status could not be saved. Please retry.
+                  </div>
+                )}
+                {feed.isPending && (
+                  <div className="p-3 text-xs text-zinc-500">Loading notifications…</div>
+                )}
+                <div className="max-h-96 overflow-y-auto divide-y divide-zinc-800/60">
+                  {items.length === 0 && !feed.isPending && !feed.isError && (
+                    <div className="px-3 py-6 text-center text-xs text-zinc-500">
+                      No notifications yet
+                    </div>
+                  )}
+                  {items.map((n) => {
+                    const icon = kindIcon(n);
+                    const fresh = freshIds.has(n.id) || n.read_at === null;
+                    return (
+                      <button
+                        key={n.id}
+                        type="button"
+                        onClick={() => {
+                          if (n.read_at === null) markRead.mutate([n.id]);
+                          onSelect(
+                            n.isin,
+                            OPPORTUNITY_KINDS.has(n.kind) ? "order book" : undefined,
+                          );
+                          toggle();
+                        }}
+                        className="relative w-full flex items-start gap-2.5 px-3 py-2.5 text-left hover:bg-zinc-800/60 transition-colors"
+                      >
+                        {fresh && (
+                          <span
+                            className={`absolute left-0 top-0 bottom-0 w-0.5 ${severityBar(n.severity)}`}
+                          />
+                        )}
+                        <span
+                          className={`mt-px w-4 text-center text-sm shrink-0 ${icon.className}`}
+                        >
+                          {icon.glyph}
+                        </span>
+                        <span className="flex-1 min-w-0">
+                          {n.legacy && (
+                            <span className="block text-[11px] text-amber-400">
+                              Legacy payment alert — verify against the current source and bank
+                              credit.
+                            </span>
+                          )}
+                          <span className="block text-xs text-zinc-200 leading-snug">
+                            {n.title}
+                          </span>
+                          {n.body && (
+                            <span className="block mt-0.5 text-[11px] text-zinc-500 leading-snug">
+                              {n.body}
+                            </span>
+                          )}
+                        </span>
+                        <span className="text-[10px] text-zinc-600 shrink-0 mt-px">
+                          {relativeTime(n.created_at)}
+                        </span>
+                      </button>
+                    );
+                  })}
+                  {feed.hasNextPage && (
+                    <button
+                      type="button"
+                      disabled={feed.isFetchingNextPage}
+                      onClick={() => feed.fetchNextPage()}
+                      className="w-full p-3 text-xs text-zinc-400 hover:text-zinc-200"
+                    >
+                      {feed.isFetchingNextPage ? "Loading…" : "Load older notifications"}
+                    </button>
+                  )}
+                </div>
+              </>
+            )}
           </div>
         </>
       )}

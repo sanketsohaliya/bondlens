@@ -9,6 +9,7 @@ import ExploreTable, { type SortState } from "./components/ExploreTable";
 import FilterBar, { DEFAULT_FILTERS, type ListModes } from "./components/FilterBar";
 import Logo from "./components/Logo";
 import NotificationsBell from "./components/NotificationsBell";
+import { parseDeepLink } from "./lib/alertRules";
 import { useAuth } from "./lib/auth";
 import { unionIsins, useWatchlists } from "./lib/lists";
 import Orders from "./pages/Orders";
@@ -44,7 +45,14 @@ export default function App() {
     watchlist: false,
     watchlistId: null,
   });
-  const [selected, setSelected] = useState<{ isin: string; tab?: Tab } | null>(null);
+  // An alert push deep-links to /?bond=ISIN&tab=order%20book: open that
+  // bond straight away, then drop the query so a reload is a plain load.
+  const [selected, setSelected] = useState<{ isin: string; tab?: Tab } | null>(() => {
+    const link = parseDeepLink(window.location.search);
+    if (!link) return null;
+    window.history.replaceState(null, "", window.location.pathname);
+    return { isin: link.isin, tab: link.tab as Tab | undefined };
+  });
   const [sort, setSort] = useState<SortState>(() => loadSaved(SAVED_SORT_KEY, DEFAULT_SORT));
   const { lists: watchlists } = useWatchlists();
 
@@ -162,7 +170,7 @@ export default function App() {
                 </button>
               )}
             </div>
-            <NotificationsBell onSelect={(isin) => setSelected({ isin })} />
+            <NotificationsBell onSelect={(isin, tab) => setSelected({ isin, tab })} />
             <UserMenu />
           </div>
         </header>

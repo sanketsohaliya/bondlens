@@ -1,6 +1,11 @@
 // Response types are GENERATED from the backend's OpenAPI schema —
 // run `npm run codegen` (API must be up) after changing bondlens/models.py.
 export type {
+  AlertRule,
+  AlertRuleIn,
+  AlertRulePatch,
+  AlertSettings,
+  AlertsOverview,
   AskYtm,
   AskYtmResponse,
   Bond,
@@ -14,6 +19,8 @@ export type {
   EvidenceFieldComparison,
   EvidenceSummary,
   ExchangeNotice,
+  ExitTarget,
+  ExitTargetIn,
   Filters,
   FlowEvidence,
   FlowSourceEvidence,
@@ -28,6 +35,7 @@ export type {
   ListsResponse,
   Notification,
   NotificationsResponse,
+  OpportunityHit,
   OrderBook,
   PortfolioIncome,
   PortfolioLot,
