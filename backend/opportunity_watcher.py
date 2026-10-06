@@ -115,7 +115,8 @@ class UserSession:
         self.token_map: dict[int, tuple[str, str]] = {}   # token -> (isin, exchange)
         self.bonds: dict[str, dict] = {}
         self.dedupe: dict[tuple[str, str], opp.Hit] = {}
-        self.conns: list[tuple[kite_ticker._UserConn, asyncio.Queue, set[int]]] = []
+        self.conns: list[tuple[kite_ticker._UserConn, set[int]]] = []
+        self._closed: set[int] = set()   # id() of sockets we closed on purpose
         self.tasks: list[asyncio.Task] = []
         self.pending_pairs = 0
         self.access_token: str | None = None
@@ -175,55 +176,66 @@ class UserSession:
             return
         # Grow/shrink the list of connections.
         while len(self.conns) > len(desired):
-            conn, queue, _ = self.conns.pop()
-            await self._close(conn, queue)
+            conn, _ = self.conns.pop()
+            await self._close(conn)
         for i, tokens in enumerate(desired):
             if i < len(self.conns):
-                conn, queue, current = self.conns[i]
+                conn, current = self.conns[i]
                 if current == tokens:
                     continue
-                await conn.detach(queue)
-                queue = await conn.attach(tokens)
-                self.conns[i] = (conn, queue, tokens)
-                self._watch(i)
+                await conn.watch(tokens)
+                self.conns[i] = (conn, tokens)
             else:
-                conn = kite_ticker._UserConn(self.user_id, self.access_token)
-                conn.task = asyncio.create_task(conn.run())
-                queue = await conn.attach(tokens)
-                self.conns.append((conn, queue, tokens))
-                self._watch(i)
+                self.conns.append((await self._open(tokens, i), tokens))
+                self.tasks.append(asyncio.create_task(self._supervise(i)))
 
-    def _watch(self, index: int) -> None:
-        self.tasks.append(asyncio.create_task(self._consume(index)))
+    async def _open(self, tokens: set[int], index: int) -> kite_ticker._UserConn:
+        """A socket whose ticks run straight into on_tick (no queue: Kite's
+        subscribe snapshot is thousands of ticks in one frame)."""
+        assert self.access_token is not None
+        conn = kite_ticker._UserConn(self.user_id, self.access_token, sink=self.on_tick)
+        await conn.watch(tokens)
+        conn.task = asyncio.create_task(conn.run())
+        log.info("user %s: ticker socket %d connecting with %d tokens",
+                 self.user_id, index, len(tokens))
+        return conn
 
-    async def _consume(self, index: int) -> None:
-        """Drain one connection's queue; on the end-of-stream sentinel,
-        reconnect with backoff and resubscribe (Kite then re-snapshots)."""
+    async def _supervise(self, index: int) -> None:
+        """Reconnect socket `index` when it ends, with backoff that only
+        resets once a connection has proven itself (60 s up)."""
         backoff = RECONNECT_MIN
-        while True:
-            if index >= len(self.conns):
+        while index < len(self.conns):
+            conn, tokens = self.conns[index]
+            if conn.task is None:
                 return
-            conn, queue, tokens = self.conns[index]
-            tick = await queue.get()
-            if tick is None:
-                if self.access_token is None:
-                    return
-                log.warning("user %s: ticker socket %d closed; reconnecting in %.0fs",
-                            self.user_id, index, backoff)
-                await asyncio.sleep(backoff)
-                backoff = min(backoff * 2, RECONNECT_MAX)
-                conn = kite_ticker._UserConn(self.user_id, self.access_token)
-                conn.task = asyncio.create_task(conn.run())
-                queue = await conn.attach(tokens)
-                if index < len(self.conns):
-                    self.conns[index] = (conn, queue, tokens)
-                continue
-            backoff = RECONNECT_MIN
-            self.on_tick(tick)
+            started = time.monotonic()
+            # Three ways out of this await: the socket died (reconnect), we
+            # closed it on purpose (stop), or this supervisor itself is being
+            # cancelled (propagate).
+            try:
+                await conn.task
+            except asyncio.CancelledError:
+                me = asyncio.current_task()
+                if me is not None and me.cancelling():
+                    raise
+            except Exception:  # noqa: BLE001 - run() already logged it
+                pass
+            if (id(conn) in self._closed or self.access_token is None
+                    or index >= len(self.conns) or self.conns[index][0] is not conn):
+                return
+            if time.monotonic() - started >= 60:
+                backoff = RECONNECT_MIN
+            log.warning("user %s: ticker socket %d closed after %.0fs; reconnecting in %.0fs",
+                        self.user_id, index, time.monotonic() - started, backoff)
+            await asyncio.sleep(backoff)
+            backoff = min(backoff * 2, RECONNECT_MAX)
+            if index >= len(self.conns) or self.access_token is None:
+                return
+            tokens = self.conns[index][1]
+            self.conns[index] = (await self._open(tokens, index), tokens)
 
-    async def _close(self, conn: kite_ticker._UserConn, queue: asyncio.Queue) -> None:
-        with contextlib.suppress(Exception):
-            await conn.detach(queue)
+    async def _close(self, conn: kite_ticker._UserConn) -> None:
+        self._closed.add(id(conn))  # tell the supervisor this one is on purpose
         if conn.task is not None:
             conn.task.cancel()
             with contextlib.suppress(asyncio.CancelledError, Exception):
@@ -236,8 +248,8 @@ class UserSession:
             with contextlib.suppress(asyncio.CancelledError, Exception):
                 await task
         self.tasks.clear()
-        for conn, queue, _ in self.conns:
-            await self._close(conn, queue)
+        for conn, _ in self.conns:
+            await self._close(conn)
         self.conns.clear()
 
     # -- the hot path -----------------------------------------------------------

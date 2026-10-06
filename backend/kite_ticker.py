@@ -18,13 +18,17 @@ streams — the frontend falls back to the REST snapshot path.
 import asyncio
 import contextlib
 import json
+import logging
 import struct
+from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Any
 
 import websockets
 
 from . import kite_connect
+
+log = logging.getLogger("kite_ticker")
 
 WS_URL = "wss://ws.kite.trade?api_key={api_key}&access_token={access_token}"
 
@@ -87,11 +91,17 @@ def tick_to_side(tick: dict[str, Any]) -> dict[str, Any] | None:
 
 class _UserConn:
     """One Kite WS connection for one user, with refcounted token
-    subscriptions and fan-out queues per attached viewer."""
+    subscriptions and fan-out queues per attached viewer - or, for the
+    opportunity watcher, a direct ``sink`` callback: subscribing 3,000
+    instruments makes Kite answer with a snapshot frame of thousands of
+    ticks, which no bounded viewer queue survives, and the watcher's
+    per-tick work is pure CPU anyway."""
 
-    def __init__(self, user_id: int, access_token: str):
+    def __init__(self, user_id: int, access_token: str, *,
+                 sink: Callable[[dict[str, Any]], None] | None = None):
         self.user_id = user_id
         self.access_token = access_token
+        self.sink = sink
         self.refcounts: dict[int, int] = {}
         self.viewers: dict[asyncio.Queue, set[int]] = {}
         self.ws: Any = None
@@ -100,6 +110,7 @@ class _UserConn:
     async def run(self) -> None:
         url = WS_URL.format(api_key=kite_connect.API_KEY,
                             access_token=self.access_token)
+        deliver = self.sink or self._fan_out
         try:
             async with websockets.connect(url, max_size=2 ** 20) as ws:
                 self.ws = ws
@@ -110,13 +121,16 @@ class _UserConn:
                         if len(msg) <= 1:
                             continue  # heartbeat
                         for tick in parse_ticks(msg):
-                            self._fan_out(tick)
-        except Exception:  # noqa: BLE001 - any WS failure ends the stream
-            pass
+                            deliver(tick)
+        except Exception as exc:  # noqa: BLE001 - any WS failure ends the stream
+            # Never silent: a swallowed error here once hid a reconnect
+            # storm for a whole session.
+            log.warning("kite ticker for user %s ended: %r", self.user_id, exc)
         finally:
             self.ws = None
             for queue in self.viewers:
-                queue.put_nowait(None)  # sentinel: stream over
+                with contextlib.suppress(asyncio.QueueFull):
+                    queue.put_nowait(None)  # sentinel: stream over
 
     async def _send_subscribe(self, tokens: list[int]) -> None:
         if self.ws is None or not tokens:
@@ -132,7 +146,25 @@ class _UserConn:
     def _fan_out(self, tick: dict[str, Any]) -> None:
         for queue, tokens in self.viewers.items():
             if tick["token"] in tokens:
-                queue.put_nowait(tick)
+                try:
+                    queue.put_nowait(tick)
+                except asyncio.QueueFull:
+                    pass  # a slow viewer loses a tick; the socket must live on
+
+    async def watch(self, tokens: set[int]) -> None:
+        """Queue-less subscription set for sink users: subscribe what is
+        new, unsubscribe what went away. Before the socket is open the
+        refcounts alone suffice - run() subscribes them on connect."""
+        current = set(self.refcounts)
+        fresh, stale = tokens - current, current - tokens
+        for t in fresh:
+            self.refcounts[t] = 1
+        for t in stale:
+            del self.refcounts[t]
+        if self.ws is not None:
+            with contextlib.suppress(Exception):
+                await self._send_subscribe(sorted(fresh))
+                await self._send_unsubscribe(sorted(stale))
 
     async def attach(self, tokens: set[int]) -> asyncio.Queue:
         queue: asyncio.Queue = asyncio.Queue(maxsize=100)

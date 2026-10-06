@@ -186,23 +186,18 @@ def test_nudge_once_when_rules_exist_but_kite_is_disconnected(monkeypatch):
 class FakeConn:
     instances: list = []
 
-    def __init__(self, user_id, access_token):
-        self.user_id, self.access_token = user_id, access_token
+    def __init__(self, user_id, access_token, *, sink=None):
+        self.user_id, self.access_token, self.sink = user_id, access_token, sink
         self.task = None
         self.subscribed: set[int] = set()
-        self.queue: asyncio.Queue = asyncio.Queue()
+        self.closed = asyncio.Event()
         FakeConn.instances.append(self)
 
     async def run(self):
-        await asyncio.sleep(3600)
+        await self.closed.wait()   # "socket closed" when the test sets this
 
-    async def attach(self, tokens):
+    async def watch(self, tokens):
         self.subscribed = set(tokens)
-        self.queue = asyncio.Queue()
-        return self.queue
-
-    async def detach(self, queue):
-        self.subscribed = set()
 
 
 def test_reconcile_splits_tokens_across_sockets_and_reconnects_on_close(monkeypatch):
@@ -217,16 +212,31 @@ def test_reconcile_splits_tokens_across_sockets_and_reconnects_on_close(monkeypa
         s.token_map = {1: ("A", "NSE"), 2: ("A", "BSE"), 3: ("B", "NSE")}
         await s.reconcile_connections()
         assert [sorted(c.subscribed) for c in FakeConn.instances] == [[1, 2], [3]]
-        # Simulate Kite closing socket 0: the consumer reconnects and resubscribes.
-        FakeConn.instances[0].queue.put_nowait(None)
+        assert all(c.sink == s.on_tick for c in FakeConn.instances)
+        # Kite closes socket 0: the supervisor reconnects with the same tokens.
+        FakeConn.instances[0].closed.set()
         await asyncio.sleep(0.05)
         assert len(FakeConn.instances) == 3 and sorted(FakeConn.instances[2].subscribed) == [1, 2]
-        # A refresh that drops token 3 closes the second socket.
-        s.token_map = {1: ("A", "NSE"), 2: ("A", "BSE")}
+        assert s.conns[0][0] is FakeConn.instances[2]
+        # A refresh that drops token 3 closes the second socket; one that
+        # changes a set re-watches in place.
+        s.token_map = {1: ("A", "NSE"), 5: ("C", "BSE")}
         await s.reconcile_connections()
-        assert len(s.conns) == 1
+        assert len(s.conns) == 1 and sorted(FakeConn.instances[2].subscribed) == [1, 5]
         await s.disconnect()
         assert s.conns == [] and s.tasks == []
+    asyncio.run(run())
+
+
+def test_a_snapshot_burst_fires_only_matching_rules(monkeypatch):
+    async def run():
+        s, pusher, recorded = make_session(monkeypatch)
+        s.token_map = {t: (f"X{t}", "BSE") for t in range(1, 3001)}
+        s.token_map[101] = ("INE000A", "BSE")
+        for t in range(1, 3001):
+            s.on_tick(tick(t, asks=[(940.0, 3)]))   # 2,999 unwatched bonds + one match
+        await settle()
+        assert len(pusher.calls) == 1 and recorded[0][2] == "INE000A"
     asyncio.run(run())
 
 
