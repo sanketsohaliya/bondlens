@@ -76,6 +76,9 @@ def make_session(monkeypatch, pusher=None):
                         lambda *a, **k: recorded.append(("bell", a[1], a[3], a[4])) or True)
     monkeypatch.setattr(w.rules_db, "record_hit",
                         lambda uid, hit, today, **k: recorded.append(("ledger", hit.source, hit.isin, hit.ytm, k["push_ms"], k.get("below_threshold"))) or 1)
+    monkeypatch.setattr(w.rules_db, "auto_spend_today",
+                        lambda uid, today: {"by_rule": {}, "total": 0.0, "ordered": set()})
+    monkeypatch.setattr(w.rules_db, "get_auto_buy_cap", lambda uid: None)
 
     class Calc:
         def __init__(self, isin):
@@ -223,6 +226,111 @@ def test_rule_changes_refresh_only_that_user(monkeypatch):
         monkeypatch.setattr(w.rules_db, "changed_since", lambda since: {})
         await wt.apply_changes()
         assert refreshed == [9]
+    asyncio.run(run())
+
+
+# --- auto-buy ----------------------------------------------------------------------
+
+def arm(session, **over):
+    """Replace the session's single ask rule with an armed copy."""
+    from dataclasses import replace
+    [rule] = session.thresholds.asks["INE000A"]
+    until = datetime.now(UTC) + timedelta(hours=2)
+    session.thresholds.asks["INE000A"] = [replace(rule, buy_budget=10_000.0, buy_daily_cap=50_000.0,
+                                                  auto_buy_until=until, **over)]
+
+
+def wire_kite(monkeypatch, *, cash=1e6, fail=None):
+    placed: list = []
+    orders: list = []
+    monkeypatch.setattr(w.kite_connect, "margins", lambda uid: {"available_cash": cash})
+
+    def place_order(uid, exchange, symbol, side, qty, price):
+        if fail:
+            raise w.kite_connect.KiteError(400, fail)
+        placed.append((exchange, symbol, side, qty, price))
+        return "2510140001"
+    monkeypatch.setattr(w.kite_connect, "place_order", place_order)
+    monkeypatch.setattr(w.queries, "bonds_symbols", lambda isins: {i: {"bse_scrip_id": "ICL27"} for i in isins})
+    monkeypatch.setattr(w.kite, "resolve_bse", lambda scrip: ("ICL27", 101) if scrip else None)
+    monkeypatch.setattr(w.kite, "resolve_nse", lambda sym, series: None)
+    counter = {"n": 0}
+
+    def record(uid, **k):
+        counter["n"] += 1
+        orders.append(dict(k))
+        return counter["n"]
+    monkeypatch.setattr(w.rules_db, "record_auto_order", record)
+    monkeypatch.setattr(w.rules_db, "finish_auto_order",
+                        lambda oid, **k: orders.append({"finish": oid, **k}))
+    return placed, orders
+
+
+def test_armed_rule_places_a_limit_buy_at_the_ask_and_tells_you(monkeypatch):
+    async def run():
+        s, pusher, recorded = make_session(monkeypatch)
+        arm(s)
+        placed, orders = wire_kite(monkeypatch)
+        s.on_tick(tick(101, asks=[(940.0, 30)]))
+        await settle()
+        assert placed == [("BSE", "ICL27", "BUY", 10, 940.0)]        # floor(10,000 / 940) = 10
+        assert orders[0]["status"] == "skipped" and orders[0]["reason"] == "placing"   # slot claimed first
+        assert orders[1] == {"finish": 1, "status": "placed", "reason": None, "kite_order_id": "2510140001"}
+        titles = [c["title"] for c in pusher.calls]
+        assert titles[0].startswith("Ask ₹940.00 × 30")   # the alert itself, yield unknown on the hot path
+        assert titles[1].startswith("Order placed: 10 × ALPHA LTD @ ₹940.00")
+        assert ("bell", "auto_order", "INE000A", titles[1]) in recorded
+    asyncio.run(run())
+
+
+def test_disarmed_or_capped_rules_do_not_order(monkeypatch):
+    async def run():
+        s, pusher, recorded = make_session(monkeypatch)
+        placed, orders = wire_kite(monkeypatch)
+        s.on_tick(tick(101, asks=[(940.0, 30)]))       # not armed: nothing beyond the alert
+        await settle()
+        assert placed == [] and orders == [] and len(pusher.calls) == 1
+        s2, pusher2, recorded2 = make_session(monkeypatch)
+        arm(s2)
+        placed2, orders2 = wire_kite(monkeypatch, cash=500.0)   # cash short
+        s2.on_tick(tick(101, asks=[(940.0, 30)]))
+        await settle()
+        assert placed2 == [] and orders2[0]["status"] == "skipped"
+        assert orders2[0]["reason"].startswith("available cash ₹500")
+        assert pusher2.calls[1]["title"] == "Auto-buy skipped: ALPHA LTD"
+        assert ("bell", "auto_order_skipped", "INE000A", "Auto-buy skipped: ALPHA LTD") in recorded2
+    asyncio.run(run())
+
+
+def test_kite_rejection_is_recorded_and_pushed(monkeypatch):
+    async def run():
+        s, pusher, recorded = make_session(monkeypatch)
+        arm(s)
+        placed, orders = wire_kite(monkeypatch, fail="Insufficient funds. Required margin is 9400")
+        s.on_tick(tick(101, asks=[(940.0, 30)]))
+        await settle()
+        assert placed == [] and orders[1]["status"] == "rejected"
+        assert "Insufficient funds" in orders[1]["reason"]
+        assert pusher.calls[1]["title"] == "Auto-buy rejected: ALPHA LTD"
+    asyncio.run(run())
+
+
+def test_yield_short_hit_never_orders(monkeypatch):
+    async def run():
+        s, pusher, recorded = make_session(monkeypatch)
+        arm(s)
+        placed, orders = wire_kite(monkeypatch)
+
+        class LowCalc:
+            def __init__(self, isin):
+                pass
+
+            def values(self, prices, today):
+                return [{"ytm": 11.6}]
+        monkeypatch.setattr(w.ask_ytm, "PriceCalculator", LowCalc)
+        s.on_tick(tick(101, asks=[(940.0, 30)]))
+        await settle()
+        assert placed == [] and orders[0]["reason"].startswith("exact yield 11.60%")
     asyncio.run(run())
 
 

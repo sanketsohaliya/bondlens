@@ -275,11 +275,38 @@ def alerts_overview(hits: Literal["today", "all"] = Query("today"),
     `hits=today` (default) limits the hit list to the current IST day."""
     return {"rules": opportunity_rules.list_rules(user_id),
             "targets": opportunity_rules.list_targets(user_id),
-            "settings": {"ntfy_topic": opportunity_rules.get_topic(user_id)},
+            "settings": {"ntfy_topic": opportunity_rules.get_topic(user_id),
+                         "auto_buy_daily_cap": opportunity_rules.get_auto_buy_cap(user_id)},
             "recent": opportunity_rules.recent_hits(
                 user_id, today=_ist_today() if hits == "today" else None),
             "hits_today": opportunity_rules.hits_today(user_id, _ist_today()),
+            "auto_orders": opportunity_rules.recent_auto_orders(user_id, _ist_today()),
+            "spent_today": _spent_today(user_id),
             "watcher": opportunity_rules.read_heartbeat()}
+
+
+def _spent_today(user_id: int) -> dict[str, float]:
+    spend = opportunity_rules.auto_spend_today(user_id, _ist_today())
+    out = {f"rule:{rid}": v for rid, v in spend["by_rule"].items()}
+    out["total"] = spend["total"]
+    return out
+
+
+@router.post("/api/alerts/rules/{rule_id}/auto-buy", response_model=models.AlertRule)
+def alerts_arm_auto_buy(rule_id: int, body: models.AutoBuyArm,
+                        user_id: int = Depends(auth.require_user)):
+    """Arm (until 15:45 IST today) or disarm auto-buy on one rule. Arming
+    needs a budget and daily cap on the rule and a live Kite session."""
+    if body.on and (not kite_connect.configured() or kite_connect.token_for(user_id) is None):
+        raise HTTPException(status_code=409, detail="Connect Kite before arming auto-buy")
+    return _rules_call(opportunity_rules.arm_auto_buy, user_id, rule_id, body.on)
+
+
+@router.post("/api/alerts/disarm", response_model=models.Ok)
+def alerts_disarm_all(user_id: int = Depends(auth.require_user)):
+    """Kill switch: disarm auto-buy on every rule."""
+    opportunity_rules.disarm_all(user_id)
+    return {"ok": True}
 
 
 @router.post("/api/alerts/rules", response_model=models.AlertRule, status_code=201)
@@ -317,7 +344,12 @@ def alerts_delete_target(isin: str, user_id: int = Depends(auth.require_user)):
 
 @router.put("/api/alerts/settings", response_model=models.AlertSettings)
 def alerts_put_settings(body: models.AlertSettings, user_id: int = Depends(auth.require_user)):
-    return {"ntfy_topic": _rules_call(opportunity_rules.set_topic, user_id, body.ntfy_topic)}
+    fields = body.model_fields_set
+    topic = (_rules_call(opportunity_rules.set_topic, user_id, body.ntfy_topic)
+             if "ntfy_topic" in fields else opportunity_rules.get_topic(user_id))
+    cap = (_rules_call(opportunity_rules.set_auto_buy_cap, user_id, body.auto_buy_daily_cap)
+           if "auto_buy_daily_cap" in fields else opportunity_rules.get_auto_buy_cap(user_id))
+    return {"ntfy_topic": topic, "auto_buy_daily_cap": cap}
 
 
 @router.post("/api/alerts/test", response_model=models.Ok)

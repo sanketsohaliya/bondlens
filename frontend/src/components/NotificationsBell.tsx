@@ -30,6 +30,10 @@ function kindIcon(n: Notification): { glyph: string; className: string } {
       return { glyph: "≈", className: n.severity === "warn" ? "text-amber-400" : "text-zinc-400" };
     case "ask_opportunity":
       return { glyph: "▲", className: "text-emerald-400" };
+    case "auto_order":
+      return { glyph: "₹", className: "text-emerald-400" };
+    case "auto_order_skipped":
+      return { glyph: "!", className: "text-amber-400" };
     case "bid_opportunity":
       return { glyph: "▼", className: "text-sky-400" };
     default: // pay_upcoming / pay_today
@@ -55,7 +59,12 @@ function relativeTime(iso: string): string {
   return new Date(iso).toLocaleDateString("en-IN", { day: "2-digit", month: "short" });
 }
 
-const OPPORTUNITY_KINDS = new Set(["ask_opportunity", "bid_opportunity"]);
+const OPPORTUNITY_KINDS = new Set([
+  "ask_opportunity",
+  "bid_opportunity",
+  "auto_order",
+  "auto_order_skipped",
+]);
 
 export default function NotificationsBell({
   onSelect,

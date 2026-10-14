@@ -122,6 +122,9 @@ export const api = {
       request<{ ok: boolean }>("DELETE", `/api/alerts/targets/${isin}`),
     putSettings: (body: AlertSettings) =>
       request<AlertSettings>("PUT", "/api/alerts/settings", body),
+    armAutoBuy: (id: number, on: boolean) =>
+      request<AlertRule>("POST", `/api/alerts/rules/${id}/auto-buy`, { on }),
+    disarmAll: () => request<{ ok: boolean }>("POST", "/api/alerts/disarm"),
     test: () => request<{ ok: boolean }>("POST", "/api/alerts/test"),
   },
   notifications: {

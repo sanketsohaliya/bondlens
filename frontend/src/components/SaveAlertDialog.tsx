@@ -27,12 +27,16 @@ export default function SaveAlertDialog({
   const [maxTicket, setMaxTicket] = useState(num(rule?.max_ticket));
   const [maxPrice, setMaxPrice] = useState(num(rule?.max_price));
   const [minQty, setMinQty] = useState(num(rule?.min_qty));
+  const [buyBudget, setBuyBudget] = useState(num(rule?.buy_budget));
+  const [buyCap, setBuyCap] = useState(num(rule?.buy_daily_cap));
   const qc = useQueryClient();
   const body = () => ({
     min_ask_ytm: minYtm ? Number(minYtm) : null,
     max_ticket: maxTicket ? Number(maxTicket) : null,
     max_price: maxPrice ? Number(maxPrice) : null,
     min_qty: minQty ? Number(minQty) : null,
+    buy_budget: buyBudget ? Number(buyBudget) : null,
+    buy_daily_cap: buyCap ? Number(buyCap) : null,
   });
   const save = useMutation({
     mutationFn: () =>
@@ -44,7 +48,8 @@ export default function SaveAlertDialog({
       onClose();
     },
   });
-  const valid = Boolean(minYtm || maxPrice);
+  const autoBuyHalf = Boolean(buyBudget) !== Boolean(buyCap);
+  const valid = Boolean(minYtm || maxPrice) && !autoBuyHalf;
   const label = previewLabel({ filters: kept, ...body() });
   const input =
     "w-full rounded-md border border-zinc-700 bg-zinc-950 px-2 py-1.5 text-sm text-zinc-100 focus:border-emerald-500 focus:outline-none";
@@ -111,6 +116,38 @@ export default function SaveAlertDialog({
               onChange={(e) => setMinQty(e.target.value)}
             />
           </label>
+        </div>
+        <div className="mt-4 rounded-md border border-amber-500/20 bg-amber-500/5 p-3">
+          <div className="text-[11px] font-semibold uppercase tracking-wider text-amber-400/90">
+            Auto-buy (optional)
+          </div>
+          <p className="mt-0.5 text-[11px] text-zinc-500">
+            When armed, a hit places a LIMIT CNC buy at the ask: as many units as the budget
+            affords, never more than are offered. Arming is per day, from the rule row.
+          </p>
+          <div className="mt-2 grid grid-cols-2 gap-3">
+            <label className="text-[11px] text-zinc-400">
+              Buy up to ₹ per hit
+              <input
+                className={`${input} mt-1`}
+                inputMode="decimal"
+                placeholder="e.g. 10000"
+                value={buyBudget}
+                onChange={(e) => setBuyBudget(e.target.value)}
+              />
+            </label>
+            <label className="text-[11px] text-zinc-400">
+              Daily cap ₹ for this rule
+              <input
+                className={`${input} mt-1`}
+                inputMode="decimal"
+                placeholder="e.g. 50000"
+                value={buyCap}
+                onChange={(e) => setBuyCap(e.target.value)}
+              />
+            </label>
+          </div>
+          {autoBuyHalf && <p className="mt-1 text-[11px] text-amber-400">Set both, or neither.</p>}
         </div>
         <div className="mt-3 text-[11px] text-zinc-400">
           Shown everywhere as

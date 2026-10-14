@@ -1,5 +1,5 @@
 """Opportunity alerts: pure evaluation logic (no DB, no network)."""
-from datetime import date, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -192,3 +192,59 @@ def test_thresholds_carry_the_rule_yield_for_the_recheck():
     targets = [{"isin": "H", "enabled": True, "min_bid_price": None, "max_bid_ytm": 9.0}]
     th, _ = opp.build_thresholds([], {}, targets, {("H", 9.0): 1030.0})
     assert th.bids["H"].max_bid_ytm == 9.0 and th.bids["H"].label == "Exit target: Bid YTM ≤ 9%"
+
+
+# --- auto-buy ---------------------------------------------------------------------
+
+NOW = datetime(2026, 10, 14, 5, 0, tzinfo=UTC)   # 10:30 IST
+
+
+def armed_rule(**over) -> opp.AskRule:
+    base = {"rule_id": 7, "label": "Ask YTM ≥ 12%", "max_ask_price": 950.0, "max_price": None,
+            "max_ticket": None, "min_qty": 1.0, "min_ask_ytm": 12.0, "buy_budget": 10_000.0,
+            "buy_daily_cap": 50_000.0, "auto_buy_until": NOW + timedelta(hours=5)}
+    return opp.AskRule(**{**base, **over})
+
+
+def test_size_order_is_budget_bound_and_ask_bound():
+    assert opp.size_order(10_000, 997.0, 50) == 10
+    assert opp.size_order(10_000, 997.0, 4) == 4
+    assert opp.size_order(500, 997.0, 4) == 0
+    assert opp.size_order(None, 997.0, 4) == 0
+    assert opp.size_order(1e6, 99_218.42, 1) == 1
+
+
+def gate(rule: opp.AskRule, h: opp.Hit, *, spent_rule: float = 0.0, spent_all: float = 0.0,
+         global_cap: float | None = None, cash: float | None = None,
+         already_ordered: bool = False, qty: int = 10) -> str | None:
+    return opp.auto_buy_gate(rule, h, now=NOW, spent_rule=spent_rule, spent_all=spent_all,
+                             global_cap=global_cap, cash=cash, already_ordered=already_ordered,
+                             qty=qty)
+
+
+def test_auto_buy_gate_reports_the_first_blocker():
+    h = hit(price=997.0, qty=10, ytm=12.4, ytm_bound=12.0)
+    assert gate(armed_rule(), h) is None
+    assert gate(armed_rule(auto_buy_until=None), h) == "not armed"
+    assert gate(armed_rule(auto_buy_until=NOW - timedelta(minutes=1)), h) == "not armed"
+    assert gate(armed_rule(buy_daily_cap=None), h) == "no budget or daily cap set"
+    assert gate(armed_rule(), hit(price=997.0, qty=10, ytm=11.6, ytm_bound=12.0)) \
+        == "exact yield 11.60% is short of the rule"
+    assert gate(armed_rule(), h, qty=0) == "budget ₹10,000 buys 0 units at ₹997.00"
+    assert gate(armed_rule(), h, already_ordered=True) == "already ordered this bond today"
+    assert gate(armed_rule(), h, spent_rule=45_000.0) == "rule daily cap reached (₹45,000 of ₹50,000)"
+    assert gate(armed_rule(), h, global_cap=1e5, spent_all=95_000.0) \
+        == "global daily cap reached (₹95,000 of ₹1 L)"
+    assert gate(armed_rule(), h, cash=5_000.0) == "available cash ₹5,000 < order ₹9,970"
+
+
+def test_render_order_texts():
+    h = hit(price=997.0, qty=10, exchange="BSE", rule_label="Ask YTM ≥ 12%")
+    bond = {"issuer_name": "ICL FINCORP LIMITED"}
+    title, body = opp.render_order("placed", 10, h, bond, order_id="2510140001")
+    assert title == "Order placed: 10 × ICL FINCORP LIMITED @ ₹997.00 (₹9,970)"
+    assert body == "LIMIT CNC BUY on BSE, Kite order 2510140001\nRule: Ask YTM ≥ 12%"
+    title, body = opp.render_order("rejected", 10, h, bond, reason="Insufficient funds")
+    assert title == "Auto-buy rejected: ICL FINCORP LIMITED" and body.startswith("Kite: Insufficient funds")
+    title, body = opp.render_order("skipped", 0, h, bond, reason="rule daily cap reached")
+    assert title == "Auto-buy skipped: ICL FINCORP LIMITED" and body.startswith("rule daily cap reached")

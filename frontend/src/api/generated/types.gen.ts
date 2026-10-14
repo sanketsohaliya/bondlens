@@ -35,6 +35,14 @@ export type AlertRule = {
      */
     enabled?: boolean;
     /**
+     * Buy Budget
+     */
+    buy_budget?: number | null;
+    /**
+     * Buy Daily Cap
+     */
+    buy_daily_cap?: number | null;
+    /**
      * Id
      */
     id: number;
@@ -42,6 +50,14 @@ export type AlertRule = {
      * Label
      */
     label: string;
+    /**
+     * Auto Buy
+     */
+    auto_buy?: boolean;
+    /**
+     * Auto Buy Until
+     */
+    auto_buy_until?: string | null;
     /**
      * Created At
      */
@@ -90,6 +106,14 @@ export type AlertRuleIn = {
      * Enabled
      */
     enabled?: boolean;
+    /**
+     * Buy Budget
+     */
+    buy_budget?: number | null;
+    /**
+     * Buy Daily Cap
+     */
+    buy_daily_cap?: number | null;
 };
 
 /**
@@ -122,6 +146,14 @@ export type AlertRulePatch = {
      * Enabled
      */
     enabled?: boolean | null;
+    /**
+     * Buy Budget
+     */
+    buy_budget?: number | null;
+    /**
+     * Buy Daily Cap
+     */
+    buy_daily_cap?: number | null;
 };
 
 /**
@@ -132,6 +164,10 @@ export type AlertSettings = {
      * Ntfy Topic
      */
     ntfy_topic?: string | null;
+    /**
+     * Auto Buy Daily Cap
+     */
+    auto_buy_daily_cap?: number | null;
 };
 
 /**
@@ -155,6 +191,16 @@ export type AlertsOverview = {
      * Hits Today
      */
     hits_today?: {
+        [key: string]: number;
+    };
+    /**
+     * Auto Orders
+     */
+    auto_orders?: Array<AutoOrder>;
+    /**
+     * Spent Today
+     */
+    spent_today?: {
         [key: string]: number;
     };
     /**
@@ -317,6 +363,82 @@ export type AskYtmResponse = {
      * Isins
      */
     isins?: Array<string>;
+};
+
+/**
+ * AutoBuyArm
+ */
+export type AutoBuyArm = {
+    /**
+     * On
+     */
+    on: boolean;
+};
+
+/**
+ * AutoOrder
+ */
+export type AutoOrder = {
+    /**
+     * Id
+     */
+    id: number;
+    /**
+     * Rule Id
+     */
+    rule_id: number;
+    /**
+     * Rule Label
+     */
+    rule_label: string;
+    /**
+     * Alert Id
+     */
+    alert_id: number | null;
+    /**
+     * Isin
+     */
+    isin: string;
+    /**
+     * Exchange
+     */
+    exchange: string;
+    /**
+     * Qty
+     */
+    qty: number;
+    /**
+     * Price
+     */
+    price: number;
+    /**
+     * Value
+     */
+    value: number;
+    /**
+     * Trade Day
+     */
+    trade_day: string;
+    /**
+     * Status
+     */
+    status: 'placed' | 'skipped' | 'rejected';
+    /**
+     * Reason
+     */
+    reason: string | null;
+    /**
+     * Kite Order Id
+     */
+    kite_order_id: string | null;
+    /**
+     * Placed At
+     */
+    placed_at: string;
+    /**
+     * Issuer Name
+     */
+    issuer_name?: string | null;
 };
 
 /**
@@ -3153,7 +3275,12 @@ export type NotificationsReadApiNotificationsReadPostResponse = NotificationsRea
 export type AlertsOverviewApiAlertsGetData = {
     body?: never;
     path?: never;
-    query?: never;
+    query?: {
+        /**
+         * Hits
+         */
+        hits?: 'today' | 'all';
+    };
     url: '/api/alerts';
 };
 
@@ -3174,6 +3301,61 @@ export type AlertsOverviewApiAlertsGetResponses = {
 };
 
 export type AlertsOverviewApiAlertsGetResponse = AlertsOverviewApiAlertsGetResponses[keyof AlertsOverviewApiAlertsGetResponses];
+
+export type AlertsArmAutoBuyApiAlertsRulesRuleIdAutoBuyPostData = {
+    body: AutoBuyArm;
+    path: {
+        /**
+         * Rule Id
+         */
+        rule_id: number;
+    };
+    query?: never;
+    url: '/api/alerts/rules/{rule_id}/auto-buy';
+};
+
+export type AlertsArmAutoBuyApiAlertsRulesRuleIdAutoBuyPostErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type AlertsArmAutoBuyApiAlertsRulesRuleIdAutoBuyPostError = AlertsArmAutoBuyApiAlertsRulesRuleIdAutoBuyPostErrors[keyof AlertsArmAutoBuyApiAlertsRulesRuleIdAutoBuyPostErrors];
+
+export type AlertsArmAutoBuyApiAlertsRulesRuleIdAutoBuyPostResponses = {
+    /**
+     * Successful Response
+     */
+    200: AlertRule;
+};
+
+export type AlertsArmAutoBuyApiAlertsRulesRuleIdAutoBuyPostResponse = AlertsArmAutoBuyApiAlertsRulesRuleIdAutoBuyPostResponses[keyof AlertsArmAutoBuyApiAlertsRulesRuleIdAutoBuyPostResponses];
+
+export type AlertsDisarmAllApiAlertsDisarmPostData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/alerts/disarm';
+};
+
+export type AlertsDisarmAllApiAlertsDisarmPostErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type AlertsDisarmAllApiAlertsDisarmPostError = AlertsDisarmAllApiAlertsDisarmPostErrors[keyof AlertsDisarmAllApiAlertsDisarmPostErrors];
+
+export type AlertsDisarmAllApiAlertsDisarmPostResponses = {
+    /**
+     * Successful Response
+     */
+    200: Ok;
+};
+
+export type AlertsDisarmAllApiAlertsDisarmPostResponse = AlertsDisarmAllApiAlertsDisarmPostResponses[keyof AlertsDisarmAllApiAlertsDisarmPostResponses];
 
 export type AlertsCreateRuleApiAlertsRulesPostData = {
     body: AlertRuleIn;

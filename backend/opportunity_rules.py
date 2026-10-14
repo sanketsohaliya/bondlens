@@ -8,8 +8,9 @@ watcher watches precisely what that screen would show.
 from __future__ import annotations
 
 import re
-from datetime import date
+from datetime import UTC, date, datetime
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from psycopg.types.json import Jsonb
 
@@ -18,6 +19,7 @@ from .analytics import ratings
 from .analytics.compute import STALE_AFTER_DAYS
 
 TOPIC_RE = re.compile(r"^[A-Za-z0-9_-]{6,64}$")
+IST = ZoneInfo("Asia/Kolkata")
 
 
 class RuleError(ValueError):
@@ -49,12 +51,15 @@ def changed_since(since) -> dict[int, Any]:
 
 def _row(r: Any) -> dict:
     d = dict(r)
-    for k in ("min_ask_ytm", "max_ticket", "max_price", "min_qty",
-              "min_bid_price", "max_bid_ytm", "below_threshold"):
+    for k in ("min_ask_ytm", "max_ticket", "max_price", "min_qty", "buy_budget", "buy_daily_cap",
+              "min_bid_price", "max_bid_ytm", "below_threshold", "price", "value",
+              "auto_buy_daily_cap"):
         if k in d and d[k] is not None:
             d[k] = float(d[k])
     if "filters" in d and "min_ask_ytm" in d:          # an alert_rules row
         d["label"] = opportunities.rule_label(d)
+        until = d.get("auto_buy_until")
+        d["auto_buy"] = bool(until and until > datetime.now(UTC))
     elif "min_bid_price" in d and "isin" in d and "source" not in d:   # an exit_targets row
         d["label"] = opportunities.target_label(d)
     return d
@@ -74,7 +79,7 @@ def validate_rule(payload: dict) -> dict:
         raise RuleError(400, f"unknown rating grade {filters['min_rating']!r}")
     out = {"filters": opportunities.static_filters(filters),
            "enabled": bool(payload.get("enabled", True))}
-    for k in ("min_ask_ytm", "max_ticket", "max_price", "min_qty"):
+    for k in ("min_ask_ytm", "max_ticket", "max_price", "min_qty", "buy_budget", "buy_daily_cap"):
         v = payload.get(k)
         if v in (None, ""):
             out[k] = None
@@ -88,6 +93,11 @@ def validate_rule(payload: dict) -> dict:
         out[k] = f
     if out["min_ask_ytm"] is None and out["max_price"] is None:
         raise RuleError(400, "set a minimum YTM @ Ask or a maximum price")
+    if (out["buy_budget"] is None) != (out["buy_daily_cap"] is None):
+        raise RuleError(400, "auto-buy needs both a budget per hit and a daily cap")
+    if out["buy_budget"] is not None and out["buy_daily_cap"] is not None \
+            and out["buy_budget"] > out["buy_daily_cap"]:
+        raise RuleError(400, "budget per hit cannot exceed the daily cap")
     return out
 
 
@@ -102,9 +112,11 @@ def create_rule(user_id: int, payload: dict) -> dict:
     with db._conn() as conn:
         r = conn.execute(
             "INSERT INTO alert_rules (user_id, filters, min_ask_ytm, max_ticket, "
-            " max_price, min_qty, enabled) VALUES (%s, %s, %s, %s, %s, %s, %s) RETURNING *",
+            " max_price, min_qty, enabled, buy_budget, buy_daily_cap) "
+            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING *",
             (user_id, Jsonb(v["filters"]), v["min_ask_ytm"], v["max_ticket"],
-             v["max_price"], v["min_qty"], v["enabled"])).fetchone()
+             v["max_price"], v["min_qty"], v["enabled"], v["buy_budget"],
+             v["buy_daily_cap"])).fetchone()
     assert r is not None
     touch(user_id)
     return _row(r)
@@ -121,10 +133,13 @@ def update_rule(user_id: int, rule_id: int, payload: dict) -> dict:
         v = validate_rule(merged)
         r = conn.execute(
             "UPDATE alert_rules SET filters = %s, min_ask_ytm = %s, max_ticket = %s, "
-            " max_price = %s, min_qty = %s, enabled = %s, updated_at = now() "
+            " max_price = %s, min_qty = %s, enabled = %s, buy_budget = %s, buy_daily_cap = %s, "
+            " auto_buy_until = CASE WHEN %s IS NULL THEN NULL ELSE auto_buy_until END, "
+            " updated_at = now() "
             "WHERE id = %s AND user_id = %s RETURNING *",
             (Jsonb(v["filters"]), v["min_ask_ytm"], v["max_ticket"], v["max_price"],
-             v["min_qty"], v["enabled"], rule_id, user_id)).fetchone()
+             v["min_qty"], v["enabled"], v["buy_budget"], v["buy_daily_cap"], v["buy_budget"],
+             rule_id, user_id)).fetchone()
     assert r is not None
     touch(user_id)
     return _row(r)
@@ -217,6 +232,105 @@ def set_topic(user_id: int, topic: str | None) -> str | None:
         conn.execute("UPDATE users SET ntfy_topic = %s WHERE id = %s", (topic, user_id))
     touch(user_id)
     return topic
+
+
+def market_close_today() -> datetime:
+    """15:45 IST today - when an armed rule disarms itself."""
+    ist = datetime.now(IST)
+    return ist.replace(hour=15, minute=45, second=0, microsecond=0)
+
+
+def arm_auto_buy(user_id: int, rule_id: int, on: bool) -> dict:
+    with db._conn() as conn:
+        current = conn.execute("SELECT * FROM alert_rules WHERE id = %s AND user_id = %s",
+                               (rule_id, user_id)).fetchone()
+        if current is None:
+            raise RuleError(404, "rule not found")
+        if on and (current["buy_budget"] is None or current["buy_daily_cap"] is None):
+            raise RuleError(400, "set a budget per hit and a daily cap before arming")
+        if on and datetime.now(IST) >= market_close_today():
+            raise RuleError(400, "market is closed; arm it tomorrow")
+        r = conn.execute(
+            "UPDATE alert_rules SET auto_buy_until = %s, updated_at = now() "
+            "WHERE id = %s AND user_id = %s RETURNING *",
+            (market_close_today() if on else None, rule_id, user_id)).fetchone()
+    assert r is not None
+    touch(user_id)
+    return _row(r)
+
+
+def disarm_all(user_id: int) -> int:
+    with db._conn() as conn:
+        cur = conn.execute("UPDATE alert_rules SET auto_buy_until = NULL "
+                           "WHERE user_id = %s AND auto_buy_until IS NOT NULL", (user_id,))
+    touch(user_id)
+    return cur.rowcount
+
+
+def get_auto_buy_cap(user_id: int) -> float | None:
+    with db._conn() as conn:
+        r = conn.execute("SELECT auto_buy_daily_cap FROM users WHERE id = %s", (user_id,)).fetchone()
+    return float(r["auto_buy_daily_cap"]) if r and r["auto_buy_daily_cap"] is not None else None
+
+
+def set_auto_buy_cap(user_id: int, cap: float | None) -> float | None:
+    if cap is not None and not cap > 0:
+        raise RuleError(400, "daily cap must be positive")
+    with db._conn() as conn:
+        conn.execute("UPDATE users SET auto_buy_daily_cap = %s WHERE id = %s", (cap, user_id))
+    touch(user_id)
+    return cap
+
+
+def auto_spend_today(user_id: int, today: date) -> dict[str, Any]:
+    """{'by_rule': {rule_id: ₹ placed}, 'total': ₹, 'ordered': {(rule_id, isin)}} for today."""
+    with db._conn() as conn:
+        rows = conn.execute(
+            "SELECT rule_id, isin, value, status FROM auto_orders "
+            "WHERE user_id = %s AND trade_day = %s", (user_id, today)).fetchall()
+    by_rule: dict[int, float] = {}
+    total = 0.0
+    ordered: set[tuple[int, str]] = set()
+    for r in rows:
+        ordered.add((r["rule_id"], r["isin"]))
+        if r["status"] == "placed":
+            by_rule[r["rule_id"]] = by_rule.get(r["rule_id"], 0.0) + float(r["value"])
+            total += float(r["value"])
+    return {"by_rule": by_rule, "total": total, "ordered": ordered}
+
+
+def record_auto_order(user_id: int, *, rule_id: int, rule_label: str, alert_id: int | None,
+                      isin: str, exchange: str, tradingsymbol: str | None, qty: int, price: float,
+                      today: date, status: str, reason: str | None = None,
+                      kite_order_id: str | None = None) -> int | None:
+    """Insert the attempt; None when this bond/rule/day already has one
+    (the unique key is the race guard for two ticks on the same bond)."""
+    with db._conn() as conn:
+        r = conn.execute(
+            "INSERT INTO auto_orders (user_id, rule_id, rule_label, alert_id, isin, exchange, "
+            " tradingsymbol, qty, price, value, trade_day, status, reason, kite_order_id) "
+            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) "
+            "ON CONFLICT (user_id, rule_id, isin, trade_day) DO NOTHING RETURNING id",
+            (user_id, rule_id, rule_label, alert_id, isin, exchange, tradingsymbol, qty, price,
+             qty * price, today, status, reason, kite_order_id)).fetchone()
+    return r["id"] if r else None
+
+
+def finish_auto_order(order_id: int, *, status: str, reason: str | None,
+                      kite_order_id: str | None) -> None:
+    with db._conn() as conn:
+        conn.execute("UPDATE auto_orders SET status = %s, reason = %s, kite_order_id = %s "
+                     "WHERE id = %s", (status, reason, kite_order_id, order_id))
+
+
+def recent_auto_orders(user_id: int, today: date | None = None, limit: int = 100) -> list[dict]:
+    with db._conn() as conn:
+        rows = conn.execute(
+            "SELECT o.*, b.issuer_name FROM auto_orders o "
+            "LEFT JOIN bond_analytics b ON b.isin = o.isin "
+            "WHERE o.user_id = %s AND (%s::date IS NULL OR o.trade_day = %s) "
+            "ORDER BY o.placed_at DESC LIMIT %s", (user_id, today, today, limit)).fetchall()
+    return [_row(r) for r in rows]
 
 
 def topics_by_user() -> dict[int, str]:

@@ -21,6 +21,7 @@ class FakeStore:
         self.topics: dict[int, str | None] = {}
         self.next_id = 1
         self.pushed: list[tuple] = []
+        self.cap = None
 
     def list_rules(self, user_id):
         return [r for r in self.rules.values() if r["user_id"] == user_id]
@@ -81,6 +82,36 @@ class FakeStore:
     def hits_today(self, user_id, today):
         return {"rule:1": 3}
 
+    def recent_auto_orders(self, user_id, today=None, limit=100):
+        return []
+
+    def auto_spend_today(self, user_id, today):
+        return {"by_rule": {1: 9970.0}, "total": 9970.0, "ordered": {(1, "INE000A01001")}}
+
+    def get_auto_buy_cap(self, user_id):
+        return self.cap
+
+    def set_auto_buy_cap(self, user_id, cap):
+        if cap is not None and not cap > 0:
+            raise rules.RuleError(400, "daily cap must be positive")
+        self.cap = cap
+        return cap
+
+    def arm_auto_buy(self, user_id, rule_id, on):
+        row = self.rules.get(rule_id)
+        if row is None or row["user_id"] != user_id:
+            raise rules.RuleError(404, "rule not found")
+        if on and (row.get("buy_budget") is None or row.get("buy_daily_cap") is None):
+            raise rules.RuleError(400, "set a budget per hit and a daily cap before arming")
+        row["auto_buy"] = on
+        row["auto_buy_until"] = NOW if on else None
+        return row
+
+    def disarm_all(self, user_id):
+        for r in self.rules.values():
+            r["auto_buy"] = False
+        return 0
+
     def read_heartbeat(self):
         return None
 
@@ -90,10 +121,13 @@ def client(monkeypatch):
     store = FakeStore()
     for name in ("list_rules", "create_rule", "update_rule", "delete_rule", "list_targets",
                  "put_target", "delete_target", "get_topic", "set_topic", "recent_hits",
-                 "hits_today", "read_heartbeat"):
+                 "hits_today", "read_heartbeat", "recent_auto_orders", "auto_spend_today",
+                 "get_auto_buy_cap", "set_auto_buy_cap", "arm_auto_buy", "disarm_all"):
         monkeypatch.setattr(rules, name, getattr(store, name))
     monkeypatch.setattr(queries, "bond_row", lambda isin: {"isin": isin} if isin.startswith("INE") else None)
     monkeypatch.setattr(ntfy, "push", lambda topic, title, body, **kw: store.pushed.append((topic, title)) or 12)
+    monkeypatch.setattr("backend.app.kite_connect.configured", lambda: True)
+    monkeypatch.setattr("backend.app.kite_connect.token_for", lambda uid: "tok")
     current = {"id": 1}
     app.dependency_overrides[require_user] = lambda: current["id"]
     try:
@@ -116,9 +150,11 @@ def test_rule_lifecycle_and_overview(client):
     r = c.patch("/api/alerts/rules/1", json={"enabled": False, "max_price": 1050})
     assert r.status_code == 200 and r.json()["enabled"] is False and r.json()["max_price"] == 1050
     over = c.get("/api/alerts").json()
-    assert [x["id"] for x in over["rules"]] == [1] and over["settings"] == {"ntfy_topic": None}
+    assert [x["id"] for x in over["rules"]] == [1]
     assert over["targets"] == [] and over["recent"] == [] and over["watcher"] is None
     assert over["hits_today"] == {"rule:1": 3} and store.recent_scope == "today"
+    assert over["spent_today"] == {"rule:1": 9970.0, "total": 9970.0} and over["auto_orders"] == []
+    assert over["settings"] == {"ntfy_topic": None, "auto_buy_daily_cap": None}
     c.get("/api/alerts?hits=all")
     assert store.recent_scope == "all"
     assert c.get("/api/alerts?hits=sometimes").status_code == 422
@@ -165,10 +201,13 @@ def test_topic_settings_and_test_push(client):
     assert c.post("/api/alerts/test").status_code == 400  # no topic yet
     assert c.put("/api/alerts/settings", json={"ntfy_topic": "short"}).status_code == 400
     r = c.put("/api/alerts/settings", json={"ntfy_topic": "bondlens-opps-abc123"})
-    assert r.json() == {"ntfy_topic": "bondlens-opps-abc123"}
+    assert r.json() == {"ntfy_topic": "bondlens-opps-abc123", "auto_buy_daily_cap": None}
     assert c.post("/api/alerts/test").json() == {"ok": True}
     assert store.pushed == [("bondlens-opps-abc123", "BondLens alerts are wired")]
-    assert c.put("/api/alerts/settings", json={"ntfy_topic": None}).json() == {"ntfy_topic": None}
+    assert c.put("/api/alerts/settings", json={"ntfy_topic": None}).json() == {"ntfy_topic": None, "auto_buy_daily_cap": None}
+    r = c.put("/api/alerts/settings", json={"auto_buy_daily_cap": 100000})
+    assert r.json() == {"ntfy_topic": None, "auto_buy_daily_cap": 100000.0}
+    assert c.put("/api/alerts/settings", json={"auto_buy_daily_cap": -1}).status_code == 400
 
 
 def test_validate_rule_normalises_numbers_and_filters():
@@ -265,3 +304,27 @@ def test_recent_hits_derives_labels_for_hits_without_one(monkeypatch):
     assert [h["rule_label"] for h in out] == ["Ask YTM ≥ 15%, Rating ≥ BBB-", "Deleted rule #2", "stored"]
     assert all(not k.startswith(("r_", "t_")) for h in out for k in h)
     rules.recent_hits(1)   # no day filter: NULL day binds match every row
+
+
+def test_arming_needs_budget_cap_and_kite(client, monkeypatch):
+    c, store, _ = client
+    rid = c.post("/api/alerts/rules", json=RULE).json()["id"]
+    r = c.post(f"/api/alerts/rules/{rid}/auto-buy", json={"on": True})
+    assert r.status_code == 400 and "budget" in r.json()["detail"]
+    r = c.patch(f"/api/alerts/rules/{rid}", json={"buy_budget": 10000, "buy_daily_cap": 50000})
+    assert r.status_code == 200 and r.json()["buy_budget"] == 10000
+    assert c.post(f"/api/alerts/rules/{rid}/auto-buy", json={"on": True}).json()["auto_buy"] is True
+    assert c.post("/api/alerts/disarm").json() == {"ok": True}
+    assert c.get("/api/alerts").json()["rules"][0]["auto_buy"] is False
+    monkeypatch.setattr("backend.app.kite_connect.token_for", lambda uid: None)
+    assert c.post(f"/api/alerts/rules/{rid}/auto-buy", json={"on": True}).status_code == 409
+    assert c.post("/api/alerts/rules/999/auto-buy", json={"on": False}).status_code == 404
+
+
+def test_validate_rule_auto_buy_fields():
+    with pytest.raises(rules.RuleError):
+        rules.validate_rule({"min_ask_ytm": 12, "buy_budget": 1000})          # cap missing
+    with pytest.raises(rules.RuleError):
+        rules.validate_rule({"min_ask_ytm": 12, "buy_budget": 60000, "buy_daily_cap": 50000})
+    v = rules.validate_rule({"min_ask_ytm": 12, "buy_budget": "10000", "buy_daily_cap": 50000})
+    assert v["buy_budget"] == 10000.0 and v["buy_daily_cap"] == 50000.0

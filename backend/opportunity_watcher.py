@@ -40,6 +40,7 @@ from . import (
     kite_ticker,
     ntfy,
     queries,
+    safe_errors,
     threshold_cache,
 )
 from . import opportunities as opp
@@ -306,11 +307,21 @@ class UserSession:
                 log.warning("user %s: push failed for %s: %s", self.user_id, hit.isin, exc)
         # Slow parts off the loop: exact yield for the record, bell row, ledger.
         loop = asyncio.get_running_loop()
-        full = await loop.run_in_executor(None, self._persist, hit, title, body, tick_at, pushed_at, push_ms)
+        full, alert_id = await loop.run_in_executor(
+            None, self._persist, hit, title, body, tick_at, pushed_at, push_ms)
         self.dedupe[(hit.source, hit.isin)] = full
+        rule = self._rule_for(hit)
+        if rule is not None and rule.armed(datetime.now(UTC)):
+            await loop.run_in_executor(None, self._auto_buy, full, rule, alert_id)
+
+    def _rule_for(self, hit: opp.Hit) -> opp.AskRule | None:
+        if not hit.source.startswith("rule:"):
+            return None
+        rid = int(hit.source.split(":", 1)[1])
+        return next((r for r in self.thresholds.asks.get(hit.isin, []) if r.rule_id == rid), None)
 
     def _persist(self, hit: opp.Hit, title: str, body: str, tick_at: datetime | None,
-                 pushed_at: datetime | None, push_ms: int | None) -> opp.Hit:
+                 pushed_at: datetime | None, push_ms: int | None) -> tuple[opp.Hit, int | None]:
         ytm = None
         try:
             calc = self.ytm_calc.setdefault(hit.isin, ask_ytm.PriceCalculator(hit.isin))
@@ -329,15 +340,92 @@ class UserSession:
         if short is not None:
             log.warning("user %s: %s at %.2f yields %.2f%%, short of the rule by %.2f pt",
                         self.user_id, hit.isin, hit.price, full.ytm or 0, short)
+        alert_id = None
         try:
             if short is None:
                 db.add_notification(self.user_id, kind, "info", hit.isin, title, body,
                                     f"opp:{day}:{hit.source}:{hit.isin}:{hit.price:.2f}")
-            rules_db.record_hit(self.user_id, full, self.today, tick_at=tick_at,
-                                pushed_at=pushed_at, push_ms=push_ms, below_threshold=short)
+            alert_id = rules_db.record_hit(self.user_id, full, self.today, tick_at=tick_at,
+                                           pushed_at=pushed_at, push_ms=push_ms,
+                                           below_threshold=short)
         except Exception as exc:  # noqa: BLE001
             log.warning("user %s: persisting %s failed: %s", self.user_id, hit.isin, exc)
-        return full
+        return full, alert_id
+
+    # -- auto-buy -----------------------------------------------------------------
+
+    def _auto_buy(self, hit: opp.Hit, rule: opp.AskRule, alert_id: int | None) -> None:
+        """Place a LIMIT CNC BUY at the ask that fired, if every fence
+        passes; record and push whatever happened. Runs in the executor,
+        after the alert itself is out the door."""
+        now = datetime.now(UTC)
+        qty = opp.size_order(rule.buy_budget, hit.price, hit.qty)
+        exchange = hit.exchange or "NSE"
+        try:
+            spend = rules_db.auto_spend_today(self.user_id, self.today)
+            global_cap = rules_db.get_auto_buy_cap(self.user_id)
+            cash = None
+            try:
+                cash = kite_connect.margins(self.user_id).get("available_cash")
+                cash = float(cash) if cash is not None else None
+            except Exception as exc:  # noqa: BLE001 - treat unknown cash as unknown, not zero
+                log.warning("user %s: margins unavailable: %s", self.user_id, exc)
+            reason = opp.auto_buy_gate(
+                rule, hit, now=now, spent_rule=spend["by_rule"].get(rule.rule_id, 0.0),
+                spent_all=spend["total"], global_cap=global_cap, cash=cash,
+                already_ordered=(rule.rule_id, hit.isin) in spend["ordered"], qty=qty)
+            status, order_id, symbol = "skipped", None, None
+            if reason is None:
+                symbol = self._tradingsymbol(hit.isin, exchange)
+                if symbol is None:
+                    reason = f"bond not tradable on Kite ({exchange})"
+                else:
+                    # Claim the (rule, bond, day) slot BEFORE calling Kite so a
+                    # second tick can never place a duplicate.
+                    claimed = rules_db.record_auto_order(
+                        self.user_id, rule_id=rule.rule_id, rule_label=rule.label, alert_id=alert_id,
+                        isin=hit.isin, exchange=exchange, tradingsymbol=symbol, qty=qty,
+                        price=hit.price, today=self.today, status="skipped", reason="placing")
+                    if claimed is None:
+                        return  # another tick got there first
+                    try:
+                        order_id = kite_connect.place_order(self.user_id, exchange, symbol, "BUY",
+                                                            qty, hit.price)
+                        status = "placed"
+                    except kite_connect.KiteError as exc:   # Zerodha's own reason, worth showing
+                        status, reason = "rejected", exc.detail
+                    except Exception as exc:  # noqa: BLE001 - anything else stays summarised
+                        status, reason = "rejected", safe_errors.error_summary(exc)
+                    rules_db.finish_auto_order(claimed, status=status, reason=reason,
+                                               kite_order_id=order_id)
+            if status == "skipped" and reason != "not armed":
+                rules_db.record_auto_order(
+                    self.user_id, rule_id=rule.rule_id, rule_label=rule.label, alert_id=alert_id,
+                    isin=hit.isin, exchange=exchange, tradingsymbol=symbol, qty=max(qty, 0),
+                    price=hit.price, today=self.today, status="skipped", reason=reason)
+            if reason == "not armed" or (status == "skipped" and reason and
+                                         reason.startswith("already ordered")):
+                return
+            title, body = opp.render_order(status, qty, hit, self.bonds.get(hit.isin, {}),
+                                           reason=reason, order_id=order_id)
+            kind = "auto_order" if status == "placed" else "auto_order_skipped"
+            db.add_notification(self.user_id, kind, "info" if status == "placed" else "warn",
+                                hit.isin, title, body,
+                                f"auto:{self.today.isoformat()}:{rule.rule_id}:{hit.isin}:{status}")
+            if self.topic:
+                self.pusher.push(self.topic, title, body, priority=ntfy.PRIORITY_URGENT,
+                                 tags="shopping_cart,bondlens" if status == "placed" else "warning,bondlens",
+                                 click=f"https://{DOMAIN}/?bond={hit.isin}&tab=order%20book")
+            log.info("user %s: auto-buy %s for %s: %s", self.user_id, status, hit.isin,
+                     order_id or reason)
+        except Exception as exc:  # noqa: BLE001 - never let the buy path hurt the watcher
+            log.exception("user %s: auto-buy for %s failed: %s", self.user_id, hit.isin, exc)
+
+    def _tradingsymbol(self, isin: str, exchange: str) -> str | None:
+        row = queries.bonds_symbols([isin]).get(isin) or {}
+        hit = (kite.resolve_nse(row.get("nse_symbol"), row.get("nse_series"))
+               if exchange == "NSE" else kite.resolve_bse(row.get("bse_scrip_id")))
+        return hit[0] if hit else None
 
     # -- nudge ------------------------------------------------------------------
 

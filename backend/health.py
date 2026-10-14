@@ -197,6 +197,12 @@ def check(now: datetime | None = None) -> list[str]:
                 (now.astimezone(ZoneInfo("Asia/Kolkata")).date(),)).fetchone()
         if short and short["n"] > SHORT_HITS_LIMIT:
             problems.append(f"watcher: {short['n']} hits today fell short of their rule's yield")
+        with db._conn() as conn:
+            rej = conn.execute(
+                "SELECT count(*) AS n FROM auto_orders WHERE trade_day = %s AND status = 'rejected'",
+                (now.astimezone(ZoneInfo("Asia/Kolkata")).date(),)).fetchone()
+        if rej and rej["n"] > AUTO_BUY_REJECT_LIMIT:
+            problems.append(f"watcher: auto-buy rejected {rej['n']} times today")
 
     return problems
 
@@ -204,6 +210,7 @@ def check(now: datetime | None = None) -> list[str]:
 WATCHER_STALE_MINUTES = 5
 PUSH_P99_LIMIT_MS = 2000
 SHORT_HITS_LIMIT = 5
+AUTO_BUY_REJECT_LIMIT = 3
 
 
 def watcher_problems(beat: dict | None, now: datetime) -> list[str]:

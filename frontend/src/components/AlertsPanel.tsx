@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { api, fmt } from "../api/client";
-import type { AlertRule, ExploreParams } from "../api/types";
+import type { AlertRule, AutoOrder, ExploreParams } from "../api/types";
 import { groupHitsByRule, type HitGroup, watcherStatus } from "../lib/alertRules";
 import { fmtIstTime } from "../lib/quoteValuation";
 import SaveAlertDialog from "./SaveAlertDialog";
@@ -34,13 +34,16 @@ export default function AlertsPanel({
     queryFn: () => api.alerts.overview("all"),
     enabled: scope === "all",
   });
-  const [settings, setSettings] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
   const [dialog, setDialog] = useState<{ params?: ExploreParams; rule?: AlertRule } | null>(null);
 
   if (overview.isPending) return <div className="p-4 text-xs text-zinc-500">Loading alerts…</div>;
   if (overview.isError || !overview.data)
     return <div className="p-4 text-xs text-amber-400">Could not load alerts.</div>;
-  const { rules, recent, hits_today, watcher } = overview.data;
+  const { rules, recent, hits_today, watcher, auto_orders, spent_today, settings } = overview.data;
+  const armedCount = rules.filter((r) => r.auto_buy).length;
+  const ordersByAlert = new Map<number, AutoOrder>();
+  for (const o of auto_orders ?? []) if (o.alert_id != null) ordersByAlert.set(o.alert_id, o);
   const shownHits = scope === "all" && earlier.data ? earlier.data.recent : recent;
   const buckets = groupHitsByRule(shownHits);
   const todayCount = recent.length;
@@ -61,13 +64,21 @@ export default function AlertsPanel({
           <span className={`inline-block w-1.5 h-1.5 rounded-full ${dot}`} />
           {status.label}
           {status.detail && <span className={PILL}>{status.detail}</span>}
+          {armedCount > 0 && (
+            <span
+              className="text-[10px] px-1.5 py-0.5 rounded border border-amber-500/40 text-amber-400 whitespace-nowrap"
+              title="Rules that will place buy orders on a hit until 15:45"
+            >
+              auto-buy armed ({armedCount})
+            </span>
+          )}
         </span>
         <span className="flex-1" />
         <button
           type="button"
           title="Push settings (ntfy topic)"
-          onClick={() => setSettings(!settings)}
-          className={`p-1 rounded hover:text-zinc-200 ${settings ? "text-zinc-200" : "text-zinc-500"}`}
+          onClick={() => setShowSettings(!showSettings)}
+          className={`p-1 rounded hover:text-zinc-200 ${showSettings ? "text-zinc-200" : "text-zinc-500"}`}
         >
           <svg
             width="14"
@@ -86,7 +97,13 @@ export default function AlertsPanel({
         </button>
       </div>
 
-      {settings && <TopicRow topic={overview.data.settings.ntfy_topic ?? null} />}
+      {showSettings && (
+        <SettingsRows
+          topic={settings.ntfy_topic ?? null}
+          cap={settings.auto_buy_daily_cap ?? null}
+          armedCount={armedCount}
+        />
+      )}
 
       <div className="flex items-center border-b border-zinc-800 px-2">
         <button
@@ -119,6 +136,8 @@ export default function AlertsPanel({
                   key={r.id}
                   rule={r}
                   hitsToday={hits_today?.[`rule:${r.id}`] ?? 0}
+                  spentToday={spent_today?.[`rule:${r.id}`] ?? 0}
+                  kiteConnected={kite?.connected ?? false}
                   onEdit={() => setDialog({ rule: r })}
                   onChanged={() => qc.invalidateQueries({ queryKey: ["alerts"] })}
                 />
@@ -151,7 +170,12 @@ export default function AlertsPanel({
                 </div>
                 <ul>
                   {b.groups.map((g) => (
-                    <HitRow key={g.key} group={g} onOpen={() => onSelect(g.isin, "order book")} />
+                    <HitRow
+                      key={g.key}
+                      group={g}
+                      order={ordersByAlert.get(g.latest.id)}
+                      onOpen={() => onSelect(g.isin, "order book")}
+                    />
                   ))}
                 </ul>
               </section>
@@ -182,21 +206,41 @@ export default function AlertsPanel({
   );
 }
 
-function TopicRow({ topic }: { topic: string | null }) {
+function SettingsRows({
+  topic,
+  cap,
+  armedCount,
+}: {
+  topic: string | null;
+  cap: number | null;
+  armedCount: number;
+}) {
   const qc = useQueryClient();
+  const invalidate = () => qc.invalidateQueries({ queryKey: ["alerts"] });
   const [draft, setDraft] = useState<string | null>(null);
+  const [capDraft, setCapDraft] = useState<string | null>(null);
   const save = useMutation({
     mutationFn: (t: string) => api.alerts.putSettings({ ntfy_topic: t || null }),
     onSuccess: () => {
       setDraft(null);
-      qc.invalidateQueries({ queryKey: ["alerts"] });
+      invalidate();
     },
   });
+  const saveCap = useMutation({
+    mutationFn: (c: string) => api.alerts.putSettings({ auto_buy_daily_cap: c ? Number(c) : null }),
+    onSuccess: () => {
+      setCapDraft(null);
+      invalidate();
+    },
+  });
+  const disarm = useMutation({ mutationFn: api.alerts.disarmAll, onSuccess: invalidate });
   const test = useMutation({ mutationFn: api.alerts.test });
   const value = draft ?? topic ?? "";
+  const capValue = capDraft ?? (cap != null ? String(cap) : "");
   return (
-    <div className="px-4 pb-3">
+    <div className="px-4 pb-3 space-y-2">
       <div className="flex items-center gap-2">
+        <span className="w-24 shrink-0 text-[11px] text-zinc-500">Push topic</span>
         <input
           className="flex-1 rounded-md border border-zinc-700 bg-zinc-950 px-2 py-1 text-xs text-zinc-100 focus:border-emerald-500 focus:outline-none"
           placeholder="ntfy topic (keep it private)"
@@ -221,8 +265,37 @@ function TopicRow({ topic }: { topic: string | null }) {
           {test.isPending ? "Sending…" : test.isSuccess ? "Sent ✓" : "Test"}
         </button>
       </div>
-      {(save.isError || test.isError) && (
-        <p className="mt-1 text-red-400">{((save.error || test.error) as Error).message}</p>
+      <div className="flex items-center gap-2">
+        <span className="w-24 shrink-0 text-[11px] text-zinc-500">Auto-buy cap</span>
+        <input
+          className="flex-1 rounded-md border border-zinc-700 bg-zinc-950 px-2 py-1 text-xs text-zinc-100 focus:border-emerald-500 focus:outline-none"
+          inputMode="decimal"
+          placeholder="₹ across all rules per day (optional)"
+          value={capValue}
+          onChange={(e) => setCapDraft(e.target.value)}
+        />
+        <button
+          type="button"
+          disabled={capDraft === null || saveCap.isPending}
+          onClick={() => saveCap.mutate(capValue.trim())}
+          className="px-2 py-1 rounded-md border border-zinc-700 text-zinc-300 hover:border-zinc-500 disabled:opacity-40"
+        >
+          Save
+        </button>
+        <button
+          type="button"
+          disabled={armedCount === 0 || disarm.isPending}
+          onClick={() => disarm.mutate()}
+          title="Kill switch: disarm auto-buy on every rule"
+          className="px-2 py-1 rounded-md border border-red-500/50 text-red-400 hover:bg-red-500/10 disabled:opacity-40"
+        >
+          Disarm all
+        </button>
+      </div>
+      {(save.isError || test.isError || saveCap.isError) && (
+        <p className="mt-1 text-red-400">
+          {((save.error || test.error || saveCap.error) as Error).message}
+        </p>
       )}
     </div>
   );
@@ -232,20 +305,26 @@ function Switch({
   on,
   onChange,
   title,
+  tone = "emerald",
+  disabled = false,
 }: {
   on: boolean;
   onChange: (next: boolean) => void;
   title: string;
+  tone?: "emerald" | "amber";
+  disabled?: boolean;
 }) {
+  const onClass = tone === "amber" ? "bg-amber-500" : "bg-emerald-500";
   return (
     <button
       type="button"
       role="switch"
       aria-checked={on}
       title={title}
+      disabled={disabled}
       onClick={() => onChange(!on)}
-      className={`relative inline-flex h-4 w-7 shrink-0 items-center rounded-full transition-colors ${
-        on ? "bg-emerald-500" : "bg-zinc-700"
+      className={`relative inline-flex h-4 w-7 shrink-0 items-center rounded-full transition-colors disabled:opacity-40 ${
+        on ? onClass : "bg-zinc-700"
       }`}
     >
       <span
@@ -260,16 +339,32 @@ function Switch({
 function RuleRow({
   rule,
   hitsToday,
+  spentToday,
+  kiteConnected,
   onEdit,
   onChanged,
 }: {
   rule: AlertRule;
   hitsToday: number;
+  spentToday: number;
+  kiteConnected: boolean;
   onEdit: () => void;
   onChanged: () => void;
 }) {
   const [confirm, setConfirm] = useState(false);
   const enabled = rule.enabled ?? true;
+  const canArm = rule.buy_budget != null && rule.buy_daily_cap != null;
+  const arm = useMutation({
+    mutationFn: (on: boolean) => api.alerts.armAutoBuy(rule.id, on),
+    onSuccess: onChanged,
+  });
+  const armTitle = !canArm
+    ? "Set a budget per hit and a daily cap (✎) to enable auto-buy"
+    : !kiteConnected && !rule.auto_buy
+      ? "Connect Kite to arm auto-buy"
+      : rule.auto_buy
+        ? `Auto-buy armed until 15:45 — buys up to ₹${rule.buy_budget?.toLocaleString("en-IN")} per hit, click to disarm`
+        : "Arm auto-buy for today";
   const patch = useMutation({
     mutationFn: (enabled: boolean) => api.alerts.updateRule(rule.id, { enabled }),
     onSuccess: onChanged,
@@ -281,6 +376,9 @@ function RuleRow({
   const stats = [
     hitsToday ? `${hitsToday} hit${hitsToday === 1 ? "" : "s"} today` : null,
     rule.last_hit_at ? `last ${fmtIstTime(rule.last_hit_at) ?? ""}` : null,
+    rule.buy_daily_cap != null && (spentToday > 0 || rule.auto_buy)
+      ? `bought ${fmt.inrFull(spentToday)} of ${fmt.inr(rule.buy_daily_cap)} today`
+      : null,
   ].filter(Boolean);
   return (
     <li className={`px-4 py-2.5 ${enabled ? "" : "opacity-60"}`}>
@@ -298,8 +396,20 @@ function RuleRow({
         <Switch
           on={enabled}
           onChange={(v) => patch.mutate(v)}
-          title={enabled ? "Armed — click to pause" : "Paused — click to arm"}
+          title={enabled ? "Alerting — click to pause" : "Paused — click to resume"}
         />
+        <span className="flex items-center gap-1" title={armTitle}>
+          <span className={`text-[10px] ${rule.auto_buy ? "text-amber-400" : "text-zinc-600"}`}>
+            buy
+          </span>
+          <Switch
+            on={Boolean(rule.auto_buy)}
+            onChange={(v) => arm.mutate(v)}
+            title={armTitle}
+            tone="amber"
+            disabled={!canArm || (!kiteConnected && !rule.auto_buy) || arm.isPending}
+          />
+        </span>
         <button
           type="button"
           onClick={onEdit}
@@ -348,8 +458,28 @@ function fmtDay(day: string): string {
   });
 }
 
-function HitRow({ group: g, onOpen }: { group: HitGroup; onOpen: () => void }) {
+function HitRow({
+  group: g,
+  order,
+  onOpen,
+}: {
+  group: HitGroup;
+  order?: AutoOrder;
+  onOpen: () => void;
+}) {
   const h = g.latest;
+  const orderPill =
+    order?.status === "placed"
+      ? {
+          text: `bought ${order.qty}`,
+          cls: "border-emerald-500/40 text-emerald-400",
+          tip: `Kite order ${order.kite_order_id ?? ""}, ${fmt.inrFull(order.value)}`,
+        }
+      : order?.status === "rejected"
+        ? { text: "rejected", cls: "border-red-500/40 text-red-400", tip: order.reason ?? "" }
+        : order?.status === "skipped"
+          ? { text: "skipped", cls: "border-amber-500/40 text-amber-400", tip: order.reason ?? "" }
+          : null;
   const pill = g.short
     ? "bg-amber-500/15 text-amber-400 border-amber-500/30"
     : g.side === "ask"
@@ -374,6 +504,14 @@ function HitRow({ group: g, onOpen }: { group: HitGroup; onOpen: () => void }) {
         className="flex w-full items-center gap-2 px-4 py-1.5 text-left hover:bg-zinc-800/50"
       >
         <span className="min-w-0 flex-1 truncate text-zinc-200">{g.name}</span>
+        {orderPill && (
+          <span
+            className={`shrink-0 text-[10px] px-1.5 py-0.5 rounded border ${orderPill.cls}`}
+            title={orderPill.tip}
+          >
+            {orderPill.text}
+          </span>
+        )}
         {g.count > 1 && <span className={PILL}>×{g.count}</span>}
         <span className={`shrink-0 text-[10px] px-1.5 py-0.5 rounded border ${pill}`}>
           {g.side === "bid" ? "bid " : ""}

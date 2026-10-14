@@ -207,6 +207,13 @@ class AskRule:
     max_ticket: float | None
     min_qty: float
     min_ask_ytm: float | None = None   # the rule's own yield, for the post-push recheck
+    # Auto-buy: armed while auto_buy_until is in the future.
+    buy_budget: float | None = None
+    buy_daily_cap: float | None = None
+    auto_buy_until: datetime | None = None
+
+    def armed(self, now: datetime) -> bool:
+        return self.auto_buy_until is not None and now < self.auto_buy_until
 
 
 @dataclass(frozen=True)
@@ -257,7 +264,9 @@ def build_thresholds(rules: list[dict], candidates: dict[int, list[str]],
             th.asks.setdefault(isin, []).append(AskRule(
                 rule_id=rule["id"], label=rule_label(rule), max_ask_price=max_ask_price,
                 max_price=_f(rule.get("max_price")), max_ticket=_f(rule.get("max_ticket")),
-                min_qty=_f(rule.get("min_qty")) or 1.0, min_ask_ytm=_f(min_ytm)))
+                min_qty=_f(rule.get("min_qty")) or 1.0, min_ask_ytm=_f(min_ytm),
+                buy_budget=_f(rule.get("buy_budget")), buy_daily_cap=_f(rule.get("buy_daily_cap")),
+                auto_buy_until=rule.get("auto_buy_until")))
     for target in targets:
         if not target.get("enabled", True):
             continue
@@ -395,3 +404,57 @@ def render(hit: Hit, bond: dict[str, Any], *, domain: str,
     body += f"\nRule: {hit.rule_label}" if hit.rule_label else ""
     url = f"https://{domain}/?bond={hit.isin}&tab=order%20book"
     return title, body, url
+
+
+# --- Auto-buy -------------------------------------------------------------------
+
+def size_order(budget: float | None, ask_price: float, ask_qty: float) -> int:
+    """Units to buy: as many as the budget affords at the ask, never more
+    than are resting there. 0 when the budget buys less than one unit."""
+    if budget is None or ask_price <= 0 or ask_qty <= 0:
+        return 0
+    return int(min(math.floor(budget / ask_price), math.floor(ask_qty)))
+
+
+def auto_buy_gate(rule: AskRule, hit: Hit, *, now: datetime, spent_rule: float, spent_all: float,
+                  global_cap: float | None, cash: float | None, already_ordered: bool,
+                  qty: int) -> str | None:
+    """The reason NOT to place an order, or None when every fence passes.
+    Checked in this order so the recorded reason is the first real blocker."""
+    if not rule.armed(now):
+        return "not armed"
+    if rule.buy_budget is None or rule.buy_daily_cap is None:
+        return "no budget or daily cap set"
+    if shortfall(hit) is not None:
+        return f"exact yield {hit.ytm:.2f}% is short of the rule"
+    if qty < 1:
+        return f"budget {_inr_short(rule.buy_budget)} buys 0 units at ₹{hit.price:,.2f}"
+    if already_ordered:
+        return "already ordered this bond today"
+    value = qty * hit.price
+    if spent_rule + value > rule.buy_daily_cap:
+        return f"rule daily cap reached ({_inr_short(spent_rule)} of {_inr_short(rule.buy_daily_cap)})"
+    if global_cap is not None and spent_all + value > global_cap:
+        return f"global daily cap reached ({_inr_short(spent_all)} of {_inr_short(global_cap)})"
+    if cash is not None and cash < value:
+        return f"available cash {_inr_short(cash)} < order {_inr_short(value)}"
+    return None
+
+
+def render_order(status: str, qty: int, hit: Hit, bond: dict[str, Any], *,
+                 reason: str | None = None, order_id: str | None = None) -> tuple[str, str]:
+    """(title, body) for the auto-buy push and bell row."""
+    name = (bond.get("issuer_name") or hit.isin).strip()
+    value = qty * hit.price
+    if status == "placed":
+        title = f"Order placed: {qty} × {name} @ ₹{hit.price:,.2f} ({_inr_short(value)})"
+        body = f"LIMIT CNC BUY on {hit.exchange or '?'}, Kite order {order_id}"
+    elif status == "rejected":
+        title = f"Auto-buy rejected: {name}"
+        body = f"Kite: {reason}"
+    else:
+        title = f"Auto-buy skipped: {name}"
+        body = reason or ""
+    if hit.rule_label:
+        body += f"\nRule: {hit.rule_label}"
+    return title, body

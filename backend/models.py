@@ -533,6 +533,9 @@ class AlertRuleIn(BaseModel):
     max_price: float | None = Field(default=None, gt=0)
     min_qty: float | None = Field(default=None, gt=0)
     enabled: bool = True
+    # Auto-buy sizing (both or neither); arming is a separate call.
+    buy_budget: float | None = Field(default=None, gt=0)
+    buy_daily_cap: float | None = Field(default=None, gt=0)
 
 
 class AlertRulePatch(BaseModel):
@@ -542,11 +545,37 @@ class AlertRulePatch(BaseModel):
     max_price: float | None = None
     min_qty: float | None = None
     enabled: bool | None = None
+    buy_budget: float | None = None
+    buy_daily_cap: float | None = None
+
+
+class AutoBuyArm(BaseModel):
+    on: bool
+
+
+class AutoOrder(BaseModel):
+    id: int
+    rule_id: int
+    rule_label: str
+    alert_id: int | None
+    isin: str
+    exchange: str
+    qty: int
+    price: float
+    value: float
+    trade_day: date
+    status: Literal["placed", "skipped", "rejected"]
+    reason: str | None
+    kite_order_id: str | None
+    placed_at: datetime
+    issuer_name: str | None = None
 
 
 class AlertRule(AlertRuleIn):
     id: int
     label: str      # derived from the fields; the one name shown everywhere
+    auto_buy: bool = False          # armed right now
+    auto_buy_until: datetime | None = None
     created_at: datetime
     updated_at: datetime
     last_hit_at: datetime | None = None
@@ -566,6 +595,7 @@ class ExitTarget(ExitTargetIn):
 
 class AlertSettings(BaseModel):
     ntfy_topic: str | None = None
+    auto_buy_daily_cap: float | None = None
 
 
 class OpportunityHit(BaseModel):
@@ -595,6 +625,8 @@ class AlertsOverview(BaseModel):
     settings: AlertSettings
     recent: list[OpportunityHit]
     hits_today: dict[str, int] = Field(default_factory=dict)   # source -> count
+    auto_orders: list[AutoOrder] = Field(default_factory=list)  # today's
+    spent_today: dict[str, float] = Field(default_factory=dict) # "rule:<id>" -> ₹, "total" -> ₹
     watcher: dict[str, Any] | None = None
 
 

@@ -8,6 +8,7 @@ export type {
   AlertsOverview,
   AskYtm,
   AskYtmResponse,
+  AutoOrder,
   Bond,
   BondDetail,
   BondsResponse,
