@@ -9,11 +9,12 @@ again. Lot, notification and ledger writes share a locked transaction;
 failed imports remain retryable instead of silently losing holdings.
 """
 import math
+import os
 from datetime import date, datetime
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from . import db
+from . import db, ntfy, opportunity_rules
 
 TERMINAL = {"COMPLETE", "CANCELLED", "REJECTED"}
 PLATFORM = "Zerodha (Kite)"
@@ -59,6 +60,7 @@ def process_orders(user_id: int, orders: list[dict[str, Any]]) -> int:
         return 0
     done = db.get_processed_order_ids(user_id)
     created = 0
+    pushes: list[tuple[str, str, str]] = []
     for o in terminal:
         order_id = str(o["order_id"])
         if order_id in done:
@@ -81,13 +83,36 @@ def process_orders(user_id: int, orders: list[dict[str, Any]]) -> int:
                 avg = float(o["average_price"])
                 requested = _number(o.get("quantity"))
                 partial = requested is not None and filled < requested
-                title = (f"BUY partially filled: {filled:g} of {requested:g} units — {name} @ ₹{avg:,.2f}"
-                         if partial else f"BUY filled: {filled:g} × {name} @ ₹{avg:,.2f}")
-                body = (f"{o.get('exchange') or 'Exchange'} order {order_id}; status {o['status']}. "
-                        f"{filled:g} filled units added to your portfolio using broker date {_execution_date(o)}.")
-                db.add_notification(user_id, "order_filled", "info", o["isin"], title, body,
-                                    f"kite_fill:{order_id}", conn=conn)
+                value = filled * avg
+                title = (f"Partially filled: {filled:g} of {requested:g} × {name} — ₹{value:,.0f}"
+                         if partial else f"Filled: {filled:g} × {name} — ₹{value:,.0f}")
+                body = "\n".join([
+                    f"avg ₹{avg:,.2f} on {o.get('exchange') or 'exchange'}, Kite order {order_id}"
+                    + (f", rest {o['status']}" if partial else ""),
+                    f"{filled:g} units added to Portfolio (trade date {_execution_date(o)})",
+                ])
+                fresh = db.add_notification(user_id, "order_filled", "info", o["isin"], title, body,
+                                            f"kite_fill:{order_id}", conn=conn)
+                if fresh:
+                    pushes.append((title, body, o["isin"]))
             db.record_fill(user_id, order_id, lot_id, conn=conn)
         done.add(order_id)
         created += lot_id is not None
+    _push_fills(user_id, pushes)
     return created
+
+
+def _push_fills(user_id: int, pushes: list[tuple[str, str, str]]) -> None:
+    """Tell the phone about newly reconciled fills (the bell row is already
+    written; this is the same text). Never allowed to break reconciliation."""
+    if not pushes:
+        return
+    try:
+        topic = opportunity_rules.get_topic(user_id)
+        if not topic:
+            return
+        for title, body, isin in pushes:
+            ntfy.push(topic, title, body, priority=ntfy.PRIORITY_HIGH, tags="white_check_mark,bondlens",
+                      click=f"https://{os.environ.get('DOMAIN') or 'bondlens.in'}/?bond={isin}&tab=order%20book")
+    except Exception as exc:  # noqa: BLE001
+        print(f"fill push failed for user {user_id}: {type(exc).__name__}")

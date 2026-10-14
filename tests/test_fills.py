@@ -82,6 +82,10 @@ def env(monkeypatch):
     monkeypatch.setattr(db, "record_fill", record)
     monkeypatch.setattr(db, "add_lot", fake_add_lot)
     monkeypatch.setattr(db, "add_notification", notify)
+    state["pushes"] = []
+    monkeypatch.setattr(fills.opportunity_rules, "get_topic", lambda uid: state.get("topic", "t-abcdef"))
+    monkeypatch.setattr(fills.ntfy, "push",
+                        lambda topic, title, body, **kw: state["pushes"].append((topic, title, body)) or 1)
     return state
 
 
@@ -94,8 +98,18 @@ def test_buy_complete_creates_lot_and_notification(env):
     assert env["fills"] == [(1, "1001", 71)]
     [(uid, kind, sev, isin, title, body, dedupe)] = env["notifications"]
     assert kind == "order_filled" and isin == "INE000TEST01"
-    assert "51 × TEST FINCORP" in title and "₹1,001.00" in title
+    assert title == "Filled: 51 × TEST FINCORP — ₹51,051" and body.startswith("avg ₹1,001.00 on ")
     assert dedupe == "kite_fill:1001"
+    assert env["pushes"] == [("t-abcdef", title, body)]   # the phone hears the same text
+
+
+def test_fill_push_is_skipped_without_a_topic_and_never_repeats(env):
+    env["topic"] = None
+    assert fills.process_orders(1, [order()]) == 1
+    assert env["pushes"] == []
+    env["topic"] = "t-abcdef"
+    assert fills.process_orders(1, [order()]) == 0   # already reconciled: no second notification, no push
+    assert env["pushes"] == []
 
 
 def test_idempotent_across_runs(env):
