@@ -378,32 +378,53 @@ def should_fire(previous: Hit | None, hit: Hit) -> bool:
     return hit.price >= previous.price * (1 + REALERT_BID_PCT / 100)
 
 
+def _price(v: float) -> str:
+    """₹997 for whole rupees, ₹1,314.80 otherwise."""
+    return f"₹{v:,.0f}" if float(v).is_integer() else f"₹{v:,.2f}"
+
+
+def _rating(text: str | None) -> str | None:
+    """'CRISIL: BBB-/Stable' -> 'CRISIL BBB-/Stable'."""
+    if not text:
+        return None
+    return text.replace(": ", " ", 1).strip()
+
+
+def _when(at: datetime | None) -> str:
+    return (at or datetime.now(IST)).astimezone(IST).strftime("%H:%M:%S IST")
+
+
+def _bond_lines(hit: Hit, bond: dict[str, Any]) -> list[str]:
+    """Rating + maturity, then symbol + ISIN - the same on every push."""
+    rating = _rating(bond.get("credit_rating"))
+    maturity = (f"matures {bond['maturity_date']:%b %Y}"
+                if isinstance(bond.get("maturity_date"), date) else None)
+    symbol = bond.get("nse_symbol") or bond.get("bse_scrip_id")
+    lines = [", ".join(p for p in (rating, maturity) if p) or None,
+             f"{symbol}, {hit.isin}" if symbol else hit.isin]
+    return [line for line in lines if line]
+
+
 def render(hit: Hit, bond: dict[str, Any], *, domain: str,
            tick_at: datetime | None = None) -> tuple[str, str, str]:
-    """(title, body, click_url) for the push and the bell entry."""
+    """(title, body, click_url) for the push and the bell entry: the issuer
+    and the yield up top, then one fact per line - the ask, the bond, the
+    identifiers, the rule, the time."""
     name = (bond.get("issuer_name") or hit.isin).strip()
-    symbol = bond.get("nse_symbol") or bond.get("bse_scrip_id") or hit.isin
     units = f"{hit.qty:,.0f}"
     if hit.side == "ask":
-        lead = f"{hit.ytm:.2f}% @ ₹{hit.price:,.2f} × {units}" if hit.ytm is not None \
-            else f"Ask ₹{hit.price:,.2f} × {units}"
-        title = f"{lead} — {name}"
+        title = f"{name} — {hit.ytm:.2f}%" if hit.ytm is not None else f"{name} — ask {_price(hit.price)}"
     else:
-        lead = f"Bid ₹{hit.price:,.2f} × {units}"
-        title = f"{lead} for your {symbol}" + (f" ({hit.ytm:.2f}%)" if hit.ytm is not None else "")
-    when = (tick_at or datetime.now(IST)).astimezone(IST).strftime("%H:%M:%S")
-    parts = [
-        f"{symbol}, {hit.isin}",
-        bond.get("credit_rating") or None,
-        f"matures {bond['maturity_date']:%b %Y}" if isinstance(bond.get("maturity_date"), date) else None,
-        f"ticket ₹{hit.price * hit.qty:,.0f}",
-        f"on {hit.exchange}" if hit.exchange else None,
-        f"as of {when} IST",
-    ]
-    body = ", ".join(p for p in parts if p)
-    body += f"\nRule: {hit.rule_label}" if hit.rule_label else ""
+        title = f"{name} — bid {_price(hit.price)}" + (f" ({hit.ytm:.2f}%)" if hit.ytm is not None else "")
+    ask_line = f"{_price(hit.price)} × {units} = {_price(hit.price * hit.qty)}"
+    if hit.exchange:
+        ask_line += f" on {hit.exchange}"
+    lines = [ask_line, *_bond_lines(hit, bond)]
+    if hit.rule_label:
+        lines.append(f"Rule: {hit.rule_label}")
+    lines.append(_when(tick_at))
     url = f"https://{domain}/?bond={hit.isin}&tab=order%20book"
-    return title, body, url
+    return title, "\n".join(lines), url
 
 
 # --- Auto-buy -------------------------------------------------------------------
@@ -442,19 +463,24 @@ def auto_buy_gate(rule: AskRule, hit: Hit, *, now: datetime, spent_rule: float, 
 
 
 def render_order(status: str, qty: int, hit: Hit, bond: dict[str, Any], *,
-                 reason: str | None = None, order_id: str | None = None) -> tuple[str, str]:
-    """(title, body) for the auto-buy push and bell row."""
+                 reason: str | None = None, order_id: str | None = None,
+                 at: datetime | None = None) -> tuple[str, str]:
+    """(title, body) for the auto-buy push and bell row. 'placed' is an
+    order on the book, not a fill - a taken ask leaves it resting."""
     name = (bond.get("issuer_name") or hit.isin).strip()
     value = qty * hit.price
+    where = f" on {hit.exchange}" if hit.exchange else ""
+    attempt = f"{qty} × {_price(hit.price)} = {_price(value)}{where}"
     if status == "placed":
-        title = f"Order placed: {qty} × {name} @ ₹{hit.price:,.2f} ({_inr_short(value)})"
-        body = f"LIMIT CNC BUY on {hit.exchange or '?'}, Kite order {order_id}"
+        title = f"Order placed: {qty} × {name} — {_price(value)}"
+        lines = [f"LIMIT at {_price(hit.price)}{where}, Kite order {order_id}"]
     elif status == "rejected":
-        title = f"Auto-buy rejected: {name}"
-        body = f"Kite: {reason}"
+        title = f"Auto-buy rejected — {name}"
+        lines = [f"Kite: {reason}", f"Tried {attempt}"]
     else:
-        title = f"Auto-buy skipped: {name}"
-        body = reason or ""
+        title = f"Auto-buy skipped — {name}"
+        lines = [reason or "skipped"] + ([f"Would have been {attempt}"] if qty > 0 else [])
     if hit.rule_label:
-        body += f"\nRule: {hit.rule_label}"
-    return title, body
+        lines.append(f"Rule: {hit.rule_label}")
+    lines.append(_when(at))
+    return title, "\n".join(lines)

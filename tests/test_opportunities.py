@@ -134,22 +134,32 @@ def test_should_fire_once_a_day_unless_the_quote_improves_materially():
     assert opp.should_fire(bid, hit(side="bid", source="target", price=1005.0, ytm=None))
 
 
-def test_render_names_the_opportunity_and_links_to_the_order_book():
+def test_render_reads_issuer_then_yield_one_fact_per_line():
     bond = {"issuer_name": "DEV ACCELERATOR LIMITED", "nse_symbol": None, "bse_scrip_id": "1175DAL29",
             "credit_rating": "ACUITE: BBB/Stable", "maturity_date": date(2029, 8, 1)}
     at = datetime(2026, 10, 5, 4, 1, 41, tzinfo=ZoneInfo("UTC"))  # 09:31:41 IST
     title, body, url = opp.render(hit(), bond, domain="bondlens.in", tick_at=at)
-    assert title == "12.40% @ ₹950.00 × 4 — DEV ACCELERATOR LIMITED"
-    assert "1175DAL29, A" in body and "ACUITE: BBB/Stable" in body
-    assert "matures Aug 2029" in body and "ticket ₹3,800" in body
-    first, rule_line = body.split("\n")
-    assert first.endswith("as of 09:31:41 IST")
-    assert rule_line == "Rule: Ask YTM ≥ 12%, Rating ≥ BBB-"   # the one label, verbatim
+    assert title == "DEV ACCELERATOR LIMITED — 12.40%"
+    assert body.split("\n") == [
+        "₹950 × 4 = ₹3,800 on BSE",
+        "ACUITE BBB/Stable, matures Aug 2029",
+        "1175DAL29, A",
+        "Rule: Ask YTM ≥ 12%, Rating ≥ BBB-",
+        "09:31:41 IST",
+    ]
     assert url == "https://bondlens.in/?bond=A&tab=order%20book"
-    title, body, _ = opp.render(hit(side="bid", source="target", price=1015.0, qty=10, ytm=None,
-                                    rule_label="Exit target: Bid ≥ ₹1,010"), bond, domain="x")
-    assert title == "Bid ₹1,015.00 × 10 for your 1175DAL29"
-    assert body.endswith("\nRule: Exit target: Bid ≥ ₹1,010")
+    # Hot path: yield unknown yet; fractional price keeps paise; unrated bond.
+    title, body, _ = opp.render(hit(ytm=None, price=1314.8, qty=83),
+                                {"issuer_name": "ICL", "maturity_date": date(2031, 6, 1)},
+                                domain="x", tick_at=at)
+    assert title == "ICL — ask ₹1,314.80"
+    assert body.split("\n")[:3] == ["₹1,314.80 × 83 = ₹1,09,128.40 on BSE".replace("₹1,09,128.40", f"₹{1314.8 * 83:,.2f}"),
+                                     "matures Jun 2031", "A"]
+    # Bid side.
+    title, body, _ = opp.render(hit(side="bid", source="target", price=1015.0, qty=10, ytm=8.9,
+                                    rule_label="Exit target: Bid ≥ ₹1,010"), bond, domain="x", tick_at=at)
+    assert title == "DEV ACCELERATOR LIMITED — bid ₹1,015 (8.90%)"
+    assert "Rule: Exit target: Bid ≥ ₹1,010" in body.split("\n")
 
 
 @pytest.mark.parametrize("value,expected", [("12", 12.0), (None, None), ("x", None),
@@ -241,10 +251,16 @@ def test_auto_buy_gate_reports_the_first_blocker():
 def test_render_order_texts():
     h = hit(price=997.0, qty=10, exchange="BSE", rule_label="Ask YTM ≥ 12%")
     bond = {"issuer_name": "ICL FINCORP LIMITED"}
-    title, body = opp.render_order("placed", 10, h, bond, order_id="2510140001")
-    assert title == "Order placed: 10 × ICL FINCORP LIMITED @ ₹997.00 (₹9,970)"
-    assert body == "LIMIT CNC BUY on BSE, Kite order 2510140001\nRule: Ask YTM ≥ 12%"
-    title, body = opp.render_order("rejected", 10, h, bond, reason="Insufficient funds")
-    assert title == "Auto-buy rejected: ICL FINCORP LIMITED" and body.startswith("Kite: Insufficient funds")
-    title, body = opp.render_order("skipped", 0, h, bond, reason="rule daily cap reached")
-    assert title == "Auto-buy skipped: ICL FINCORP LIMITED" and body.startswith("rule daily cap reached")
+    at = datetime(2026, 10, 14, 8, 4, 13, tzinfo=UTC)   # 13:34:13 IST
+    title, body = opp.render_order("placed", 10, h, bond, order_id="2510140001", at=at)
+    assert title == "Order placed: 10 × ICL FINCORP LIMITED — ₹9,970"
+    assert body.split("\n") == ["LIMIT at ₹997 on BSE, Kite order 2510140001",
+                                "Rule: Ask YTM ≥ 12%", "13:34:13 IST"]
+    title, body = opp.render_order("rejected", 10, h, bond, reason="Insufficient funds", at=at)
+    assert title == "Auto-buy rejected — ICL FINCORP LIMITED"
+    assert body.split("\n")[:2] == ["Kite: Insufficient funds", "Tried 10 × ₹997 = ₹9,970 on BSE"]
+    title, body = opp.render_order("skipped", 0, h, bond, reason="rule daily cap reached", at=at)
+    assert title == "Auto-buy skipped — ICL FINCORP LIMITED"
+    assert body.split("\n") == ["rule daily cap reached", "Rule: Ask YTM ≥ 12%", "13:34:13 IST"]
+    _, body = opp.render_order("skipped", 10, h, bond, reason="available cash ₹500 < order ₹9,970", at=at)
+    assert "Would have been 10 × ₹997 = ₹9,970 on BSE" in body.split("\n")

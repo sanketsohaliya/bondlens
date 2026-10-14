@@ -209,7 +209,7 @@ export default function NotificationsBell({
                       )}
                       <span className="block text-xs text-zinc-200 leading-snug">{n.title}</span>
                       {n.body && (
-                        <span className="block mt-0.5 text-[11px] text-zinc-500 leading-snug">
+                        <span className="block mt-0.5 text-[11px] text-zinc-500 leading-snug whitespace-pre-line">
                           {n.body}
                         </span>
                       )}

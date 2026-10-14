@@ -113,10 +113,10 @@ def test_ask_hit_pushes_first_then_records_and_dedupes(monkeypatch):
         assert len(pusher.calls) == 1
         call = pusher.calls[0]
         assert call["topic"] == "topic-abcdef" and call["priority"] == "5"
-        assert call["title"] == "Ask ₹940.00 × 3 — ALPHA LTD"   # yield not yet known on the hot path
+        assert call["title"] == "ALPHA LTD — ask ₹940"   # yield not yet known on the hot path
         assert call["click"] == "https://bondlens.in/?bond=INE000A&tab=order%20book"
         assert [r[0] for r in recorded] == ["bell", "ledger"]
-        assert recorded[0][2] == "INE000A" and recorded[0][3].startswith("12.40% @ ₹940.00 × 3")
+        assert recorded[0][2] == "INE000A" and recorded[0][3] == "ALPHA LTD — 12.40%"
         assert recorded[1][3] == 12.4 and recorded[1][4] is not None
         # Same quote again: nothing. A cheaper ask by >= 0.5 %: fires again.
         s.on_tick(tick(101, asks=[(940.0, 3)]))
@@ -140,7 +140,7 @@ def test_bid_target_fires_for_a_holding(monkeypatch):
         s.on_tick(tick(202, bids=[(1009.0, 10)]))
         s.on_tick(tick(202, bids=[(1010.0, 10)]))
         await settle()
-        assert len(pusher.calls) == 1 and pusher.calls[0]["title"].startswith("Bid ₹1,010.00 × 10 for your HELD")
+        assert len(pusher.calls) == 1 and pusher.calls[0]["title"] == "HELD LTD — bid ₹1,010"
         assert recorded[0][1] == "bid_opportunity"
     asyncio.run(run())
 
@@ -277,8 +277,8 @@ def test_armed_rule_places_a_limit_buy_at_the_ask_and_tells_you(monkeypatch):
         assert orders[0]["status"] == "skipped" and orders[0]["reason"] == "placing"   # slot claimed first
         assert orders[1] == {"finish": 1, "status": "placed", "reason": None, "kite_order_id": "2510140001"}
         titles = [c["title"] for c in pusher.calls]
-        assert titles[0].startswith("Ask ₹940.00 × 30")   # the alert itself, yield unknown on the hot path
-        assert titles[1].startswith("Order placed: 10 × ALPHA LTD @ ₹940.00")
+        assert titles[0] == "ALPHA LTD — ask ₹940"   # the alert itself, yield unknown on the hot path
+        assert titles[1] == "Order placed: 10 × ALPHA LTD — ₹9,400"
         assert ("bell", "auto_order", "INE000A", titles[1]) in recorded
     asyncio.run(run())
 
@@ -297,8 +297,8 @@ def test_disarmed_or_capped_rules_do_not_order(monkeypatch):
         await settle()
         assert placed2 == [] and orders2[0]["status"] == "skipped"
         assert orders2[0]["reason"].startswith("available cash ₹500")
-        assert pusher2.calls[1]["title"] == "Auto-buy skipped: ALPHA LTD"
-        assert ("bell", "auto_order_skipped", "INE000A", "Auto-buy skipped: ALPHA LTD") in recorded2
+        assert pusher2.calls[1]["title"] == "Auto-buy skipped — ALPHA LTD"
+        assert ("bell", "auto_order_skipped", "INE000A", "Auto-buy skipped — ALPHA LTD") in recorded2
     asyncio.run(run())
 
 
@@ -311,7 +311,7 @@ def test_kite_rejection_is_recorded_and_pushed(monkeypatch):
         await settle()
         assert placed == [] and orders[1]["status"] == "rejected"
         assert "Insufficient funds" in orders[1]["reason"]
-        assert pusher.calls[1]["title"] == "Auto-buy rejected: ALPHA LTD"
+        assert pusher.calls[1]["title"] == "Auto-buy rejected — ALPHA LTD"
     asyncio.run(run())
 
 

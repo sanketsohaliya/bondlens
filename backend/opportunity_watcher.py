@@ -407,7 +407,7 @@ class UserSession:
                                          reason.startswith("already ordered")):
                 return
             title, body = opp.render_order(status, qty, hit, self.bonds.get(hit.isin, {}),
-                                           reason=reason, order_id=order_id)
+                                           reason=reason, order_id=order_id, at=datetime.now(UTC))
             kind = "auto_order" if status == "placed" else "auto_order_skipped"
             db.add_notification(self.user_id, kind, "info" if status == "placed" else "warn",
                                 hit.isin, title, body,
