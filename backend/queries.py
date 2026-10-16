@@ -20,8 +20,11 @@ SELECT DISTINCT ON (isin) isin, trade_date, exchange,
        volume, turnover, num_trades
 FROM eod_trades
 WHERE segment = %s
-ORDER BY isin, trade_date DESC, turnover DESC NULLS LAST
+ORDER BY isin, trade_date DESC, turnover DESC NULLS LAST, num_trades DESC NULLS LAST, exchange
 """
+# The trailing exchange column makes the pick deterministic: OTC deals are
+# reported on both exchanges for the same day with no turnover, and an
+# arbitrary tie-break made stored and freshly recomputed analytics disagree.
 
 
 def explorer_core() -> dict[str, dict]:
