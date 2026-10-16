@@ -76,8 +76,11 @@ def price_for_yield(sched: schedule.Schedule, terms: dict | None, ytm: float,
     explorer uses, run backwards by bisection). Yield falls as price rises,
     so "yield >= ytm" is "price <= result". None when the schedule cannot
     be priced or no price in (0, 3 x face] reaches that yield."""
-    # Only yields the engine itself would report can be inverted.
+    # Only yields the engine itself would report can be inverted, and never
+    # for a schedule that contradicts the stated maturity (see valuation).
     if not math.isfinite(ytm) or yields._plausible(ytm) is None:
+        return None
+    if schedule.maturity_mismatch(sched, terms):
         return None
     face = sched.face_value or 1000.0
     floor, ceiling = max(face * 0.01, 1.0), face * 3.0

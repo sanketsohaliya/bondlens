@@ -180,6 +180,14 @@ def check(now: datetime | None = None) -> list[str]:
 
         problems.extend(capture_health(Store().snapshot(), now))
 
+    # 6b) Data integrity: schedules that contradict the stated maturity.
+    with db._conn() as conn:
+        mm = conn.execute(
+            "SELECT count(*) AS n FROM bond_analytics "
+            "WHERE valuation->'warnings' @> '[{\"code\": \"maturity_mismatch\"}]'::jsonb").fetchone()
+    if mm and mm["n"] > MATURITY_MISMATCH_LIMIT:
+        problems.append(f"data: {mm['n']} bonds whose cashflow schedule contradicts the stated maturity")
+
     # 7) Opportunity watcher: alive during market hours, thresholds built
     #    before the open, pushes leaving quickly.
     with db._conn() as conn:
@@ -211,6 +219,7 @@ WATCHER_STALE_MINUTES = 5
 PUSH_P99_LIMIT_MS = 2000
 SHORT_HITS_LIMIT = 5
 AUTO_BUY_REJECT_LIMIT = 3
+MATURITY_MISMATCH_LIMIT = 100
 
 
 def watcher_problems(beat: dict | None, now: datetime) -> list[str]:

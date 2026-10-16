@@ -51,6 +51,8 @@ export function isMarketComparison(note: Pick<YieldWarning, "code">): boolean {
 export const CAVEATS: Record<string, string | null> = {
   // error
   schedule_invalid: "Payment schedule could not be validated.",
+  maturity_mismatch:
+    "Cashflow schedule and stated maturity disagree — the yield is computed on the schedule and may be wrong.",
   invalid_payout: "Modeled payout is not finite — totals withheld.",
   // caution: the calculation or its inputs are suspect
   yield_unavailable: "Yield could not be solved.",

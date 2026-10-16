@@ -223,6 +223,7 @@ def test_explorer_params_map_like_the_bonds_endpoint():
     p = rules.explorer_params({"min_rating": "BBB-", "min_years": 1, "traded_within": 5})
     assert p["min_rating_rank"] is not None and "min_rating" not in p
     assert p["min_years"] == 1 and "traded_within" not in p and p["limit"] == 100_000
+    assert p["exclude_maturity_mismatch"] is True   # never alert on a contradicted schedule
 
 
 def test_ntfy_header_encoding_round_trips_non_latin_titles():

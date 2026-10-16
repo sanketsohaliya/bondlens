@@ -6,9 +6,9 @@ from dataclasses import asdict
 from datetime import UTC, date, datetime
 
 from . import yields
-from .schedule import Flow, Schedule
+from .schedule import Flow, Schedule, maturity_mismatch
 
-VERSION = "2026-09-13.1"
+VERSION = "2026-10-15.1"
 RELIABLE = (-1.0, 50.0)
 RELIABLE_NEAR = (0.0, 20.0)
 NEAR_DAYS = 90
@@ -110,6 +110,14 @@ def calculate(price: float | None, sched: Schedule, terms: dict | None, today: d
                         otc_trade_date, terms.get("coupon_type"),
                         otc_price=otc_price, price=price)
     warnings.extend(warning("schedule_invalid", issue, "error") for issue in issues)
+    mismatch = maturity_mismatch(sched, terms)
+    if mismatch:
+        last, stated = mismatch
+        warnings.append(warning(
+            "maturity_mismatch",
+            f"Cashflow schedule redeems on {last:%d %b %Y} but the terms state maturity "
+            f"{stated:%d %b %Y}; the yield is computed on the schedule and may be wrong",
+            "error", schedule_date=last.isoformat(), stated_date=stated.isoformat()))
     if not valid_price:
         warnings.append(warning("price_unavailable", "No finite positive price is available for this calculation", "error"))
     elif value is None:
@@ -133,7 +141,8 @@ def calculate(price: float | None, sched: Schedule, terms: dict | None, today: d
         # caution this marked ~60% of bonds unreliable; as info it feeds the
         # tooltip only.
         warnings.append(warning("old_price", f"Price observation is {(today - price_date).days} days old; it is not a current executable offer", "info"))
-    complete = bool(flows) and not issues and (perpetual or sched.usable) and method != "approx"
+    complete = (bool(flows) and not issues and (perpetual or sched.usable) and method != "approx"
+                and not mismatch)
     total = sum(f.amount or 0 for f in flows or []) if complete else None
     if total is not None and not math.isfinite(total):
         total, complete = None, False

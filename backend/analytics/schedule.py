@@ -220,6 +220,27 @@ def infer_frequency_from_flows(interest: list[Flow]) -> tuple[str | None, int | 
     return "irregular", None
 
 
+MATURITY_TOLERANCE_DAYS = 45
+
+
+def maturity_mismatch(sched: Schedule, terms: dict | None) -> tuple[date, date] | None:
+    """(schedule's last redemption, terms' maturity) when NSDL's two sources
+    disagree by more than the tolerance - a schedule a year short of the
+    stated maturity roughly doubles a cumulative bond's yield. None when
+    they agree, when either side is missing, or for perpetuals."""
+    if sched.perpetual or sched.shape == "perpetual":
+        return None
+    stated = (terms or {}).get("redemption_date")
+    if not isinstance(stated, date) or stated.year >= 2500:
+        return None
+    redemptions = [f.due_date for f in sched.flows
+                   if f.event == "redemption" and not f.optional and f.amount and f.due_date.year < 2500]
+    if not redemptions:
+        return None
+    last = max(redemptions)
+    return (last, stated) if abs((last - stated).days) > MATURITY_TOLERANCE_DAYS else None
+
+
 def build(isin: str, cashflows: list[dict], terms: dict | None,
           today: date | None = None) -> Schedule:
     """Build the canonical Schedule for one bond.

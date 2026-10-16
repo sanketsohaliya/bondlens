@@ -347,6 +347,7 @@ def explorer_params(filters: dict) -> dict:
     if "min_rating" in f:
         f["min_rating_rank"] = ratings.RATING_RANK.get(str(f.pop("min_rating")).strip().upper())
     f["limit"], f["offset"] = 100_000, 0
+    f["exclude_maturity_mismatch"] = True
     return f
 
 

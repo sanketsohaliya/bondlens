@@ -250,6 +250,10 @@ def explorer(f: dict, stale_days: int) -> tuple[list[dict], int, float | None]:
         add("a.credit_rating ILIKE %(rating)s", rating=f"%{f['rating']}%")
     if f.get("min_rating_rank") is not None:
         add("a.rating_rank <= %(rank)s", rank=f["min_rating_rank"])
+    if f.get("exclude_maturity_mismatch"):
+        # Alert candidates: a schedule that contradicts the stated maturity
+        # produces a yield nobody should act on.
+        add("NOT COALESCE(a.valuation->'warnings' @> '[{\"code\": \"maturity_mismatch\"}]'::jsonb, false)")
     if f.get("sector"):
         add("a.sector ILIKE %(sector)s", sector=f"%{f['sector']}%")
     if f.get("industry"):
