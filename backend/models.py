@@ -135,6 +135,11 @@ class CashflowAdjustment(BaseModel):
     previous_amount: float | None
     amount: float | None
     reason: str
+    # record_date_from_exchange carries where the date came from and what
+    # NSDL had, so the Cashflows tab can show both.
+    source: str | None = None
+    previous_record_date: str | None = None
+    record_date: str | None = None
 
 
 class Cashflow(BaseModel):

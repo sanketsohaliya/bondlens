@@ -87,6 +87,14 @@ describe("cashflow calendar and evidence", () => {
         [{ ...flow, record_date: "2026-09-12" }],
         evidence(),
       ),
+    ).toBe(true); // a moved record date is the exchange overlay, not a changed schedule
+    expect(
+      evidenceMatchesSchedule(
+        "TEST",
+        "2026-09-11",
+        [{ ...flow, due_date: "2026-09-29" }],
+        evidence(),
+      ),
     ).toBe(false);
   });
 
@@ -439,5 +447,36 @@ describe("cashflow calendar and evidence", () => {
     expect(
       evidenceMatchesSchedule("TEST", "2026-09-11", [{ ...flow, amount: 91 }], evidence()),
     ).toBe(true);
+  });
+});
+
+describe("evidence pairing ignores a moved record date", () => {
+  it("still matches when the schedule carries the exchange record date", () => {
+    const flows = [
+      {
+        event: "interest",
+        due_date: "2026-10-28",
+        record_date: "2026-10-13",
+        payment_date: "2026-10-28",
+      },
+    ] as never;
+    const evidence = {
+      isin: "X",
+      as_of: "2026-10-28",
+      flows: [
+        {
+          key: "interest|2026-10-28|2026-10-21|2026-10-28",
+          event: "interest",
+          due_date: "2026-10-28",
+          record_date: "2026-10-21",
+          payment_date: "2026-10-28",
+          ambiguous: false,
+          checked: true,
+          sources: [],
+        },
+      ],
+    } as never;
+    expect(evidenceMatchesSchedule("X", "2026-10-28", flows, evidence)).toBe(true);
+    expect(flowKey(flows[0])).toBe("interest|2026-10-28|2026-10-28");
   });
 });

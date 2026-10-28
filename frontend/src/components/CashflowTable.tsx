@@ -91,7 +91,7 @@ export function CashflowSchedule({
   const [expanded, setExpanded] = useState<string | null>(null);
   const prefix = useId();
   const { upcoming, past, undated } = splitCashflows(b.cashflows, asOf);
-  const byKey = new Map(evidence?.flows.map((f) => [f.key, f]) ?? []);
+  const byKey = new Map(evidence?.flows.map((f) => [flowKey(f), f]) ?? []);
   const occurrences = new Map<string, number>();
   const unmatchedIds = new Set(evidence?.unmatched_notice_ids ?? []);
   const unmatched = evidence?.notices.filter((n) => unmatchedIds.has(n.id)) ?? [];
@@ -359,6 +359,15 @@ export function CashflowSchedule({
             ),
           ]}
         />
+        {summary && (
+          <span
+            role="status"
+            className={`ml-4 inline-flex items-center gap-1.5 text-[11px] ${summary.tone}`}
+          >
+            <span aria-hidden="true" className="inline-block h-1.5 w-1.5 rounded-full bg-current" />
+            {summary.text}
+          </span>
+        )}
         {refresh && (
           <button
             type="button"
@@ -401,13 +410,6 @@ export function CashflowSchedule({
 
       {flowSection("Past", CAVEAT, past, true, 1)}
       {flowSection("Unspecified dates", CAVEAT, undated, true, 2)}
-
-      {summary && (
-        <p role="status" className={`inline-flex items-center gap-1.5 text-[11px] ${summary.tone}`}>
-          <span aria-hidden="true" className="inline-block h-1.5 w-1.5 rounded-full bg-current" />
-          {summary.text}
-        </p>
-      )}
     </div>
   );
 }

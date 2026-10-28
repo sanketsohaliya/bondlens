@@ -1084,6 +1084,18 @@ export type CashflowAdjustment = {
      * Reason
      */
     reason: string;
+    /**
+     * Source
+     */
+    source?: string | null;
+    /**
+     * Previous Record Date
+     */
+    previous_record_date?: string | null;
+    /**
+     * Record Date
+     */
+    record_date?: string | null;
 };
 
 /**

@@ -9,8 +9,12 @@ import type {
 
 type FlowIdentity = Pick<Cashflow, "event" | "due_date" | "record_date" | "payment_date">;
 
+/** Identity of a payment for pairing the shown schedule with the evidence
+ * snapshot. The record date is deliberately left out: an exchange notice
+ * can move it on the schedule (see schedules.build) while the evidence
+ * keeps NSDL's for the comparison, and that must not read as "changed". */
 export function flowKey(flow: FlowIdentity): string {
-  return [flow.event, flow.due_date, flow.record_date ?? "", flow.payment_date ?? ""].join("|");
+  return [flow.event, flow.due_date, flow.payment_date ?? ""].join("|");
 }
 
 export function isCalendarDate(value: string | null | undefined): value is string {
@@ -71,15 +75,15 @@ export function evidenceMatchesSchedule(
     const key = flowKey(flow);
     current.set(key, (current.get(key) ?? 0) + 1);
   }
-  const returned = new Set(evidence.flows.map((f) => f.key));
-  return (
-    current.size === returned.size &&
-    returned.size === evidence.flows.length &&
-    evidence.flows.every(
-      (f) =>
-        f.key === flowKey(f) && current.has(f.key) && (current.get(f.key) ?? 0) > 1 === f.ambiguous,
-    )
-  );
+  // One evidence row per identity; its ambiguous flag must still agree
+  // with how many schedule rows share that identity today.
+  const returned = new Map(evidence.flows.map((f) => [flowKey(f), f]));
+  if (returned.size !== evidence.flows.length || current.size !== returned.size) return false;
+  for (const [key, n] of current) {
+    const row = returned.get(key);
+    if (!row || row.ambiguous !== n > 1) return false;
+  }
+  return true;
 }
 
 export function excludedReason(flow: Cashflow, asOf: string): string | null {
