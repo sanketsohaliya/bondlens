@@ -48,6 +48,7 @@ def env(monkeypatch):
     monkeypatch.setattr(ask_ytm.time, "sleep", lambda s: None)  # no Kite pacing in tests
     monkeypatch.setattr(ask_ytm.queries, "cashflows_for", lambda isins: {})
     monkeypatch.setattr(ask_ytm.queries, "terms_for", lambda isins: {})
+    monkeypatch.setattr(ask_ytm.queries, "exchange_notice_rows", lambda isins=None, **k: {})
 
     def fake_schedule(isin, flows, terms, today):
         end = today + timedelta(days=365)
@@ -198,6 +199,7 @@ def test_steady_price_is_repriced_after_date_or_source_change(monkeypatch):
     monkeypatch.setattr(ask_ytm.queries, "bond_terms", lambda _: {"face_value": 1000, "redemption_date": end,
                         "interest_payment_frequency": "Annual", "day_count_convention": "Actual/365"})
     monkeypatch.setattr(ask_ytm.queries, "analytics_row", lambda *args: {})
+    monkeypatch.setattr(ask_ytm.queries, "exchange_notice_rows", lambda isins=None, **k: {})
     calculator = ask_ytm.PriceCalculator("TEST")
     [first] = calculator.values([1000], today)
     [next_day] = calculator.values([1000], today + timedelta(days=1))

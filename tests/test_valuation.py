@@ -147,6 +147,7 @@ def test_price_endpoint_reprices_arbitrary_limits_and_rejects_nonfinite_prices(m
     end = now + timedelta(days=365)
     monkeypatch.setattr(queries, "bond_row", lambda isin: {"isin": isin})
     monkeypatch.setattr(queries, "analytics_row", lambda *args: {})
+    monkeypatch.setattr(queries, "exchange_notice_rows", lambda isins=None, **k: {})
     monkeypatch.setattr(queries, "bond_terms", lambda isin: {"face_value": 1000, "coupon_rate": 10,
                         "interest_payment_frequency": "Annual", "redemption_date": end,
                         "day_count_convention": "Actual/365"})

@@ -415,6 +415,29 @@ def symbol_bond_map() -> dict[tuple[str, str], dict]:
 
 # --- Detail view ------------------------------------------------------------
 
+def exchange_notice_rows(isins: list[str] | None = None, *, days: int = 400) -> dict[str, list[dict]]:
+    """isin -> corporate-action rows (the shape exchange_evidence parses),
+    for the given ISINs or the whole universe, limited to notices seen in
+    the last `days`. Feeds the record-date overlay in schedules.build."""
+    out: dict[str, list[dict]] = {}
+    with db._conn() as conn:
+        table = conn.execute("SELECT to_regclass('corporate_actions') IS NOT NULL AS available").fetchone()
+        if not (table and table["available"]):
+            return out
+        rows = conn.execute(
+            "SELECT i.isin, a.id, a.raw_id, a.source, a.source_record_id, a.scrip_code, a.issuer_name, "
+            " a.category_raw, a.headline, a.announced_at, a.first_seen_at, a.last_seen_at, "
+            " a.attachment_urls, a.source_url, a.raw, (i.method = 'bse_master') AS verified_bse "
+            "FROM corporate_action_isins i JOIN corporate_actions a ON a.id = i.action_id "
+            "WHERE (%(isins)s::text[] IS NULL OR i.isin = ANY(%(isins)s)) "
+            "AND a.last_seen_at >= now() - make_interval(days => %(days)s) ORDER BY a.id",
+            {"isins": isins, "days": days}).fetchall()
+    for r in rows:
+        d = dict(r)
+        out.setdefault(d.pop("isin"), []).append(d)
+    return out
+
+
 def cashflow_evidence_inputs(isin: str) -> dict | None:
     sources = ("nse_debt_announcements", "bse_corporate_actions")
     with db._conn() as conn:

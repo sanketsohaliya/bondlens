@@ -15,7 +15,7 @@ from typing import LiteralString
 
 from psycopg.types.json import Jsonb
 
-from .. import db, kite, queries
+from .. import db, kite, queries, schedules
 from . import ratings, schedule, valuation, yields
 
 STALE_AFTER_DAYS = 7  # retail price older than this is flagged stale
@@ -132,10 +132,11 @@ def build_rows(today: date | None = None) -> list[dict]:
     defaulted = queries.defaulted_isins()
     tech_delays = queries.tech_delay_isins()
 
+    notices = queries.exchange_notice_rows(None)
     rows = []
     for isin, r in core.items():
-        sched = schedule.build(isin, cashflows.get(isin, []),
-                               terms_map.get(isin), today=today)
+        sched = schedules.build(isin, cashflows.get(isin, []), terms_map.get(isin), today,
+                                notices.get(isin))
         payout = payout_summary(isin, payout_cashflows.get(isin, []), terms_map.get(isin), today)
         cur = current.get(isin, [])
         retail = r.get("retail_trade")

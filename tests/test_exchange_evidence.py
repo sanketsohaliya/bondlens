@@ -79,35 +79,50 @@ def test_bse_record_date_corroborated_by_matched_nse_joins_the_same_row():
     view = build_evidence(ISIN, [flow], [nse(text(record="11-Sep-2026", due="28-Sep-2026")), bse(record="11 Sep 2026")], as_of=TODAY)
     sources = {s["source"]: s for s in view["flows"][0]["sources"]}
     assert set(sources) == {"NSE", "BSE"}
-    assert sources["BSE"]["anchor"] == "nse_record_date"
+    # Within the match window the BSE notice anchors on its own record date
+    # (two days from NSDL's); NSE corroboration is no longer needed.
+    assert sources["BSE"]["anchor"] == "record_date"
     assert sources["NSE"]["anchor"] == "due_date"
     for s in sources.values():
         assert {f["field"]: f["state"] for f in s["fields"]}["record_date"] == "different"
     bse_notice = next(n for n in view["notices"] if n["source"] == "BSE")
     assert bse_notice["status"] == "matched"
-    assert bse_notice["corroborated_by"] == "NSE"
     assert view["unmatched_notice_ids"] == []
     assert view["summary"]["unmatched_notices"] == 0
     assert view["summary"]["differences"] == 1
 
 
-def test_bse_alone_disagreeing_with_nsdl_is_not_attached():
+def test_bse_alone_within_the_window_matches_and_shows_the_difference():
+    # Edelweiss INE532F07EM7 (Oct 2026): BSE record 09 Oct, NSDL 11 Oct. The
+    # exchange's register date is the one that counts; the notice attaches
+    # and the record-date field reads 'different' instead of being dropped.
     flow = Flow("interest", date(2026, 9, 28), record_date=date(2026, 9, 13), amount=96)
     view = build_evidence(ISIN, [flow], [bse(record="11 Sep 2026")], as_of=TODAY)
+    [src] = view["flows"][0]["sources"]
+    assert src["source"] == "BSE" and src["anchor"] == "record_date"
+    assert {f["field"]: f["state"] for f in src["fields"]}["record_date"] == "different"
+    assert view["notices"][0]["status"] == "matched"
+
+
+def test_bse_beyond_the_window_stays_unmatched():
+    flow = Flow("interest", date(2026, 9, 28), record_date=date(2026, 9, 13), amount=96)
+    view = build_evidence(ISIN, [flow], [bse(record="30 Aug 2026")], as_of=TODAY)
     assert view["flows"][0]["sources"] == []
     assert view["notices"][0]["status"] == "unmatched"
-    assert view["notices"][0]["corroborated_by"] is None
 
 
-def test_corroboration_is_ambiguous_when_two_nse_rows_share_the_record_date():
+def test_bse_within_window_matches_even_when_nse_rows_share_a_record_date():
     flows = [Flow("interest", date(2026, 9, 28), record_date=date(2026, 9, 13), amount=96),
              Flow("interest", date(2026, 10, 28), record_date=date(2026, 10, 13), amount=96)]
     records = [nse(text(record="11-Sep-2026", due="28-Sep-2026"), record_id=1, seq="a"),
                nse(text(record="11-Sep-2026", due="28-Oct-2026"), record_id=2, seq="b"),
                bse(record="11 Sep 2026")]
     view = build_evidence(ISIN, flows, records, as_of=TODAY)
-    assert all(s["source"] == "NSE" for r in view["flows"] for s in r["sources"])
-    assert next(n for n in view["notices"] if n["source"] == "BSE")["status"] == "unmatched"
+    # The two NSE notices still attach by due date; the BSE notice now finds
+    # its unique same-event row within the window (the September coupon).
+    by_due = {str(r["due_date"]): {s["source"] for s in r["sources"]} for r in view["flows"]}
+    assert by_due == {"2026-09-28": {"NSE", "BSE"}, "2026-10-28": {"NSE"}}
+    assert next(n for n in view["notices"] if n["source"] == "BSE")["status"] == "matched"
 
 
 def test_exact_bse_match_is_not_moved_by_a_corroborating_nse_elsewhere():
@@ -120,12 +135,13 @@ def test_exact_bse_match_is_not_moved_by_a_corroborating_nse_elsewhere():
     assert by_due["2026-10-28"] == {"NSE": "due_date"}
 
 
-def test_monedo_nearby_record_date_is_unmatched_not_an_invented_payment():
+def test_monedo_nearby_record_date_matches_the_same_payment_not_a_new_one():
     flow = Flow("interest", date(2026, 10, 1), record_date=date(2026, 9, 15), amount=118.36)
     view = build_evidence(ISIN, [flow], [bse(record="16 Sep 2026")], as_of=TODAY)
-    assert view["flows"][0]["sources"] == []
-    assert view["notices"][0]["status"] == "unmatched"
-    assert view["notices"][0]["due_date"] is None
+    [src] = view["flows"][0]["sources"]
+    assert src["source"] == "BSE"
+    assert view["notices"][0]["status"] == "matched"
+    assert view["notices"][0]["due_date"] is None   # still no invented payment date
 
 
 def test_bse_unverified_identity_and_conflicting_purpose_are_review_only():

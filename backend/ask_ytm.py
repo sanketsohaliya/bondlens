@@ -25,7 +25,7 @@ import time
 from datetime import UTC, date, datetime
 from typing import Any
 
-from . import kite, kite_connect, queries, quote_time
+from . import kite, kite_connect, queries, quote_time, schedules
 from .analytics import schedule, valuation
 
 MAX_ISINS = 1000
@@ -95,7 +95,7 @@ class PriceCalculator:
         if (self.as_of != today or self.version != valuation.VERSION
                 or time.monotonic() - self.loaded_at >= CACHE_TTL_SECONDS):
             self.terms = queries.bond_terms(self.isin)
-            self.sched = schedule.build(self.isin, queries.bond_cashflows(self.isin), self.terms, today=today)
+            self.sched = schedules.build_for(self.isin, today)
             self.core = queries.analytics_row(self.isin, 7) or {}
             self.as_of, self.version, self.loaded_at = today, valuation.VERSION, time.monotonic()
             self.memo.clear()
@@ -188,13 +188,14 @@ def compute(user_id: int, isins: list[str]) -> list[dict[str, Any]]:
     today = date.today()
     flows = queries.cashflows_for(list(asked)) if asked else {}
     terms = queries.terms_for(list(asked)) if asked else {}
+    notices = queries.exchange_notice_rows(list(asked)) if asked else {}
 
     for isin in misses:
         ask = asked.get(isin)
         if ask is None:
             _cache[(user_id, isin)] = (now, None)
             continue
-        sched = schedule.build(isin, flows.get(isin, []), terms.get(isin), today=today)
+        sched = schedules.build(isin, flows.get(isin, []), terms.get(isin), today, notices.get(isin))
         source = symbols.get(isin) or {}
         priced = valuation.calculate(ask["ask_price"], sched, terms.get(isin), today,
                                      otc_yield=float(source["otc_yield"]) if source.get("otc_yield") is not None else None,

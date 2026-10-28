@@ -162,6 +162,7 @@ def test_tech_delay_does_not_brand_default(monkeypatch):
                         lambda: {"INEDFLT00002"})
     monkeypatch.setattr(queries, "tech_delay_isins",
                         lambda: {"INETECH00001"})
+    monkeypatch.setattr(queries, "exchange_notice_rows", lambda isins=None, **k: {})
 
     rows = {r["isin"]: r for r in compute.build_rows(today=TODAY)}
     assert rows["INETECH00001"]["tech_delay"] is True
@@ -197,6 +198,7 @@ def test_kite_url_is_resolved_once_per_bond_preferring_the_retail_exchange(monke
     monkeypatch.setattr(queries, "rating_history", lambda: {})
     monkeypatch.setattr(queries, "defaulted_isins", lambda: set())
     monkeypatch.setattr(queries, "tech_delay_isins", lambda: set())
+    monkeypatch.setattr(queries, "exchange_notice_rows", lambda isins=None, **k: {})
 
     rows = {r["isin"]: r for r in compute.build_rows(today=TODAY)}
     assert rows["INEKITE00001"]["kite_url"] == "https://kite.zerodha.com/x"
@@ -225,6 +227,7 @@ def pricing_case(monkeypatch):
     monkeypatch.setattr(queries, "ratings_for_isins", lambda *args: [])
     monkeypatch.setattr(queries, "defaulted_isins", lambda: set())
     monkeypatch.setattr(queries, "tech_delay_isins", lambda: set())
+    monkeypatch.setattr(queries, "exchange_notice_rows", lambda isins=None, **k: {})
     monkeypatch.setattr(queries, "bond_row", lambda _: {"isin": isin, "issuer_name": None})
     monkeypatch.setattr(queries, "bond_trustee", lambda _: None)
     monkeypatch.setattr(queries, "bond_extras", lambda _: {"defaults": [], "technical_defaults": []})

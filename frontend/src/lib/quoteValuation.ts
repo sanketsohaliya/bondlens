@@ -69,6 +69,7 @@ export const CAVEATS: Record<string, string | null> = {
   // info: context, never a badge
   otc_difference: null,
   coupon_inferred: null,
+  record_date_exchange: null,
   old_price: null,
   short_horizon: "Matures within 90 days — the annualised yield is sensitive to timing.",
   future_otc_date: "OTC print is future-dated — comparison unavailable.",
@@ -91,6 +92,20 @@ export function hasYieldReview(
 
 /** The single caveat sentence for a note, or null if it says nothing useful. */
 export function caveatText(note: YieldWarning): string | null {
+  if (note.code === "record_date_exchange") {
+    const n = note as Record<string, unknown>;
+    const d = (v: unknown) =>
+      typeof v === "string"
+        ? new Date(`${v}T00:00:00+05:30`).toLocaleDateString("en-IN", {
+            day: "2-digit",
+            month: "short",
+            year: "numeric",
+          })
+        : "";
+    return n.nsdl_record_date
+      ? `Record date ${d(n.record_date)} per ${String(n.source)} notice (NSDL lists ${d(n.nsdl_record_date)}); eligibility follows the exchange.`
+      : `Record date ${d(n.record_date)} per ${String(n.source)} notice; eligibility follows the exchange.`;
+  }
   if (note.code === "coupon_inferred") {
     const n = Number((note as Record<string, unknown>).count ?? 1);
     const rate = String((note as Record<string, unknown>).rate ?? "the published rate");

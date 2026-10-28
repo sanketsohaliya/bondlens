@@ -263,6 +263,59 @@ def _field(field: str, nsdl: date | None, notices: list[dict]) -> dict:
     return {"field": field, "state": state, "nsdl_date": nsdl, "exchange_dates": values}
 
 
+# A notice and an NSDL row are the same payment when their anchor dates are
+# within this many days: exchanges and the depository publish record dates
+# from different calendars (INE532F07EM7: BSE 09 Oct, NSDL 11 Oct). Exact
+# agreement is preferred; within the window a unique same-event row is
+# accepted and the difference surfaces as a conflict instead of leaving the
+# notice unmatched. Never a nearest-date guess beyond the window.
+MATCH_WINDOW_DAYS = 10
+
+
+def _candidates(flows: list[Flow], notice: dict, event: str) -> list[Flow]:
+    anchor = notice["due_date"] if notice["source"] == "NSE" else notice["record_date"]
+    if anchor is None:
+        return []
+    def gap(flow: Flow) -> int | None:
+        mine = flow.due_date if notice["source"] == "NSE" else flow.record_date
+        return None if mine is None else abs((mine - anchor).days)
+    same = [f for f in flows if f.event == event]
+    exact = [f for f in same if gap(f) == 0]
+    if exact:
+        return exact
+    return [f for f in same if (g := gap(f)) is not None and g <= MATCH_WINDOW_DAYS]
+
+
+def record_date_overrides(isin: str, flows: list[Flow], records: list[dict]) -> dict[str, dict]:
+    """flow_key -> {record_date, source, previous, notice_id} for every flow
+    whose matched exchange notice states a different record date (BSE) or
+    ex-date when that is all it carries. Only clean notices (no review
+    reasons) are trusted; the most recently captured version wins. This is
+    the eligibility overlay the schedule applies - the exchange's register
+    date is the one the depository actually uses."""
+    notices = _group_notices([n for row in records if (n := _notice(isin, row)) is not None])
+    keys: dict[str, list[Flow]] = defaultdict(list)
+    for flow in flows:
+        keys[flow_key(flow)].append(flow)
+    out: dict[str, dict] = {}
+    for notice in sorted(notices, key=lambda n: n["last_captured_at"] or datetime.min.replace(tzinfo=UTC)):
+        if notice["status"] != "unmatched" or notice["reasons"]:
+            continue
+        stated = notice["record_date"] or notice["ex_date"]
+        if stated is None:
+            continue
+        for event in notice["events"]:
+            candidates = _candidates(flows, notice, event)
+            if len(candidates) != 1 or len(keys[flow_key(candidates[0])]) != 1:
+                continue
+            flow = candidates[0]
+            if flow.record_date == stated:
+                continue
+            out[flow_key(flow)] = {"record_date": stated, "source": notice["source"],
+                                   "previous": flow.record_date, "notice_id": notice["id"]}
+    return out
+
+
 def build_evidence(isin: str, flows: list[Flow], records: list[dict], *, as_of: date,
                    date_to: date | None = None, date_from: date | None = None,
                    availability: list[dict] | None = None, partial: bool = False) -> dict:
@@ -286,10 +339,7 @@ def build_evidence(isin: str, flows: list[Flow], records: list[dict], *, as_of: 
         if notice["status"] != "unmatched" or partial:
             continue
         for event in notice["events"]:
-            candidates = [flow for flow in flows if flow.event == event and (
-                flow.due_date == notice["due_date"] if notice["source"] == "NSE"
-                else flow.record_date is not None and flow.record_date == notice["record_date"]
-            )]
+            candidates = _candidates(flows, notice, event)
             if len(candidates) == 1 and len(keys[flow_key(candidates[0])]) == 1:
                 key = flow_key(candidates[0])
                 notice["flow_keys"].append(key)

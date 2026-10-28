@@ -11,7 +11,7 @@ import math
 from datetime import date, timedelta
 from statistics import median
 
-from . import db, queries
+from . import db, queries, schedules
 from .analytics import portfolio as pf
 from .analytics import ratings, schedule
 from .analytics.compute import STALE_AFTER_DAYS
@@ -352,9 +352,7 @@ def generate(today: date | None = None) -> int:
         core[isin] = queries.analytics_row(isin, STALE_AFTER_DAYS) or {}
         history[isin] = queries.rating_history(isin).get(isin, [])
         raw_flows[isin] = queries.bond_cashflows(isin)
-        flows[isin] = schedule.build(isin, raw_flows[isin],
-                                     queries.bond_terms(isin),
-                                     today=today).flows
+        flows[isin] = schedules.build_for(isin, today).flows
     extras = _default_rows(all_isins)
     sessions = _price_sessions(all_isins, today)
 

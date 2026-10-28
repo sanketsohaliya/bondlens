@@ -442,17 +442,21 @@ function AmountProvenance({ flow }: { flow: Cashflow }) {
               : "estimated"
             : adjustments.some((a) => a.kind === "coupon_inferred")
               ? "added by BondLens"
-              : "normalized"}
+              : adjustments.some((a) => a.kind === "record_date_from_exchange")
+                ? "exchange record date"
+                : "normalized"}
       </summary>
       <div className="mt-1 max-w-72 space-y-2 text-left">
         {adjustments.map((adjustment, index) => (
           <div key={`${adjustment.kind}:${index}`}>
             <p>{adjustment.reason}</p>
-            <p className="text-zinc-500">
-              Before: {amount(adjustment.previous_amount)}
-              <MetadataSeparator />
-              After: {amount(adjustment.amount)}
-            </p>
+            {adjustment.kind !== "record_date_from_exchange" && (
+              <p className="text-zinc-500">
+                Before: {amount(adjustment.previous_amount)}
+                <MetadataSeparator />
+                After: {amount(adjustment.amount)}
+              </p>
+            )}
           </div>
         ))}
       </div>

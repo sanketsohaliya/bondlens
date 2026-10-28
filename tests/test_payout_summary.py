@@ -237,6 +237,7 @@ def test_explorer_and_detail_use_same_payment_dates(
     monkeypatch.setattr(queries, "rating_history", lambda *args: {})
     monkeypatch.setattr(queries, "defaulted_isins", lambda: set())
     monkeypatch.setattr(queries, "tech_delay_isins", lambda: set())
+    monkeypatch.setattr(queries, "exchange_notice_rows", lambda isins=None, **k: {})
     monkeypatch.setattr(queries, "bond_row", lambda isin: {"isin": isin, "issuer_name": None})
     monkeypatch.setattr(queries, "bond_terms", lambda isin: terms)
     monkeypatch.setattr(queries, "bond_extras", lambda isin: {"defaults": [], "technical_defaults": []})

@@ -348,7 +348,13 @@ describe("quote valuation", () => {
     // Every explained code has a real sentence or is composed elsewhere.
     for (const [code, text] of Object.entries(CAVEATS)) {
       if (text !== null) expect(text.length).toBeGreaterThan(10);
-      else expect(["otc_difference", "old_price", "coupon_inferred"]).toContain(code);
+      else
+        expect([
+          "otc_difference",
+          "old_price",
+          "coupon_inferred",
+          "record_date_exchange",
+        ]).toContain(code);
     }
   });
 
@@ -386,6 +392,22 @@ describe("coupon_inferred caveat", () => {
     } as never;
     expect(caveatText(one)).toBe(
       "1 coupon NSDL omitted on repayment date was added from the 9.5% rate.",
+    );
+  });
+});
+
+describe("record_date_exchange caveat", () => {
+  it("names both dates and the source", () => {
+    const note = {
+      code: "record_date_exchange",
+      message: "",
+      severity: "info",
+      source: "BSE",
+      record_date: "2026-10-09",
+      nsdl_record_date: "2026-10-11",
+    } as never;
+    expect(caveatText(note)).toBe(
+      "Record date 09 Oct 2026 per BSE notice (NSDL lists 11 Oct 2026); eligibility follows the exchange.",
     );
   });
 });

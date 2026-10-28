@@ -8,7 +8,7 @@ from datetime import UTC, date, datetime
 from . import yields
 from .schedule import Flow, Schedule, maturity_mismatch
 
-VERSION = "2026-10-28.1"
+VERSION = "2026-10-28.2"
 RELIABLE = (-1.0, 50.0)
 RELIABLE_NEAR = (0.0, 20.0)
 NEAR_DAYS = 90
@@ -124,6 +124,17 @@ def calculate(price: float | None, sched: Schedule, terms: dict | None, today: d
         warnings.append(warning("yield_unavailable", "No supported yield is available at this price and scenario; this is not a zero return", "error"))
     if estimated:
         warnings.append(warning("estimated_payments", "Amounts used in this yield are estimated; inspect the per-payment adjustments"))
+    moved = [(f, a) for f in sched.flows for a in f.adjustments if a["kind"] == "record_date_from_exchange"]
+    for f, a in moved:
+        prev = a.get("previous_record_date")
+        warnings.append(warning(
+            "record_date_exchange",
+            f"Record date for the {f.due_date:%d %b %Y} {f.event} is "
+            f"{date.fromisoformat(a['record_date']):%d %b %Y} per {a['source']} notice"
+            + (f" (NSDL lists {date.fromisoformat(prev):%d %b %Y})" if prev else "")
+            + "; eligibility follows the exchange.",
+            "info", source=a["source"], due_date=f.due_date.isoformat(),
+            record_date=a["record_date"], nsdl_record_date=prev))
     inferred = [f for f in sched.flows if any(a["kind"] == "coupon_inferred" for a in f.adjustments)]
     if inferred:
         dates = [f.due_date for f in inferred]

@@ -44,10 +44,11 @@ def test_ensure_reuses_valid_rows_and_solves_only_the_rest(monkeypatch):
     monkeypatch.setattr(tc, "fingerprints", lambda isins: {i: f"fp-{i}" for i in isins})
     monkeypatch.setattr(tc.queries, "terms_for", lambda isins: {i: {"face_value": 1000} for i in isins})
     monkeypatch.setattr(tc.queries, "cashflows_for", lambda isins: {i: [] for i in isins})
+    monkeypatch.setattr(tc.queries, "exchange_notice_rows", lambda isins=None, **k: {})
     monkeypatch.setattr(tc, "load", lambda today, current: {("A", 12.0): 950.0})
     monkeypatch.setattr(tc, "store", lambda rows, today, current: stored.extend(rows))
     monkeypatch.setattr(tc, "_solve_bond",
-                        lambda isin, ytms, terms, flows, today: [(isin, y, 900.0) for y in ytms])
+                        lambda isin, ytms, terms, flows, today, notices=None: [(isin, y, 900.0) for y in ytms])
     pool = InlineExecutor()
     prices, solved = tc.ensure([RULE], {1: ["A", "B", "C"]}, [], TODAY,
                                executor_cls=lambda max_workers: pool)
@@ -90,8 +91,8 @@ def test_load_drops_rows_whose_inputs_or_calculator_changed(monkeypatch):
 
 def test_solve_bond_builds_once_and_prices_each_yield(monkeypatch):
     built = []
-    monkeypatch.setattr(tc.schedule, "build",
-                        lambda isin, flows, terms, today: built.append(isin) or object())
+    monkeypatch.setattr(tc.schedules, "build",
+                        lambda isin, flows, terms, today, notices=None: built.append(isin) or object())
     monkeypatch.setattr(opportunities, "price_for_yield",
                         lambda sched, terms, ytm, today: 1000 - ytm * 10)
     out = tc._solve_bond("A", [8.0, 12.0], {}, [], TODAY)

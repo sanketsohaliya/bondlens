@@ -446,6 +446,7 @@ def client(monkeypatch):
     monkeypatch.setattr(queries, "analytics_row", lambda isin, _d: core())
     monkeypatch.setattr(queries, "bond_cashflows", lambda isin: [])
     monkeypatch.setattr(queries, "bond_terms", lambda isin: None)
+    monkeypatch.setattr(queries, "exchange_notice_rows", lambda isins=None, **k: {})
     monkeypatch.setattr(queries, "ratings_for_isins", lambda isins: [])
     app.dependency_overrides[auth.require_user] = lambda: 1
     yield TestClient(app)

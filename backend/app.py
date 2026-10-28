@@ -44,6 +44,7 @@ from . import (
     queries,
     quote_time,
     safe_errors,
+    schedules,
 )
 from .analytics import portfolio as pf
 from .analytics import ratings, schedule, valuation, yields
@@ -200,8 +201,7 @@ def portfolio(user_id: int = Depends(auth.require_user)):
     schedules_by_isin: dict[str, schedule.Schedule] = {}
     for isin in isins:  # a portfolio holds few ISINs; per-ISIN reads are fine
         core_by_isin[isin] = queries.analytics_row(isin, STALE_AFTER_DAYS) or {}
-        sched = schedule.build(isin, queries.bond_cashflows(isin),
-                               queries.bond_terms(isin), today=today)
+        sched = schedules.build_for(isin, today)
         flows_by_isin[isin] = sched.flows
         schedules_by_isin[isin] = sched
 
@@ -467,7 +467,8 @@ def bond_detail(isin: str, price: float | None = Query(None, gt=0, allow_inf_nan
     today = date.today()
     terms = queries.bond_terms(isin)
     raw_flows = queries.bond_cashflows(isin)
-    sched = schedule.build(isin, raw_flows, terms, today=today)
+    sched = schedules.build(isin, raw_flows, terms, today,
+                            queries.exchange_notice_rows([isin]).get(isin, []))
     hist = queries.rating_history(isin).get(isin, [])
     cur = [h for h in hist if h.get("is_current")]
     extras = queries.bond_extras(isin)
@@ -611,6 +612,8 @@ def bond_cashflow_evidence(
     inputs = queries.cashflow_evidence_inputs(isin)
     if inputs is None:
         raise HTTPException(status_code=404, detail="Unknown ISIN")
+    # The comparison is NSDL versus the exchanges, so the schedule here is
+    # NSDL's as published - the record-date overlay would hide the difference.
     sched = schedule.build(isin, inputs["cashflows"], inputs["terms"], today=today)
     availability = exchange_evidence.source_availability(inputs["availability"], datetime.now(UTC))
     return exchange_evidence.build_evidence(
@@ -643,7 +646,7 @@ def bond_valuation(isin: str, price: float = Query(gt=0, allow_inf_nan=False)):
         raise HTTPException(status_code=404, detail="Unknown ISIN")
     today = date.today()
     terms = queries.bond_terms(isin)
-    sched = schedule.build(isin, queries.bond_cashflows(isin), terms, today=today)
+    sched = schedules.build_for(isin, today)
     core = queries.analytics_row(isin, STALE_AFTER_DAYS) or {}
     return valuation.calculate(price, sched, terms, today, otc_yield=core.get("otc_yield"),
                                otc_trade_date=core.get("otc_trade_date"),

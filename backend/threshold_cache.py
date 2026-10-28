@@ -16,8 +16,8 @@ from concurrent.futures import ProcessPoolExecutor
 from datetime import date
 from typing import Any
 
-from . import db, opportunities, queries
-from .analytics import schedule, valuation
+from . import db, opportunities, queries, schedules
+from .analytics import valuation
 
 Pair = tuple[str, float]
 
@@ -60,9 +60,10 @@ def load(today: date, current: dict[str, str]) -> dict[Pair, float | None]:
 
 
 def _solve_bond(isin: str, ytms: list[float], terms: dict | None,
-                cashflows: list[dict], today: date) -> list[tuple[str, float, float | None]]:
+                cashflows: list[dict], today: date,
+                notices: list[dict] | None = None) -> list[tuple[str, float, float | None]]:
     """Pool worker: one schedule build, one bisection per yield level."""
-    sched = schedule.build(isin, cashflows, terms, today=today)
+    sched = schedules.build(isin, cashflows, terms, today, notices)
     return [(isin, ytm, opportunities.price_for_yield(sched, terms, ytm, today)) for ytm in ytms]
 
 
@@ -77,11 +78,12 @@ def solve(pairs: set[Pair], today: date, *, workers: int | None = None,
     isins = sorted(by_isin)
     terms = queries.terms_for(isins)
     flows = queries.cashflows_for(isins)
+    notices = queries.exchange_notice_rows(isins)
     workers = workers or max(1, (os.cpu_count() or 2) - 1)
     results: list[tuple[str, float, float | None]] = []
     with executor_cls(max_workers=workers) as pool:
         futures = [pool.submit(_solve_bond, isin, sorted(by_isin[isin]), terms.get(isin),
-                               flows.get(isin, []), today) for isin in isins]
+                               flows.get(isin, []), today, notices.get(isin)) for isin in isins]
         for fut in futures:
             results.extend(fut.result())
     return results

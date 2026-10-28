@@ -220,6 +220,36 @@ def infer_frequency_from_flows(interest: list[Flow]) -> tuple[str | None, int | 
     return "irregular", None
 
 
+def apply_record_dates(sched: Schedule, overrides: dict[str, dict]) -> int:
+    """Replace NSDL record dates with the exchange's where a matched notice
+    disagrees (see exchange_evidence.record_date_overrides). Eligibility -
+    receivable_by_buyer / receivable_by_holder - reads record_date, so the
+    yield, the portfolio projection and the alert thresholds all follow.
+    The NSDL date is kept on the adjustment for display. Returns how many
+    flows changed."""
+    changed = 0
+    for flow in sched.flows:
+        key = "|".join([flow.event, flow.due_date.isoformat(),
+                        flow.record_date.isoformat() if flow.record_date else "",
+                        flow.payment_date.isoformat() if flow.payment_date else ""])
+        o = overrides.get(key)
+        if o is None or o["record_date"] == flow.record_date:
+            continue
+        previous = flow.record_date
+        flow.record_date = o["record_date"]
+        flow.adjustments.append({
+            "kind": "record_date_from_exchange", "previous_amount": flow.amount, "amount": flow.amount,
+            "source": o["source"], "previous_record_date": previous.isoformat() if previous else None,
+            "record_date": o["record_date"].isoformat(),
+            "reason": (f"Record date {o['record_date']:%d %b %Y} per {o['source']} notice"
+                       + (f" (NSDL lists {previous:%d %b %Y})" if previous else "")
+                       + "; eligibility follows the exchange")})
+        changed += 1
+    if changed:
+        sched.warnings.append(f"record date on {changed} payment{'s' if changed != 1 else ''} taken from the exchange notice")
+    return changed
+
+
 MATURITY_TOLERANCE_DAYS = 45
 
 
