@@ -455,6 +455,7 @@ function fmtDay(day: string): string {
   return new Date(`${day}T00:00:00+05:30`).toLocaleDateString("en-IN", {
     day: "numeric",
     month: "short",
+    timeZone: "Asia/Kolkata",
   });
 }
 

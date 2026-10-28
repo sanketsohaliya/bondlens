@@ -100,6 +100,7 @@ export function caveatText(note: YieldWarning): string | null {
             day: "2-digit",
             month: "short",
             year: "numeric",
+            timeZone: "Asia/Kolkata",
           })
         : "";
     return n.nsdl_record_date
