@@ -13,6 +13,7 @@ export type {
   BondDetail,
   BondsResponse,
   Cashflow,
+  CashflowAdjustment,
   CashflowEvidenceResponse,
   DepthLevel,
   DepthSide,

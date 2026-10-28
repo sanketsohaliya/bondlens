@@ -4,6 +4,7 @@ import { api, fmt } from "../api/client";
 import type {
   BondDetail,
   Cashflow,
+  CashflowAdjustment,
   CashflowEvidenceResponse,
   ExchangeNotice,
   FlowEvidence,
@@ -176,14 +177,7 @@ export function CashflowSchedule({
               {flow.event}
             </span>
           </td>
-          <td
-            className={`px-3 py-2 whitespace-nowrap ${recordDiffers(row) ? "text-amber-400/80" : "text-zinc-500"}`}
-            title={
-              recordDiffers(row) ? "An exchange notice states a different record date" : undefined
-            }
-          >
-            {calendarDate(flow.record_date)}
-          </td>
+          <RecordCell flow={flow} row={row} muted={dimSection} />
           <td
             className={`px-3 py-2 text-right whitespace-nowrap ${mutedText} ${struck ? "line-through decoration-zinc-600" : ""}`}
           >
@@ -418,8 +412,70 @@ export function CashflowSchedule({
   );
 }
 
+/** Record-date adjustment from an exchange notice (see schedules.build). */
+function exchangeRecord(
+  flow: Cashflow,
+): { source: string; previous: string | null; reason: string } | null {
+  const a = (flow.adjustments ?? []).find((x) => x.kind === "record_date_from_exchange") as
+    | (CashflowAdjustment & { source?: string; previous_record_date?: string | null })
+    | undefined;
+  if (!a) return null;
+  return {
+    source: a.source ?? "exchange",
+    previous: a.previous_record_date ?? null,
+    reason: a.reason,
+  };
+}
+
+/** The Record column: the date that decides eligibility. When an exchange
+ * notice moved it, the exchange date leads with its source chip and NSDL's
+ * date struck through (future rows); past rows just carry a dim chip. */
+function RecordCell({
+  flow,
+  row,
+  muted,
+}: {
+  flow: Cashflow;
+  row: FlowEvidence | undefined;
+  muted: boolean;
+}) {
+  const ex = exchangeRecord(flow);
+  if (!ex) {
+    return (
+      <td
+        className={`px-3 py-2 whitespace-nowrap ${recordDiffers(row) ? "text-amber-400/80" : "text-zinc-500"}`}
+        title={recordDiffers(row) ? "An exchange notice states a different record date" : undefined}
+      >
+        {calendarDate(flow.record_date)}
+      </td>
+    );
+  }
+  const sameYear =
+    ex.previous && flow.record_date && ex.previous.slice(0, 4) === flow.record_date.slice(0, 4);
+  const previous = ex.previous
+    ? sameYear
+      ? calendarDate(ex.previous).replace(/ \d{4}$/, "")
+      : calendarDate(ex.previous)
+    : null;
+  return (
+    <td
+      className={`px-3 py-2 whitespace-nowrap ${muted ? "text-zinc-500" : "text-zinc-300"}`}
+      title={ex.reason}
+    >
+      <span className="inline-flex items-center gap-1.5">
+        <span>{calendarDate(flow.record_date)}</span>
+        <span className={`${CHIP_NEUTRAL} ${muted ? "opacity-60" : ""}`}>{ex.source}</span>
+        {!muted && previous && <s className="text-zinc-600 decoration-zinc-600">{previous}</s>}
+      </span>
+    </td>
+  );
+}
+
 function AmountProvenance({ flow }: { flow: Cashflow }) {
-  const adjustments = flow.adjustments ?? [];
+  // Record-date moves live in the Record column; only amount changes here.
+  const adjustments = (flow.adjustments ?? []).filter(
+    (a) => a.kind !== "record_date_from_exchange",
+  );
   if (adjustments.length === 0)
     return flow.estimated ? (
       <span
@@ -442,21 +498,17 @@ function AmountProvenance({ flow }: { flow: Cashflow }) {
               : "estimated"
             : adjustments.some((a) => a.kind === "coupon_inferred")
               ? "added by BondLens"
-              : adjustments.some((a) => a.kind === "record_date_from_exchange")
-                ? "exchange record date"
-                : "normalized"}
+              : "normalized"}
       </summary>
       <div className="mt-1 max-w-72 space-y-2 text-left">
         {adjustments.map((adjustment, index) => (
           <div key={`${adjustment.kind}:${index}`}>
             <p>{adjustment.reason}</p>
-            {adjustment.kind !== "record_date_from_exchange" && (
-              <p className="text-zinc-500">
-                Before: {amount(adjustment.previous_amount)}
-                <MetadataSeparator />
-                After: {amount(adjustment.amount)}
-              </p>
-            )}
+            <p className="text-zinc-500">
+              Before: {amount(adjustment.previous_amount)}
+              <MetadataSeparator />
+              After: {amount(adjustment.amount)}
+            </p>
           </div>
         ))}
       </div>

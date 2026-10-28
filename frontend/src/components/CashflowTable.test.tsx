@@ -191,6 +191,59 @@ describe("cashflow schedule presentation", () => {
     expect(html).not.toContain("estimated from coupon rate");
   });
 
+  it("shows an exchange record date in the Record column, not under the amount", () => {
+    const moved: Cashflow = {
+      ...receivable,
+      record_date: "2026-10-13",
+      adjustments: [
+        {
+          kind: "record_date_from_exchange",
+          previous_amount: 101,
+          amount: 101,
+          reason:
+            "Record date 13 Oct 2026 per BSE notice (NSDL lists 21 Oct 2026); eligibility follows the exchange",
+          source: "BSE",
+          previous_record_date: "2026-10-21",
+        } as never,
+      ],
+    };
+    const html = renderToStaticMarkup(
+      <CashflowSchedule bond={{ ...bond, cashflows: [moved] }} asOf="2026-09-11" />,
+    );
+    const text = html.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ");
+    expect(text).toContain("13 Oct 2026 BSE 21 Oct");
+    expect(html).toContain("<s ");
+    expect(html).not.toContain("exchange record date");
+    expect(html).not.toContain("normalized");
+    expect(html).toContain('title="Record date 13 Oct 2026 per BSE notice');
+  });
+
+  it("past rows carry only a dim source chip", () => {
+    const paid: Cashflow = {
+      ...flow,
+      due_date: "2026-08-28",
+      payment_date: "2026-08-28",
+      record_date: "2026-08-13",
+      adjustments: [
+        {
+          kind: "record_date_from_exchange",
+          previous_amount: 101,
+          amount: 101,
+          reason:
+            "Record date 13 Aug 2026 per BSE notice (NSDL lists 21 Aug 2026); eligibility follows the exchange",
+          source: "BSE",
+          previous_record_date: "2026-08-21",
+        } as never,
+      ],
+    };
+    const html = renderToStaticMarkup(
+      <CashflowSchedule bond={{ ...bond, cashflows: [paid] }} asOf="2026-09-11" />,
+    );
+    expect(html).toContain("BSE");
+    expect(html).toContain("opacity-60");
+    expect(html).not.toContain("<s ");
+  });
+
   it("distinguishes estimates outside current buyer cashflows", () => {
     const html = renderToStaticMarkup(
       <CashflowSchedule
