@@ -8,7 +8,7 @@ from datetime import UTC, date, datetime
 from . import yields
 from .schedule import Flow, Schedule, maturity_mismatch
 
-VERSION = "2026-10-15.1"
+VERSION = "2026-10-28.1"
 RELIABLE = (-1.0, 50.0)
 RELIABLE_NEAR = (0.0, 20.0)
 NEAR_DAYS = 90
@@ -124,6 +124,22 @@ def calculate(price: float | None, sched: Schedule, terms: dict | None, today: d
         warnings.append(warning("yield_unavailable", "No supported yield is available at this price and scenario; this is not a zero return", "error"))
     if estimated:
         warnings.append(warning("estimated_payments", "Amounts used in this yield are estimated; inspect the per-payment adjustments"))
+    inferred = [f for f in sched.flows if any(a["kind"] == "coupon_inferred" for a in f.adjustments)]
+    if inferred:
+        dates = [f.due_date for f in inferred]
+        amounts = [f.amount or 0 for f in inferred]
+        n = len(inferred)
+        rate = f"{terms.get('coupon_rate'):g}%" if terms.get("coupon_rate") else "the published rate"
+        cadence = {12: " monthly", 4: " quarterly", 2: " semi-annual", 1: " annual"}.get(sched.periods_per_year or 0, "")
+        when = ", ".join(d.strftime("%d %b %Y") for d in dates[:-1]) + (" and " if n > 1 else "") + dates[-1].strftime("%d %b %Y")
+        rupees = ", ".join(f"₹{a:,.0f}" for a in amounts)
+        warnings.append(warning(
+            "coupon_inferred",
+            f"Coupon{'s' if n != 1 else ''} on {n} principal-repayment date{'s' if n != 1 else ''} added by BondLens. "
+            f"NSDL lists only the repayment on {when}; the {rate}{cadence} coupon for "
+            f"{'those months' if n != 1 else 'that month'} ({rupees}) is included because the bond keeps "
+            "paying interest until each piece of principal is returned.",
+            "info", count=n, rate=rate, dates=[d.isoformat() for d in dates], amounts=amounts))
     if method == "approx":
         warnings.append(warning("approximation", "Approximation from terms, not a complete published cashflow schedule"))
     if perpetual:

@@ -363,3 +363,28 @@ describe("quote valuation", () => {
     expect(askCapturedLabel(null)).toBeNull();
   });
 });
+
+describe("coupon_inferred caveat", () => {
+  it("reads as plain words with the count and rate", () => {
+    const note = {
+      code: "coupon_inferred",
+      message: "",
+      severity: "info",
+      count: 3,
+      rate: "11%",
+    } as never;
+    expect(caveatText(note)).toBe(
+      "3 coupons NSDL omitted on repayment dates were added from the 11% rate.",
+    );
+    const one = {
+      code: "coupon_inferred",
+      message: "",
+      severity: "info",
+      count: 1,
+      rate: "9.5%",
+    } as never;
+    expect(caveatText(one)).toBe(
+      "1 coupon NSDL omitted on repayment date was added from the 9.5% rate.",
+    );
+  });
+});

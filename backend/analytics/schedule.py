@@ -471,6 +471,23 @@ def build(isin: str, cashflows: list[dict], terms: dict | None,
                 f"interest amounts equal the coupon rate ({coupon:g}) — "
                 "recomputed from coupon dates and principal timeline")
 
+    # --- add coupons NSDL omits on principal-repayment dates ---------------
+    # On a staggered bond NSDL often lists only the repayment on a date that
+    # also pays a coupon (INE0P6G07194: monthly interest every 17th except
+    # the three dates principal comes back). The coupon is fully determined
+    # by the published rate and the principal timeline, so it is added as a
+    # normal (not estimated) payment; a date off the coupon cadence is left
+    # alone and the gap check still withholds the yield.
+    if (face and coupon and fixed_coupon and dc in daycount.SUPPORTED and sched.periods_per_year
+            and not sched.input_issues and sched.frequency != "cumulative"):
+        added = _add_omitted_coupons(flows, interest, redemptions, face, coupon, dc, today,
+                                     sched.periods_per_year)
+        if added:
+            interest = [f for f in flows if f.event == "interest" and not f.optional]
+            sched.warnings.append(
+                f"coupons added on {len(added)} repayment date{'s' if len(added) != 1 else ''} "
+                "NSDL left without an interest row")
+
     # --- estimate missing interest amounts --------------------------------
     if face and coupon and fixed_coupon and dc in daycount.SUPPORTED and not sched.input_issues:
         _estimate_missing(interest, redemptions, face, coupon, dc, today, sched.allotment_date)
@@ -755,6 +772,47 @@ def _normalize_rows(cashflows: list[dict]) -> list[Flow]:
                           principal_reported=event == "redemption" and _num(r.get("amount_redeem")) is not None,
                           full_redemption=event == "redemption" and "full" in event_raw))
     return flows
+
+
+def _add_omitted_coupons(flows: list[Flow], interest: list[Flow], redemptions: list[Flow],
+                         face: float, coupon_pct: float, dc: str, today: date,
+                         periods_per_year: int) -> list[Flow]:
+    """Add the coupon on each non-optional redemption date that has no
+    interest row but sits on the coupon cadence (one period after the
+    previous interest date, give or take a few days). Returns the flows added."""
+    dated = sorted((f for f in interest if f.due_date.year < 2500), key=lambda f: f.due_date)
+    if len(dated) < 3:
+        return []
+    period = 365.25 / periods_per_year
+    interest_dates = [f.due_date for f in dated]
+    added: list[Flow] = []
+    for r in sorted((f for f in redemptions if f.due_date.year < 2500), key=lambda f: f.due_date):
+        if any(abs((d - r.due_date).days) <= 3 for d in interest_dates):
+            continue
+        previous = max((d for d in interest_dates if d < r.due_date), default=None)
+        if previous is None:
+            continue
+        # On the cadence: one period after the last coupon, give or take a
+        # few days (month lengths, holidays). An early or late repayment
+        # date is not a coupon date and is left to the gap check.
+        tolerance = max(5.0, 0.15 * period)
+        if abs((r.due_date - previous).days - period) > tolerance:
+            continue
+        amount = _coupon_amount(previous, r.due_date, redemptions, face, coupon_pct, dc, today)
+        if amount is None:
+            continue
+        base = _principal_base(face, redemptions, today) or face
+        outstanding = base - sum(f.amount or 0 for f in redemptions if f.due_date < r.due_date)
+        flow = Flow(event="interest", due_date=r.due_date, record_date=r.record_date,
+                    payment_date=r.payment_date, amount=None)
+        flow.adjust(round(amount, 2), "coupon_inferred",
+                    f"Added: coupon NSDL did not list for this repayment date "
+                    f"({coupon_pct:g}% on ₹{outstanding:,.0f} outstanding)", estimated=False)
+        flows.append(flow)
+        interest_dates.append(r.due_date)
+        interest_dates.sort()
+        added.append(flow)
+    return added
 
 
 def _estimate_missing(interest: list[Flow], redemptions: list[Flow],

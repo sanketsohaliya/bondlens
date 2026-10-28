@@ -440,7 +440,9 @@ function AmountProvenance({ flow }: { flow: Cashflow }) {
             ? flow.amount == null
               ? "estimate unavailable"
               : "estimated"
-            : "normalized"}
+            : adjustments.some((a) => a.kind === "coupon_inferred")
+              ? "added by BondLens"
+              : "normalized"}
       </summary>
       <div className="mt-1 max-w-72 space-y-2 text-left">
         {adjustments.map((adjustment, index) => (

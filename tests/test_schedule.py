@@ -81,7 +81,7 @@ def test_rate_filed_as_amount_repaired():
 def test_amount_equal_to_rate_legitimately_untouched():
     # Face 100, annual, 12.75%: amount == rate is CORRECT (100 x 12.75% = 12.75).
     flows = [_cf("Interest", date(2027 + i, 1, 1), payable=12.75)
-             for i in range(3)]
+             for i in range(4)]
     flows.append(_cf("Full Redemption", date(2030, 1, 1), redeem=100))
     s = schedule.build("X", flows, _terms(face_value=100, coupon_rate=12.75),
                        today=TODAY)
@@ -91,14 +91,26 @@ def test_amount_equal_to_rate_legitimately_untouched():
 
 
 def test_plain_annual():
-    flows = [_cf("Interest", date(2027 + i, 1, 1), payable=100) for i in range(3)]
+    flows = [_cf("Interest", date(2027 + i, 1, 1), payable=100) for i in range(4)]
     flows.append(_cf("Full Redemption", date(2030, 1, 1), redeem=1000))
     s = schedule.build("X", flows, _terms(), today=TODAY)
     assert s.shape == "plain"
     assert s.usable
     assert s.frequency == "annual" and s.periods_per_year == 1
     assert not s.amounts_estimated
-    assert len(s.future_flows(TODAY)) == 4
+    assert len(s.future_flows(TODAY)) == 5
+
+
+def test_plain_annual_missing_final_coupon_is_added_not_withheld():
+    # NSDL often lists only the redemption on the last date; the final
+    # coupon is determined by the rate, so it is added (not estimated).
+    flows = [_cf("Interest", date(2027 + i, 1, 1), payable=100) for i in range(3)]
+    flows.append(_cf("Full Redemption", date(2030, 1, 1), redeem=1000))
+    s = schedule.build("X", flows, _terms(), today=TODAY)
+    last = [f for f in s.flows if f.event == "interest" and f.due_date == date(2030, 1, 1)]
+    assert len(last) == 1 and last[0].adjustments[0]["kind"] == "coupon_inferred"
+    assert abs((last[0].amount or 0) - 100) < 0.5 and not s.amounts_estimated
+    assert s.pricing_issues(TODAY) == []
 
 
 def test_staggered_partial_redemption():

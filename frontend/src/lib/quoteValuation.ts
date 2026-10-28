@@ -68,6 +68,7 @@ export const CAVEATS: Record<string, string | null> = {
   future_price_date: "Price is future-dated — verify the source.",
   // info: context, never a badge
   otc_difference: null,
+  coupon_inferred: null,
   old_price: null,
   short_horizon: "Matures within 90 days — the annualised yield is sensitive to timing.",
   future_otc_date: "OTC print is future-dated — comparison unavailable.",
@@ -90,6 +91,11 @@ export function hasYieldReview(
 
 /** The single caveat sentence for a note, or null if it says nothing useful. */
 export function caveatText(note: YieldWarning): string | null {
+  if (note.code === "coupon_inferred") {
+    const n = Number((note as Record<string, unknown>).count ?? 1);
+    const rate = String((note as Record<string, unknown>).rate ?? "the published rate");
+    return `${n} coupon${n === 1 ? "" : "s"} NSDL omitted on repayment date${n === 1 ? "" : "s"} ${n === 1 ? "was" : "were"} added from the ${rate} rate.`;
+  }
   if (note.code === "otc_difference")
     return note.gap != null ? (otcJudgement(note) ?? yieldGapText(note.gap)) : note.message;
   if (note.code === "old_price") {
