@@ -157,10 +157,11 @@ describe("cashflow schedule presentation", () => {
     const html = renderToStaticMarkup(
       <CashflowSchedule bond={{ ...bond, cashflows: [payment] }} asOf="2026-09-11" />,
     );
-    expect(html).toContain("normalized");
+    expect(html).toContain(">normalized<");
     expect(html).toContain("total unchanged");
-    expect(html.replace(/<[^>]*>/g, "")).toContain("Before: ₹1,100 | After: ₹1,000");
-    expect(html).toContain("₹1,100");
+    expect(html).toContain("Before ₹1,100");
+    expect(html).toContain("After ₹1,000");
+    expect(html).not.toContain("<details");
     expect(html).not.toContain("some amounts estimated");
   });
 
@@ -188,6 +189,7 @@ describe("cashflow schedule presentation", () => {
     expect(html).toContain("1 future amount estimated");
     expect(html).toContain("Added principal from face and maturity");
     expect(html).toContain("not supplied");
+    expect(html).toContain(">estimated<");
     expect(html).not.toContain("estimated from coupon rate");
   });
 
@@ -241,7 +243,7 @@ describe("cashflow schedule presentation", () => {
     );
     expect(html).toContain("BSE");
     expect(html).toContain("opacity-60");
-    expect(html).not.toContain("<s ");
+    expect(html).toContain("<s "); // NSDL's date struck through on past rows too
   });
 
   it("distinguishes estimates outside current buyer cashflows", () => {

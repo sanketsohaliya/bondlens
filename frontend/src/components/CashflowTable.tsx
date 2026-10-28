@@ -467,54 +467,43 @@ function RecordCell({
       <span className="inline-flex items-center gap-1.5">
         <span>{calendarDate(flow.record_date)}</span>
         <span className={`${CHIP_NEUTRAL} ${muted ? "opacity-60" : ""}`}>{ex.source}</span>
-        {!muted && previous && <s className="text-zinc-600 decoration-zinc-600">{previous}</s>}
+        {previous && <s className="text-zinc-600 decoration-zinc-600">{previous}</s>}
       </span>
     </td>
   );
 }
 
+/** One chip after the amount saying why it is not the published figure;
+ * the full story (each adjustment's reason and before -> after) is the
+ * tooltip. Record-date moves live in the Record column, not here. */
 function AmountProvenance({ flow }: { flow: Cashflow }) {
-  // Record-date moves live in the Record column; only amount changes here.
   const adjustments = (flow.adjustments ?? []).filter(
     (a) => a.kind !== "record_date_from_exchange",
   );
-  if (adjustments.length === 0)
-    return flow.estimated ? (
-      <span
-        className="text-amber-500 ml-1"
-        title="Estimated amount; detailed provenance unavailable"
-      >
-        ~
-      </span>
-    ) : null;
+  if (adjustments.length === 0 && !flow.estimated) return null;
   const amount = (value: number | null) =>
     value == null ? "not supplied" : `₹${fmt.num(value, 2)}`;
+  const label = flow.optional
+    ? "optional"
+    : flow.estimated
+      ? flow.amount == null
+        ? "estimate unavailable"
+        : "estimated"
+      : adjustments.some((a) => a.kind === "coupon_inferred")
+        ? "added by BondLens"
+        : "normalized";
+  const lines = adjustments.map((a) =>
+    a.kind === "coupon_inferred"
+      ? a.reason
+      : `${a.reason}\nBefore ${amount(a.previous_amount)} → After ${amount(a.amount)}`,
+  );
+  const tip = lines.length
+    ? lines.join("\n\n")
+    : "Estimated amount; detailed provenance unavailable";
   return (
-    <details className="mt-0.5 text-[11px] text-zinc-400 whitespace-normal">
-      <summary className={`cursor-pointer ${flow.estimated ? "text-amber-500" : "text-zinc-500"}`}>
-        {flow.optional
-          ? "optional scenario"
-          : flow.estimated
-            ? flow.amount == null
-              ? "estimate unavailable"
-              : "estimated"
-            : adjustments.some((a) => a.kind === "coupon_inferred")
-              ? "added by BondLens"
-              : "normalized"}
-      </summary>
-      <div className="mt-1 max-w-72 space-y-2 text-left">
-        {adjustments.map((adjustment, index) => (
-          <div key={`${adjustment.kind}:${index}`}>
-            <p>{adjustment.reason}</p>
-            <p className="text-zinc-500">
-              Before: {amount(adjustment.previous_amount)}
-              <MetadataSeparator />
-              After: {amount(adjustment.amount)}
-            </p>
-          </div>
-        ))}
-      </div>
-    </details>
+    <span className={`ml-1.5 ${flow.estimated ? CHIP_ATTENTION : CHIP_NEUTRAL}`} title={tip}>
+      {label}
+    </span>
   );
 }
 
