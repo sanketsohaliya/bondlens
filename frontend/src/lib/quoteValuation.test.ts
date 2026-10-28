@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { askCapturedLabel } from "../components/ExploreTable";
 import YieldQuote, { YieldNotes } from "../components/YieldQuote";
 import {
+  caveatText,
   fmtIstTime,
   hasYieldReview,
   valuationIsCurrent,
@@ -347,7 +348,7 @@ describe("quote valuation", () => {
     // Every explained code has a real sentence or is composed elsewhere.
     for (const [code, text] of Object.entries(CAVEATS)) {
       if (text !== null) expect(text.length).toBeGreaterThan(10);
-      else expect(["otc_difference", "old_price"]).toContain(code);
+      else expect(["otc_difference", "old_price", "coupon_inferred"]).toContain(code);
     }
   });
 
