@@ -204,6 +204,30 @@ def remaining_payout(lots: list[dict[str, Any]], flows: list[Flow],
             "flows_left": left, "flows_total": count}
 
 
+def received_so_far(lots: list[dict[str, Any]], flows: list[Flow],
+                    today: date) -> dict[str, Any] | None:
+    """Gross cash the position has already been paid per the schedule:
+    past flows x the units on the register by each record date, counting
+    only lots with a KNOWN purchase date (same rule as the received split
+    in ``monthly_cashflows``). None when nothing has been received."""
+    interest, principal, payments = 0.0, 0.0, 0
+    for f in flows:
+        if not f.amount or f.effective_date > today:
+            continue
+        units = receiving_units(lots, f, known_only=True)
+        if not units:
+            continue
+        if f.event == "interest":
+            interest += f.amount * units
+        else:
+            principal += f.amount * units
+        payments += 1
+    if not payments:
+        return None
+    return {"interest": round(interest, 2), "principal": round(principal, 2),
+            "payments": payments}
+
+
 def monthly_cashflows(lots_by_isin: dict[str, list[dict[str, Any]]],
                       flows_by_isin: dict[str, list[Flow]],
                       today: date,

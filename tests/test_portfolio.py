@@ -375,6 +375,18 @@ def test_remaining_payout_scales_future_flows_to_receiving_units():
     assert pf.remaining_payout(lots, flows + [_flow(date(2026, 6, 1), None)], TODAY) is None
 
 
+def test_received_so_far_counts_past_flows_for_dated_lots_on_the_register():
+    flows = [_flow(date(2025, 8, 1), 50.0, record=date(2025, 7, 10)),
+             _flow(date(2025, 12, 1), 300.0, event="redemption", record=date(2025, 11, 10)),
+             _flow(date(2026, 2, 1), 50.0, record=date(2026, 1, 10))]   # future
+    lots = [{"units": 2, "purchase_date": date(2025, 6, 1)},     # both past flows
+            {"units": 3, "purchase_date": date(2025, 7, 20)},    # misses the Aug coupon
+            {"units": 5, "purchase_date": None}]                 # undated: never counted
+    r = pf.received_so_far(lots, flows, TODAY)
+    assert r == {"interest": 100.0, "principal": 1500.0, "payments": 2}
+    assert pf.received_so_far(_lots(2, date(2026, 1, 1)), flows, TODAY) is None
+
+
 def test_next_payment_holder_semantics():
     flows = [_flow(date(2026, 2, 1), 50.0, record=date(2026, 1, 10)),
              _flow(date(2026, 8, 1), 50.0, record=date(2026, 7, 10))]

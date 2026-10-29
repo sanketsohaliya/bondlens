@@ -32,17 +32,20 @@ describe("explore amount cells", () => {
           <PayoutCell bond={{ ...bond, ...overrides }} today={today} onOpen={() => {}} />,
         ),
       );
-    expect(render()).toContain("14.4% monthly | 18/20 left");
-    expect(render({ future_flows: 0 })).toContain("14.4% monthly | 0/20 left");
-    expect(render({ coupon_basis: "Zero Coupon" })).toContain("Zero coupon | 18/20 left");
+    // Line 1 is the terms (structure, rate, frequency); line 2 the money.
+    expect(render()).toContain("Staggered14.4% monthly~₹12,560 | 18/20 left");
+    expect(render({ future_flows: 0 })).toContain("~₹12,560 | 0/20 left");
+    expect(render({ coupon_basis: "Zero Coupon" })).toContain(
+      "StaggeredZero coupon~₹12,560 | 18/20 left",
+    );
     expect(render({ total_flows: 0 })).not.toContain("|");
     const countOnly = text(
       renderToStaticMarkup(
         <PayoutCell bond={{ ...bond, coupon: null }} today="2026-09-11" onOpen={() => {}} />,
       ),
     );
-    expect(countOnly).toContain("18/20 left");
-    expect(countOnly).not.toContain("|");
+    // No coupon: line 1 is the structure alone; line 2 keeps amount | count.
+    expect(countOnly).toContain("Staggered~₹12,560 | 18/20 left");
     const stale = text(
       renderToStaticMarkup(
         <PayoutCell

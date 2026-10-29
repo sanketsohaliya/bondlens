@@ -2289,6 +2289,7 @@ export type PortfolioPosition = {
     lots: Array<PortfolioLot>;
     next_payment: Cashflow | null;
     remaining?: PositionRemaining | null;
+    received?: PositionReceived | null;
     /**
      * Bond
      */
@@ -2349,6 +2350,27 @@ export type PortfolioSummary = {
      * Bonds
      */
     bonds: number;
+};
+
+/**
+ * PositionReceived
+ *
+ * Gross cash already paid on the held units per the schedule (dated
+ * lots only; not confirmation of bank receipt).
+ */
+export type PositionReceived = {
+    /**
+     * Interest
+     */
+    interest: number;
+    /**
+     * Principal
+     */
+    principal: number;
+    /**
+     * Payments
+     */
+    payments: number;
 };
 
 /**

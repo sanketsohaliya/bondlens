@@ -210,6 +210,7 @@ def portfolio(user_id: int = Depends(auth.require_user)):
         p["next_payment"] = pf.next_payment(p["lots"],
                                             flows_by_isin[p["isin"]], today)
         p["remaining"] = pf.remaining_payout(p["lots"], flows_by_isin[p["isin"]], today)
+        p["received"] = pf.received_so_far(p["lots"], flows_by_isin[p["isin"]], today)
         sched = schedules_by_isin[p["isin"]]
         p["yield_on_cost"] = (pf.yield_on_cost(p["lots"], sched.flows, today)
                               if sched.usable and not sched.perpetual

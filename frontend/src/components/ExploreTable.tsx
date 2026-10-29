@@ -131,19 +131,15 @@ export function PayoutCell({
         onOpen();
       }}
     >
+      {/* Line 1: how the bond pays (structure, rate, frequency). Line 2:
+          the money - total per unit and how many payments remain. The
+          same cell serves Explore and the Portfolio holdings table. */}
       <div className="flex min-w-0 items-baseline gap-2 overflow-hidden text-zinc-200 group-hover/coupon:underline decoration-zinc-600 underline-offset-2">
         <span className="truncate">{payoutStructure(b) ?? "–"}</span>
-        {payout.label && (
-          <span className="shrink-0 max-w-full truncate text-[11px] text-zinc-400">
-            {payout.label}
-          </span>
-        )}
-      </div>
-      <div className="truncate text-[11px] text-zinc-500">
         {isZeroCoupon(b) ? (
-          "Zero coupon"
+          <span className="shrink-0 text-[11px] text-zinc-400">Zero coupon</span>
         ) : b.coupon != null ? (
-          <>
+          <span className="shrink-0 text-[11px] text-zinc-400">
             {fmt.num(Number(b.coupon))}%
             {b.coupon_basis?.startsWith("Variable") && (
               <span
@@ -154,20 +150,25 @@ export function PayoutCell({
               </span>
             )}
             {b.frequency && b.frequency !== "cumulative" && ` ${b.frequency}`}
-          </>
+          </span>
         ) : null}
-        {payout.showCount &&
-          b.future_flows != null &&
-          b.total_flows != null &&
-          b.total_flows > 0 && (
-            <span
-              title={`${paymentsLeftText(b.future_flows, b.total_flows)} (interest and principal payments a buyer today would receive)`}
-            >
-              {(isZeroCoupon(b) || b.coupon != null) && <MetadataSeparator />}
-              {b.future_flows}/{b.total_flows} left
-            </span>
-          )}
       </div>
+      {(payout.label || (payout.showCount && b.future_flows != null && b.total_flows)) && (
+        <div className="truncate text-[11px] text-zinc-500">
+          {payout.label}
+          {payout.showCount &&
+            b.future_flows != null &&
+            b.total_flows != null &&
+            b.total_flows > 0 && (
+              <span
+                title={`${paymentsLeftText(b.future_flows, b.total_flows)} (interest and principal payments a buyer today would receive)`}
+              >
+                {payout.label && <MetadataSeparator />}
+                {b.future_flows}/{b.total_flows} left
+              </span>
+            )}
+        </div>
+      )}
     </button>
   );
 }
@@ -766,14 +767,12 @@ export function PayoutTd({
   bond: b,
   today,
   onSelect,
-  payout = payoutDisplay(b, today),
 }: {
   bond: Bond;
   today: string;
   onSelect: (isin: string, tab?: "cashflows" | "ratings" | "chart" | "order book") => void;
-  /** Portfolio passes the holder's own figure (still to receive x units). */
-  payout?: ReturnType<typeof payoutDisplay>;
 }) {
+  const payout = payoutDisplay(b, today);
   return (
     <td
       className="group/coupon px-3 py-2.5 whitespace-nowrap cursor-pointer"

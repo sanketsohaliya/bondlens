@@ -30,6 +30,12 @@ const bond = {
   face_value: 1000,
   in_default: false,
   stale: false,
+  payout_total_state: "known",
+  payout_total_per_unit: 1270,
+  payout_as_of: "2026-10-29",
+  payout_valid_until: null,
+  future_flows: 3,
+  total_flows: 5,
 } as unknown as Bond;
 
 const position = {
@@ -53,6 +59,7 @@ const position = {
   lots: [],
   next_payment: null,
   remaining: { amount: 12700, estimated: false, flows_left: 3, flows_total: 5 },
+  received: { interest: 150, principal: 0, payments: 2 },
   bond,
 } as unknown as PortfolioPosition;
 
@@ -79,14 +86,14 @@ describe("holdings table reads like Explore", () => {
     expect(HOLDINGS_COLS.map((c) => c.label)).toEqual([
       "",
       "Symbol",
+      "Projected XIRR",
+      "Invested",
       "Value",
       "P&L",
-      "Projected XIRR",
       "Rating",
       "Payout",
-      "Maturity",
-      "Invested",
       "Next payment",
+      "Maturity",
     ]);
   });
 
@@ -94,17 +101,17 @@ describe("holdings table reads like Explore", () => {
     const html = text(row(position));
     const order = [
       "Example issuer",
+      "9.60%",
+      "vs 9.10% YTM @ LTP",
+      "₹9,900",
+      "10 × ₹990 · ₹150 back",
       "₹10,100",
       "50.0% of portfolio",
       "+₹200",
-      "9.60%",
-      "vs 9.10% YTM @ LTP",
       "AA/Stable",
-      "₹12,700",
       "9% annual",
+      "₹1,270",
       "2y 8mo",
-      "₹9,900",
-      "10 × ₹990",
     ];
     const idx = order.map((s) => html.indexOf(s));
     expect(
@@ -113,7 +120,7 @@ describe("holdings table reads like Explore", () => {
     ).toBe(true);
     expect(idx).toEqual([...idx].sort((a, b) => a - b));
     expect(html).not.toContain("Retail");
-    expect(html).not.toContain("₹1,270"); // Explore's per-unit payout is not shown
+    expect(html).not.toContain("₹12,700"); // per unit, as on Explore
   });
 
   it("falls back to the position's own fields when the explorer row is missing", () => {

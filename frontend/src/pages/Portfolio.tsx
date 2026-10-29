@@ -16,7 +16,6 @@ import {
   BookmarkIcon,
   MaturityCell,
   PayoutTd,
-  payoutStructure,
   RatingCell,
   SymbolCell,
   tradedAgo,
@@ -25,7 +24,7 @@ import {
 import InlineMetadata, { MetadataSeparator } from "../components/InlineMetadata";
 import LotsPanel from "../components/LotsPanel";
 import StatBox from "../components/StatBox";
-import { payoutDisplay, usePayoutDay } from "../lib/exploreAmounts";
+import { usePayoutDay } from "../lib/exploreAmounts";
 import { fuzzyMatch } from "../lib/fuzzy";
 import {
   allDatesPast,
@@ -317,32 +316,6 @@ export function positionBond(p: PortfolioPosition): Bond {
   } as unknown as Bond;
 }
 
-/** The Payout cell with the holder's figure: what these units still
- * receive (record dates per lot, optional exit payouts excluded), in the
- * Explore cell's shape. Falls back to Explore's per-unit figure when the
- * API has no holder figure. */
-export function holderPayout(p: PortfolioPosition, bond: Bond, today: string) {
-  const base = payoutDisplay(bond, today);
-  const r = p.remaining;
-  if (!r) return base;
-  const horizon = bond.schedule_shape === "perpetual" ? "the first call" : "maturity";
-  const structure = payoutStructure(bond);
-  const lines = [
-    `You'd still receive ${r.estimated ? "about " : ""}${fmt.inrFull(r.amount)} on your ${fmt.num(p.units, 2)} units if held to ${horizon} — ${r.flows_left} of ${r.flows_total} payments left.${
-      r.estimated ? " Some amounts are estimated (floating rate or missing data)." : ""
-    }`,
-    structure ? `${structure} schedule.` : null,
-    "Before tax & fees · gross cash, not profit or a guaranteed return.",
-    "Click to see every payment.",
-  ];
-  return {
-    label: `${r.estimated ? "~" : ""}${fmt.inr(r.amount)}`,
-    detail: lines.filter(Boolean).join("\n"),
-    state: r.estimated ? "estimated" : "known",
-    showCount: false,
-  } as ReturnType<typeof payoutDisplay>;
-}
-
 /** Sort accessors — semantic, not display, values: rating by rank (lower =
  * better), maturity by remaining tenor, next payment by due date. */
 const HOLDINGS_ACCESSORS: Record<
@@ -354,14 +327,17 @@ const HOLDINGS_ACCESSORS: Record<
   gain: (p) => p.gain,
   yield_on_cost: (p) => p.yield_on_cost,
   rating: (p) => p.rating_rank,
-  remaining: (p) => p.remaining?.amount,
+  remaining: (p) => positionBond(p).payout_total_per_unit,
   maturity: (p) => p.years_to_maturity,
   invested: (p) => p.invested,
   next_payment: (p) => p.next_payment?.payment_date ?? p.next_payment?.due_date,
 };
 
+const INVESTED_TIP =
+  "Units × units-weighted price paid. 'back' = cash received so far per the schedule (dated lots on the register by each record date) — not confirmation of bank receipt.";
+
 const PAYOUT_TIP =
-  "Gross cash still to come on your units if held to maturity: every scheduled payment your lots are eligible for (record dates per lot), before tax and fees. Optional exit payouts are not assumed.";
+  "Per unit, as on Explore: what one unit bought today pays to maturity, and how many payments remain.";
 
 const XIRR_TIP =
   "Return locked in on what you actually paid, across your dated purchases (XIRR), assuming scheduled cashflows to maturity. Compare with YTM @ LTP — what a buyer today would get.";
@@ -381,14 +357,14 @@ type HoldingsCol = {
 export const HOLDINGS_COLS: HoldingsCol[] = [
   { label: "", key: null }, // expand chevron + watch star
   { label: "Symbol", key: "issuer" },
+  { label: "Projected XIRR", key: "yield_on_cost", right: true, tip: XIRR_TIP },
+  { label: "Invested", key: "invested", right: true, tip: INVESTED_TIP },
   { label: "Value", key: "value", right: true },
   { label: "P&L", key: "gain", right: true },
-  { label: "Projected XIRR", key: "yield_on_cost", right: true, tip: XIRR_TIP },
   { label: "Rating", key: "rating" },
   { label: "Payout", key: "remaining", tip: PAYOUT_TIP },
-  { label: "Maturity", key: "maturity", right: true },
-  { label: "Invested", key: "invested", right: true, tip: "Units × units-weighted price paid" },
   { label: "Next payment", key: "next_payment" },
+  { label: "Maturity", key: "maturity", right: true },
 ];
 
 function HoldingsTable({
@@ -406,7 +382,7 @@ function HoldingsTable({
   const today = usePayoutDay();
   const cols = HOLDINGS_COLS;
   const { widths, tableRef, startResize, tableProps } = useColumnWidths(
-    "holdings-col-widths-v4",
+    "holdings-col-widths-v5",
     cols.length,
   );
   const totalValue = positions.reduce((s, p) => s + (p.value ?? 0), 0);
@@ -515,7 +491,6 @@ function PositionRow({
   // Shared Explore cells take (isin, tab); this row already knows its ISIN.
   const openTab = (_isin: string, tab?: "cashflows" | "ratings" | "chart" | "order book") =>
     onSelect(tab);
-  const payout = holderPayout(p, bond, payoutDay);
   // Holding age from the oldest lot (context for the yield-on-cost XIRR).
   const oldest = p.lots.reduce<string | null>(
     (min, l) => (min == null || l.purchase_date < min ? l.purchase_date : min),
@@ -533,6 +508,11 @@ function PositionRow({
           ? `over ${heldDays}d`
           : `over ${fmt.yearsMonths(heldDays / 365.25)}`;
   const weightPct = totalValue > 0 && p.value != null ? (p.value / totalValue) * 100 : null;
+  const received = (p.received?.interest ?? 0) + (p.received?.principal ?? 0);
+  const investedTitle =
+    received > 0 && p.received
+      ? `Units × units-weighted price paid. Received so far ${fmt.inr(received)} (interest ${fmt.inr(p.received.interest)} · principal ${fmt.inr(p.received.principal)}) across ${p.received.payments} payment${p.received.payments === 1 ? "" : "s"} per schedule to date — not confirmation of bank receipt; optional exits excluded.`
+      : "Units × units-weighted price paid";
   // Compare effective annual rates, not nominal YTM against XIRR.
   // Different dates and cashflows mean this is not an entry recommendation.
   const spread = portfolioYieldSpread(p);
@@ -558,31 +538,6 @@ function PositionRow({
           </span>
         </td>
         <SymbolCell bond={bond} onOpen={() => onSelect()} />
-        <td className={`${TD} text-right tabular-nums`}>
-          <div className="font-medium text-zinc-200">{fmt.inr(p.value)}</div>
-          {weightPct != null && (
-            <div className="text-[10px] text-zinc-500">{weightPct.toFixed(1)}% of portfolio</div>
-          )}
-        </td>
-        {/* P&L with the holding age beneath: a gain only means something
-            against how long it took. */}
-        <td
-          className={`${TD} text-right tabular-nums`}
-          title={oldest ? `Since your first purchase on ${fmt.date(oldest)}` : undefined}
-        >
-          {p.gain == null ? (
-            <span className="text-zinc-600">–</span>
-          ) : (
-            <span className={p.gain >= 0 ? "text-emerald-400" : "text-red-400"}>
-              {p.gain >= 0 ? "+" : "−"}
-              {fmt.inr(Math.abs(p.gain))}
-              {p.gain_pct != null && (
-                <span className="text-[10px] opacity-80"> ({p.gain_pct.toFixed(1)}%)</span>
-              )}
-            </span>
-          )}
-          {heldLabel && <div className="text-[10px] text-zinc-500">{heldLabel}</div>}
-        </td>
         {/* Projected XIRR over dated purchases and scheduled cashflows;
             optional exit payouts are not assumed to have been received. */}
         <td
@@ -612,17 +567,43 @@ function PositionRow({
             </div>
           ) : null}
         </td>
-        {/* The bond as Explore shows it: the same cells in the same order. */}
-        <RatingCell bond={bond} onSelect={openTab} />
-        <PayoutTd bond={bond} today={payoutDay} onSelect={openTab} payout={payout} />
-        <MaturityCell bond={bond} />
-        {/* Invested = units × price paid; both factors sit beneath the total. */}
-        <td className={`${TD} text-right tabular-nums`} title="Units × units-weighted price paid">
+        {/* Invested = units × price paid, with cash already received on
+            this position beneath. */}
+        <td className={`${TD} text-right tabular-nums`} title={investedTitle}>
           <div className="text-zinc-200">{fmt.inr(p.invested)}</div>
           <div className="text-[10px] text-zinc-500">
             {fmt.num(p.units, 2)} × {p.avg_price != null ? fmt.inrFull(p.avg_price) : "–"}
+            {received > 0 && ` · ${fmt.inr(received)} back`}
           </div>
         </td>
+        <td className={`${TD} text-right tabular-nums`}>
+          <div className="font-medium text-zinc-200">{fmt.inr(p.value)}</div>
+          {weightPct != null && (
+            <div className="text-[10px] text-zinc-500">{weightPct.toFixed(1)}% of portfolio</div>
+          )}
+        </td>
+        {/* P&L with the holding age beneath: a gain only means something
+            against how long it took. */}
+        <td
+          className={`${TD} text-right tabular-nums`}
+          title={oldest ? `Since your first purchase on ${fmt.date(oldest)}` : undefined}
+        >
+          {p.gain == null ? (
+            <span className="text-zinc-600">–</span>
+          ) : (
+            <span className={p.gain >= 0 ? "text-emerald-400" : "text-red-400"}>
+              {p.gain >= 0 ? "+" : "−"}
+              {fmt.inr(Math.abs(p.gain))}
+              {p.gain_pct != null && (
+                <span className="text-[10px] opacity-80"> ({p.gain_pct.toFixed(1)}%)</span>
+              )}
+            </span>
+          )}
+          {heldLabel && <div className="text-[10px] text-zinc-500">{heldLabel}</div>}
+        </td>
+        {/* The bond as Explore shows it: the same cells in the same order. */}
+        <RatingCell bond={bond} onSelect={openTab} />
+        <PayoutTd bond={bond} today={payoutDay} onSelect={openTab} />
         <td className={TD}>
           {p.next_payment ? (
             <div title={p.next_payment.estimated ? "Estimated amount" : undefined}>
@@ -638,6 +619,7 @@ function PositionRow({
             <span className="text-zinc-600">–</span>
           )}
         </td>
+        <MaturityCell bond={bond} />
       </tr>
       {open && (
         <tr className="border-b border-zinc-800/60 bg-zinc-900/40">
