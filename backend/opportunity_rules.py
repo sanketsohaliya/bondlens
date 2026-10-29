@@ -51,7 +51,7 @@ def changed_since(since) -> dict[int, Any]:
 
 def _row(r: Any) -> dict:
     d = dict(r)
-    for k in ("min_ask_ytm", "max_ticket", "max_price", "min_qty", "buy_budget", "buy_daily_cap",
+    for k in ("min_ask_ytm", "min_ticket", "buy_budget", "buy_daily_cap",
               "min_bid_price", "max_bid_ytm", "below_threshold", "price", "value",
               "auto_buy_daily_cap"):
         if k in d and d[k] is not None:
@@ -79,7 +79,7 @@ def validate_rule(payload: dict) -> dict:
         raise RuleError(400, f"unknown rating grade {filters['min_rating']!r}")
     out = {"filters": opportunities.static_filters(filters),
            "enabled": bool(payload.get("enabled", True))}
-    for k in ("min_ask_ytm", "max_ticket", "max_price", "min_qty", "buy_budget", "buy_daily_cap"):
+    for k in ("min_ask_ytm", "min_ticket", "buy_budget", "buy_daily_cap"):
         v = payload.get(k)
         if v in (None, ""):
             out[k] = None
@@ -91,8 +91,8 @@ def validate_rule(payload: dict) -> dict:
         if not (f > 0) or f != f:
             raise RuleError(400, f"{k} must be positive")
         out[k] = f
-    if out["min_ask_ytm"] is None and out["max_price"] is None:
-        raise RuleError(400, "set a minimum YTM @ Ask or a maximum price")
+    if out["min_ask_ytm"] is None:
+        raise RuleError(400, "set a minimum YTM @ Ask")
     if (out["buy_budget"] is None) != (out["buy_daily_cap"] is None):
         raise RuleError(400, "auto-buy needs both a budget per hit and a daily cap")
     if out["buy_budget"] is not None and out["buy_daily_cap"] is not None \
@@ -111,12 +111,11 @@ def create_rule(user_id: int, payload: dict) -> dict:
     v = validate_rule(payload)
     with db._conn() as conn:
         r = conn.execute(
-            "INSERT INTO alert_rules (user_id, filters, min_ask_ytm, max_ticket, "
-            " max_price, min_qty, enabled, buy_budget, buy_daily_cap) "
-            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING *",
-            (user_id, Jsonb(v["filters"]), v["min_ask_ytm"], v["max_ticket"],
-             v["max_price"], v["min_qty"], v["enabled"], v["buy_budget"],
-             v["buy_daily_cap"])).fetchone()
+            "INSERT INTO alert_rules (user_id, filters, min_ask_ytm, min_ticket, "
+            " enabled, buy_budget, buy_daily_cap) "
+            "VALUES (%s, %s, %s, %s, %s, %s, %s) RETURNING *",
+            (user_id, Jsonb(v["filters"]), v["min_ask_ytm"], v["min_ticket"],
+             v["enabled"], v["buy_budget"], v["buy_daily_cap"])).fetchone()
     assert r is not None
     touch(user_id)
     return _row(r)
@@ -132,13 +131,13 @@ def update_rule(user_id: int, rule_id: int, payload: dict) -> dict:
         merged = {**_row(current), **payload}
         v = validate_rule(merged)
         r = conn.execute(
-            "UPDATE alert_rules SET filters = %s, min_ask_ytm = %s, max_ticket = %s, "
-            " max_price = %s, min_qty = %s, enabled = %s, buy_budget = %s, buy_daily_cap = %s, "
+            "UPDATE alert_rules SET filters = %s, min_ask_ytm = %s, min_ticket = %s, "
+            " enabled = %s, buy_budget = %s, buy_daily_cap = %s, "
             " auto_buy_until = CASE WHEN %s IS NULL THEN NULL ELSE auto_buy_until END, "
             " updated_at = now() "
             "WHERE id = %s AND user_id = %s RETURNING *",
-            (Jsonb(v["filters"]), v["min_ask_ytm"], v["max_ticket"], v["max_price"],
-             v["min_qty"], v["enabled"], v["buy_budget"], v["buy_daily_cap"], v["buy_budget"],
+            (Jsonb(v["filters"]), v["min_ask_ytm"], v["min_ticket"],
+             v["enabled"], v["buy_budget"], v["buy_daily_cap"], v["buy_budget"],
              rule_id, user_id)).fetchone()
     assert r is not None
     touch(user_id)
@@ -412,8 +411,7 @@ def recent_hits(user_id: int, *, today: date | None = None, limit: int = 200) ->
     with db._conn() as conn:
         rows = conn.execute(
             "SELECT a.*, b.issuer_name, b.nse_symbol, b.bse_scrip_id, "
-            " r.filters AS r_filters, r.min_ask_ytm AS r_min_ask_ytm, r.max_ticket AS r_max_ticket, "
-            " r.max_price AS r_max_price, r.min_qty AS r_min_qty, "
+            " r.filters AS r_filters, r.min_ask_ytm AS r_min_ask_ytm, r.min_ticket AS r_min_ticket, "
             " t.min_bid_price AS t_min_bid_price, t.max_bid_ytm AS t_max_bid_ytm "
             "FROM opportunity_alerts a "
             "LEFT JOIN bond_analytics b ON b.isin = a.isin "
@@ -428,8 +426,7 @@ def recent_hits(user_id: int, *, today: date | None = None, limit: int = 200) ->
             if d.get("r_filters") is not None or d.get("r_min_ask_ytm") is not None:
                 d["rule_label"] = opportunities.rule_label({
                     "filters": d["r_filters"], "min_ask_ytm": d["r_min_ask_ytm"],
-                    "max_ticket": d["r_max_ticket"], "max_price": d["r_max_price"],
-                    "min_qty": d["r_min_qty"]})
+                    "min_ticket": d["r_min_ticket"]})
             elif d["source"] == "target":
                 d["rule_label"] = opportunities.target_label({
                     "min_bid_price": d["t_min_bid_price"], "max_bid_ytm": d["t_max_bid_ytm"]})

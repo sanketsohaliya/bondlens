@@ -19,17 +19,9 @@ export type AlertRule = {
      */
     min_ask_ytm?: number | null;
     /**
-     * Max Ticket
+     * Min Ticket
      */
-    max_ticket?: number | null;
-    /**
-     * Max Price
-     */
-    max_price?: number | null;
-    /**
-     * Min Qty
-     */
-    min_qty?: number | null;
+    min_ticket?: number | null;
     /**
      * Enabled
      */
@@ -91,17 +83,9 @@ export type AlertRuleIn = {
      */
     min_ask_ytm?: number | null;
     /**
-     * Max Ticket
+     * Min Ticket
      */
-    max_ticket?: number | null;
-    /**
-     * Max Price
-     */
-    max_price?: number | null;
-    /**
-     * Min Qty
-     */
-    min_qty?: number | null;
+    min_ticket?: number | null;
     /**
      * Enabled
      */
@@ -131,17 +115,9 @@ export type AlertRulePatch = {
      */
     min_ask_ytm?: number | null;
     /**
-     * Max Ticket
+     * Min Ticket
      */
-    max_ticket?: number | null;
-    /**
-     * Max Price
-     */
-    max_price?: number | null;
-    /**
-     * Min Qty
-     */
-    min_qty?: number | null;
+    min_ticket?: number | null;
     /**
      * Enabled
      */

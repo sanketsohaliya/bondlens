@@ -24,17 +24,13 @@ export default function SaveAlertDialog({
     ? { kept: rule.filters ?? {}, dropped: [] as string[] }
     : splitFilters(params ?? {});
   const [minYtm, setMinYtm] = useState(num(rule?.min_ask_ytm));
-  const [maxTicket, setMaxTicket] = useState(num(rule?.max_ticket));
-  const [maxPrice, setMaxPrice] = useState(num(rule?.max_price));
-  const [minQty, setMinQty] = useState(num(rule?.min_qty));
+  const [minTicket, setMinTicket] = useState(num(rule?.min_ticket));
   const [buyBudget, setBuyBudget] = useState(num(rule?.buy_budget));
   const [buyCap, setBuyCap] = useState(num(rule?.buy_daily_cap));
   const qc = useQueryClient();
   const body = () => ({
     min_ask_ytm: minYtm ? Number(minYtm) : null,
-    max_ticket: maxTicket ? Number(maxTicket) : null,
-    max_price: maxPrice ? Number(maxPrice) : null,
-    min_qty: minQty ? Number(minQty) : null,
+    min_ticket: minTicket ? Number(minTicket) : null,
     buy_budget: buyBudget ? Number(buyBudget) : null,
     buy_daily_cap: buyCap ? Number(buyCap) : null,
   });
@@ -49,7 +45,7 @@ export default function SaveAlertDialog({
     },
   });
   const autoBuyHalf = Boolean(buyBudget) !== Boolean(buyCap);
-  const valid = Boolean(minYtm || maxPrice) && !autoBuyHalf;
+  const valid = Boolean(minYtm) && !autoBuyHalf;
   const label = previewLabel({ filters: kept, ...body() });
   const input =
     "w-full rounded-md border border-zinc-700 bg-zinc-950 px-2 py-1.5 text-sm text-zinc-100 focus:border-emerald-500 focus:outline-none";
@@ -86,34 +82,17 @@ export default function SaveAlertDialog({
               onChange={(e) => setMinYtm(e.target.value)}
             />
           </label>
-          <label className="text-[11px] text-zinc-400">
-            Max price per unit ₹
+          <label
+            className="text-[11px] text-zinc-400"
+            title="Only asks with at least this much on offer (best-ask price × quantity) count."
+          >
+            Min ticket ₹ (price × qty)
             <input
               className={`${input} mt-1`}
               inputMode="decimal"
-              placeholder="optional"
-              value={maxPrice}
-              onChange={(e) => setMaxPrice(e.target.value)}
-            />
-          </label>
-          <label className="text-[11px] text-zinc-400">
-            Max ticket ₹ (price × qty)
-            <input
-              className={`${input} mt-1`}
-              inputMode="decimal"
-              placeholder="optional"
-              value={maxTicket}
-              onChange={(e) => setMaxTicket(e.target.value)}
-            />
-          </label>
-          <label className="text-[11px] text-zinc-400">
-            Min units at the ask
-            <input
-              className={`${input} mt-1`}
-              inputMode="numeric"
-              placeholder="1"
-              value={minQty}
-              onChange={(e) => setMinQty(e.target.value)}
+              placeholder="optional, e.g. 50000"
+              value={minTicket}
+              onChange={(e) => setMinTicket(e.target.value)}
             />
           </label>
         </div>

@@ -71,15 +71,11 @@ const tenor = (y: number): string =>
 export function previewLabel(rule: {
   filters: Record<string, unknown>;
   min_ask_ytm?: number | null;
-  max_price?: number | null;
-  max_ticket?: number | null;
-  min_qty?: number | null;
+  min_ticket?: number | null;
 }): string {
   const parts: string[] = [];
   if (rule.min_ask_ytm != null) parts.push(`Ask YTM ≥ ${rule.min_ask_ytm}%`);
-  if (rule.max_price != null) parts.push(`Ask price ≤ ${inrShort(rule.max_price)}`);
-  if (rule.max_ticket != null) parts.push(`Ticket ≤ ${inrShort(rule.max_ticket)}`);
-  if (rule.min_qty != null && rule.min_qty > 1) parts.push(`Units ≥ ${rule.min_qty}`);
+  if (rule.min_ticket != null) parts.push(`Ticket ≥ ${inrShort(rule.min_ticket)}`);
   const f = rule.filters as Partial<ExploreParams> & Record<string, unknown>;
   if (f.min_rating) parts.push(`Rating ≥ ${String(f.min_rating).toUpperCase()}`);
   if (f.rating) parts.push(`Rating ~ ${String(f.rating)}`);

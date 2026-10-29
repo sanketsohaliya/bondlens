@@ -593,9 +593,7 @@ class AlertRuleIn(BaseModel):
     are rejected with 400 because live asks are judged on the ask."""
     filters: dict[str, Any] = Field(default_factory=dict)
     min_ask_ytm: float | None = Field(default=None, gt=0)
-    max_ticket: float | None = Field(default=None, gt=0)
-    max_price: float | None = Field(default=None, gt=0)
-    min_qty: float | None = Field(default=None, gt=0)
+    min_ticket: float | None = Field(default=None, gt=0)   # INR on offer, price x qty
     enabled: bool = True
     # Auto-buy sizing (both or neither); arming is a separate call.
     buy_budget: float | None = Field(default=None, gt=0)
@@ -605,9 +603,7 @@ class AlertRuleIn(BaseModel):
 class AlertRulePatch(BaseModel):
     filters: dict[str, Any] | None = None
     min_ask_ytm: float | None = None
-    max_ticket: float | None = None
-    max_price: float | None = None
-    min_qty: float | None = None
+    min_ticket: float | None = None
     enabled: bool | None = None
     buy_budget: float | None = None
     buy_daily_cap: float | None = None

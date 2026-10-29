@@ -136,7 +136,7 @@ def client(monkeypatch):
         app.dependency_overrides.pop(require_user, None)
 
 
-RULE = {"filters": {"min_rating": "BBB-", "min_years": 0.5}, "min_ask_ytm": 12, "max_ticket": 200000}
+RULE = {"filters": {"min_rating": "BBB-", "min_years": 0.5}, "min_ask_ytm": 12, "min_ticket": 50000}
 
 
 def test_rule_lifecycle_and_overview(client):
@@ -145,10 +145,10 @@ def test_rule_lifecycle_and_overview(client):
     assert r.status_code == 201, r.text
     rule = r.json()
     assert rule["id"] == 1 and rule["filters"] == {"min_rating": "BBB-", "min_years": 0.5}
-    assert rule["label"] == "Ask YTM ≥ 12%, Ticket ≤ ₹2 L, Rating ≥ BBB-, Maturity ≥ 6mo"
-    assert rule["min_qty"] is None and rule["enabled"] is True
-    r = c.patch("/api/alerts/rules/1", json={"enabled": False, "max_price": 1050})
-    assert r.status_code == 200 and r.json()["enabled"] is False and r.json()["max_price"] == 1050
+    assert rule["label"] == "Ask YTM ≥ 12%, Ticket ≥ ₹50,000, Rating ≥ BBB-, Maturity ≥ 6mo"
+    assert rule["min_ticket"] == 50000 and rule["enabled"] is True
+    r = c.patch("/api/alerts/rules/1", json={"enabled": False, "min_ticket": 75000})
+    assert r.status_code == 200 and r.json()["enabled"] is False and r.json()["min_ticket"] == 75000
     over = c.get("/api/alerts").json()
     assert [x["id"] for x in over["rules"]] == [1]
     assert over["targets"] == [] and over["recent"] == [] and over["watcher"] is None
@@ -166,8 +166,8 @@ def test_rules_refuse_trade_history_filters_and_empty_conditions(client):
     c, _, _ = client
     r = c.post("/api/alerts/rules", json={**RULE, "filters": {"min_rating": "BBB-", "traded_within": 5, "min_ytm": 5}})
     assert r.status_code == 400 and "min_ytm, traded_within" in r.json()["detail"]
-    r = c.post("/api/alerts/rules", json={"filters": {}, "max_ticket": 1000})
-    assert r.status_code == 400 and "minimum YTM @ Ask or a maximum price" in r.json()["detail"]
+    r = c.post("/api/alerts/rules", json={"filters": {}, "min_ticket": 1000})
+    assert r.status_code == 400 and "minimum YTM @ Ask" in r.json()["detail"]
     r = c.post("/api/alerts/rules", json={**RULE, "filters": {"min_rating": "ZZZ"}})
     assert r.status_code == 400 and "unknown rating" in r.json()["detail"]
     assert c.post("/api/alerts/rules", json={**RULE, "min_ask_ytm": -1}).status_code == 422
@@ -212,8 +212,8 @@ def test_topic_settings_and_test_push(client):
 
 def test_validate_rule_normalises_numbers_and_filters():
     v = rules.validate_rule({"filters": {"min_rating": "aa-", "sector": ""},
-                             "min_ask_ytm": "12.5", "min_qty": None})
-    assert v["min_ask_ytm"] == 12.5 and v["min_qty"] is None
+                             "min_ask_ytm": "12.5", "min_ticket": None})
+    assert v["min_ask_ytm"] == 12.5 and v["min_ticket"] is None
     assert v["filters"] == {"min_rating": "aa-"}
     with pytest.raises(rules.RuleError):
         rules.validate_rule({"min_ask_ytm": "lots"})
@@ -242,7 +242,7 @@ def test_every_alert_write_touches_the_change_marker(monkeypatch):
 
         def fetchone(self):
             return {"id": 1, "user_id": 1, "filters": {}, "min_ask_ytm": 12,
-                    "max_ticket": None, "max_price": None, "min_qty": None, "enabled": True,
+                    "min_ticket": None, "enabled": True,
                     "created_at": NOW, "updated_at": NOW, "last_hit_at": None,
                     "isin": "INE000A01001", "min_bid_price": 1, "max_bid_ytm": None}
 
@@ -272,18 +272,18 @@ def test_recent_hits_derives_labels_for_hits_without_one(monkeypatch):
         {"id": 1, "source": "rule:4", "isin": "A", "side": "ask", "price": 997, "qty": 10, "ytm": 15.95,
          "exchange": "BSE", "trade_day": NOW.date(), "tick_at": None, "fired_at": NOW, "pushed_at": None,
          "push_ms": 49, "below_threshold": None, "rule_label": None, "issuer_name": "ICL", "nse_symbol": None,
-         "bse_scrip_id": None, "r_filters": {"min_rating": "BBB-"}, "r_min_ask_ytm": 15, "r_max_ticket": None,
-         "r_max_price": None, "r_min_qty": None, "t_min_bid_price": None, "t_max_bid_ytm": None},
+         "bse_scrip_id": None, "r_filters": {"min_rating": "BBB-"}, "r_min_ask_ytm": 15, "r_min_ticket": None,
+         "t_min_bid_price": None, "t_max_bid_ytm": None},
         {"id": 2, "source": "rule:2", "isin": "B", "side": "ask", "price": 1, "qty": 1, "ytm": None,
          "exchange": None, "trade_day": NOW.date(), "tick_at": None, "fired_at": NOW, "pushed_at": None,
          "push_ms": None, "below_threshold": None, "rule_label": None, "issuer_name": None, "nse_symbol": None,
-         "bse_scrip_id": None, "r_filters": None, "r_min_ask_ytm": None, "r_max_ticket": None,
-         "r_max_price": None, "r_min_qty": None, "t_min_bid_price": None, "t_max_bid_ytm": None},
+         "bse_scrip_id": None, "r_filters": None, "r_min_ask_ytm": None, "r_min_ticket": None,
+         "t_min_bid_price": None, "t_max_bid_ytm": None},
         {"id": 3, "source": "target", "isin": "C", "side": "bid", "price": 1015, "qty": 5, "ytm": 8.9,
          "exchange": "NSE", "trade_day": NOW.date(), "tick_at": None, "fired_at": NOW, "pushed_at": None,
          "push_ms": 30, "below_threshold": None, "rule_label": "stored", "issuer_name": None, "nse_symbol": None,
-         "bse_scrip_id": None, "r_filters": None, "r_min_ask_ytm": None, "r_max_ticket": None,
-         "r_max_price": None, "r_min_qty": None, "t_min_bid_price": 1010, "t_max_bid_ytm": None},
+         "bse_scrip_id": None, "r_filters": None, "r_min_ask_ytm": None, "r_min_ticket": None,
+         "t_min_bid_price": 1010, "t_max_bid_ytm": None},
     ]
 
     class Conn:

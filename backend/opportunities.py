@@ -155,12 +155,8 @@ def rule_label(rule: dict[str, Any]) -> str:
     parts: list[str] = []
     if (v := _f(rule.get("min_ask_ytm"))) is not None:
         parts.append(f"Ask YTM ≥ {v:g}%")
-    if (v := _f(rule.get("max_price"))) is not None:
-        parts.append(f"Ask price ≤ {_inr_short(v)}")
-    if (v := _f(rule.get("max_ticket"))) is not None:
-        parts.append(f"Ticket ≤ {_inr_short(v)}")
-    if (v := _f(rule.get("min_qty"))) is not None and v > 1:
-        parts.append(f"Units ≥ {v:g}")
+    if (v := _f(rule.get("min_ticket"))) is not None:
+        parts.append(f"Ticket ≥ {_inr_short(v)}")
     f = rule.get("filters") or {}
     if f.get("min_rating"):
         parts.append(f"Rating ≥ {str(f['min_rating']).upper()}")
@@ -205,10 +201,8 @@ def target_label(target: dict[str, Any]) -> str:
 class AskRule:
     rule_id: int
     label: str
-    max_ask_price: float | None   # from min_ask_ytm via the cache; None = no yield condition
-    max_price: float | None
-    max_ticket: float | None
-    min_qty: float
+    max_ask_price: float | None   # from min_ask_ytm via the cache; None = unpriceable
+    min_ticket: float | None      # INR on offer (price x qty) must be at least this
     min_ask_ytm: float | None = None   # the rule's own yield, for the post-push recheck
     # Auto-buy: armed while auto_buy_until is in the future.
     buy_budget: float | None = None
@@ -244,30 +238,28 @@ def build_thresholds(rules: list[dict], candidates: dict[int, list[str]],
     exit targets and the yield->price cache. Returns the thresholds plus
     the (isin, ytm) pairs the cache does not know yet (to be solved).
 
-    A rule with a yield condition whose price is not cached yet is held
-    back for that bond (no false positives on a half-built table); one
-    whose price is cached as None (unpriceable) keeps only its max_price
-    condition, or is skipped when it has none."""
+    A rule whose price is not cached yet is held back for that bond (no
+    false positives on a half-built table); a bond cached as None is
+    unpriceable and skipped."""
     th = Thresholds()
     missing: set[tuple[str, float]] = set()
     for rule in rules:
         if not rule.get("enabled", True):
             continue
-        min_ytm = rule.get("min_ask_ytm")
+        min_ytm = _f(rule.get("min_ask_ytm"))
+        if min_ytm is None:
+            continue
         for isin in candidates.get(rule["id"], []):
-            max_ask_price = None
-            if min_ytm is not None:
-                key = (isin, float(min_ytm))
-                if key not in prices:
-                    missing.add(key)
-                    continue
-                max_ask_price = prices[key]
-                if max_ask_price is None and rule.get("max_price") is None:
-                    continue
+            key = (isin, float(min_ytm))
+            if key not in prices:
+                missing.add(key)
+                continue
+            max_ask_price = prices[key]
+            if max_ask_price is None:
+                continue
             th.asks.setdefault(isin, []).append(AskRule(
                 rule_id=rule["id"], label=rule_label(rule), max_ask_price=max_ask_price,
-                max_price=_f(rule.get("max_price")), max_ticket=_f(rule.get("max_ticket")),
-                min_qty=_f(rule.get("min_qty")) or 1.0, min_ask_ytm=_f(min_ytm),
+                min_ticket=_f(rule.get("min_ticket")), min_ask_ytm=min_ytm,
                 buy_budget=_f(rule.get("buy_budget")), buy_daily_cap=_f(rule.get("buy_daily_cap")),
                 auto_buy_until=rule.get("auto_buy_until")))
     for target in targets:
@@ -326,15 +318,9 @@ def match_ask(rules: list[AskRule], price: float, qty: float) -> list[AskRule]:
     """Rules satisfied by a best ask of `price` x `qty`."""
     out = []
     for r in rules:
-        if qty < r.min_qty:
+        if r.max_ask_price is None or price > r.max_ask_price:
             continue
-        if r.max_ask_price is not None and price > r.max_ask_price:
-            continue
-        if r.max_price is not None and price > r.max_price:
-            continue
-        if r.max_ticket is not None and price * qty > r.max_ticket:
-            continue
-        if r.max_ask_price is None and r.max_price is None:
+        if r.min_ticket is not None and price * qty < r.min_ticket:
             continue
         out.append(r)
     return out

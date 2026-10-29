@@ -40,17 +40,15 @@ describe("alert rules from the filter bar", () => {
           secured_only: true,
         },
         min_ask_ytm: 12.5,
-        max_ticket: 200_000,
-        max_price: 1050,
-        min_qty: 5,
+        min_ticket: 200_000,
       }),
     ).toBe(
-      "Ask YTM ≥ 12.5%, Ask price ≤ ₹1,050, Ticket ≤ ₹2 L, Units ≥ 5, Maturity 1y–3y, Payout: bullet, Exchange: NSE, Secured",
+      "Ask YTM ≥ 12.5%, Ticket ≥ ₹2 L, Maturity 1y–3y, Payout: bullet, Exchange: NSE, Secured",
     );
-    expect(previewLabel({ filters: { max_years: 2.5, sector: "NBFC" }, max_price: 95_000 })).toBe(
-      "Ask price ≤ ₹95,000, Maturity ≤ 2.5y, Sector: NBFC",
+    expect(previewLabel({ filters: { max_years: 2.5, sector: "NBFC" }, min_ask_ytm: 9 })).toBe(
+      "Ask YTM ≥ 9%, Maturity ≤ 2.5y, Sector: NBFC",
     );
-    expect(previewLabel({ filters: {}, max_ticket: 25_000_000 })).toBe("Ticket ≤ ₹2.5 Cr");
+    expect(previewLabel({ filters: {}, min_ticket: 25_000_000 })).toBe("Ticket ≥ ₹2.5 Cr");
     expect(previewLabel({ filters: {} })).toBe("Any ask");
   });
 
