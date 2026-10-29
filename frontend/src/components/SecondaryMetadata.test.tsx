@@ -97,7 +97,8 @@ describe("secondary metadata across screens", () => {
       );
     expect(row(position)).toContain("EXAMPLE | INE000A01001");
     expect(row(position)).toContain("AAA/StableINDIA RATINGS");
-    expect(row({ ...position, symbol: null })).not.toContain("|");
+    // No symbol: the ISIN is not repeated as a stand-in symbol.
+    expect(row({ ...position, symbol: null })).toContain("Example issuerINE000A01001 | NSDL");
   });
 
   it("uses pipes in month metadata and keeps the estimate qualifier attached", () => {

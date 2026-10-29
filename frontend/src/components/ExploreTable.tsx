@@ -508,18 +508,31 @@ export function MarkCell({ bond: b }: { bond: Bond }) {
 
 /** Explore column cell, shared with the Portfolio holdings table so the
  * same bond reads identically on both pages. */
-export function SymbolCell({ bond: b }: { bond: Bond }) {
+export function SymbolCell({ bond: b, onOpen }: { bond: Bond; onOpen?: () => void }) {
+  const issuerClass =
+    "font-medium text-zinc-200 truncate hover:text-emerald-400 hover:underline underline-offset-2 transition-colors";
   return (
     <td className="px-3 py-2.5 w-80 max-w-80">
       {/* Issuer leads: it is what you scan for. Symbol, ISIN and the
         hover-revealed actions sit beneath, separated by spacing only. */}
       <div className="flex items-center gap-1.5 min-w-0">
-        <span
-          className="font-medium text-zinc-200 truncate hover:text-emerald-400 hover:underline underline-offset-2 transition-colors"
-          title={b.issuer_name ?? undefined}
-        >
-          {b.issuer_name ?? b.isin}
-        </span>
+        {onOpen ? (
+          <button
+            type="button"
+            title="View bond details"
+            onClick={(e) => {
+              e.stopPropagation();
+              onOpen();
+            }}
+            className={`${issuerClass} text-left`}
+          >
+            {b.issuer_name ?? b.isin}
+          </button>
+        ) : (
+          <span className={issuerClass} title={b.issuer_name ?? undefined}>
+            {b.issuer_name ?? b.isin}
+          </span>
+        )}
         {b.in_default && (
           <span
             title="Issuer has missed payments on this bond"
@@ -532,12 +545,14 @@ export function SymbolCell({ bond: b }: { bond: Bond }) {
       <div className="flex items-center text-[11px] min-w-0">
         <InlineMetadata
           parts={[
-            <CopyText
-              key="symbol"
-              value={b.nse_symbol ?? b.bse_scrip_id ?? b.isin}
-              label="symbol"
-              className="text-zinc-500 shrink-0"
-            />,
+            (b.nse_symbol ?? b.bse_scrip_id) && (
+              <CopyText
+                key="symbol"
+                value={b.nse_symbol ?? b.bse_scrip_id ?? b.isin}
+                label="symbol"
+                className="text-zinc-500 shrink-0"
+              />
+            ),
             <CopyText key="isin" value={b.isin} label="ISIN" className="text-zinc-500" />,
           ]}
         />
