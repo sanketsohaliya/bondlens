@@ -85,8 +85,6 @@ describe("holdings table reads like Explore", () => {
       "Rating",
       "Payout",
       "Maturity",
-      "Units",
-      "Cost",
       "Invested",
       "Next payment",
     ]);
@@ -105,8 +103,8 @@ describe("holdings table reads like Explore", () => {
       "₹12,700",
       "9% annual",
       "2y 8mo",
-      "₹990",
       "₹9,900",
+      "10 × ₹990",
     ];
     const idx = order.map((s) => html.indexOf(s));
     expect(

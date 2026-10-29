@@ -287,8 +287,6 @@ type HoldingsSortKey =
   | "rating"
   | "remaining"
   | "maturity"
-  | "units"
-  | "avg_price"
   | "invested"
   | "next_payment";
 
@@ -358,8 +356,6 @@ const HOLDINGS_ACCESSORS: Record<
   rating: (p) => p.rating_rank,
   remaining: (p) => p.remaining?.amount,
   maturity: (p) => p.years_to_maturity,
-  units: (p) => p.units,
-  avg_price: (p) => p.avg_price,
   invested: (p) => p.invested,
   next_payment: (p) => p.next_payment?.payment_date ?? p.next_payment?.due_date,
 };
@@ -391,9 +387,7 @@ export const HOLDINGS_COLS: HoldingsCol[] = [
   { label: "Rating", key: "rating" },
   { label: "Payout", key: "remaining", tip: PAYOUT_TIP },
   { label: "Maturity", key: "maturity", right: true },
-  { label: "Units", key: "units", right: true },
-  { label: "Cost", key: "avg_price", right: true },
-  { label: "Invested", key: "invested", right: true },
+  { label: "Invested", key: "invested", right: true, tip: "Units × units-weighted price paid" },
   { label: "Next payment", key: "next_payment" },
 ];
 
@@ -412,7 +406,7 @@ function HoldingsTable({
   const today = usePayoutDay();
   const cols = HOLDINGS_COLS;
   const { widths, tableRef, startResize, tableProps } = useColumnWidths(
-    "holdings-col-widths-v3",
+    "holdings-col-widths-v4",
     cols.length,
   );
   const totalValue = positions.reduce((s, p) => s + (p.value ?? 0), 0);
@@ -534,10 +528,10 @@ function PositionRow({
     heldDays == null
       ? null
       : heldDays < 1
-        ? "held today"
+        ? "today"
         : heldDays < 31
-          ? `held ${heldDays}d`
-          : `held ${fmt.yearsMonths(heldDays / 365.25)}`;
+          ? `over ${heldDays}d`
+          : `over ${fmt.yearsMonths(heldDays / 365.25)}`;
   const weightPct = totalValue > 0 && p.value != null ? (p.value / totalValue) * 100 : null;
   // Compare effective annual rates, not nominal YTM against XIRR.
   // Different dates and cashflows mean this is not an entry recommendation.
@@ -570,7 +564,12 @@ function PositionRow({
             <div className="text-[10px] text-zinc-500">{weightPct.toFixed(1)}% of portfolio</div>
           )}
         </td>
-        <td className={`${TD} text-right tabular-nums`}>
+        {/* P&L with the holding age beneath: a gain only means something
+            against how long it took. */}
+        <td
+          className={`${TD} text-right tabular-nums`}
+          title={oldest ? `Since your first purchase on ${fmt.date(oldest)}` : undefined}
+        >
           {p.gain == null ? (
             <span className="text-zinc-600">–</span>
           ) : (
@@ -582,6 +581,7 @@ function PositionRow({
               )}
             </span>
           )}
+          {heldLabel && <div className="text-[10px] text-zinc-500">{heldLabel}</div>}
         </td>
         {/* Projected XIRR over dated purchases and scheduled cashflows;
             optional exit payouts are not assumed to have been received. */}
@@ -616,14 +616,13 @@ function PositionRow({
         <RatingCell bond={bond} onSelect={openTab} />
         <PayoutTd bond={bond} today={payoutDay} onSelect={openTab} payout={payout} />
         <MaturityCell bond={bond} />
-        <td className={`${TD} text-right tabular-nums`}>
-          <div>{fmt.num(p.units, 2)}</div>
-          {heldLabel && <div className="text-[10px] text-zinc-500">{heldLabel}</div>}
+        {/* Invested = units × price paid; both factors sit beneath the total. */}
+        <td className={`${TD} text-right tabular-nums`} title="Units × units-weighted price paid">
+          <div className="text-zinc-200">{fmt.inr(p.invested)}</div>
+          <div className="text-[10px] text-zinc-500">
+            {fmt.num(p.units, 2)} × {p.avg_price != null ? fmt.inrFull(p.avg_price) : "–"}
+          </div>
         </td>
-        <td className={`${TD} text-right tabular-nums`} title="Units-weighted price paid">
-          {p.avg_price != null ? fmt.inrFull(p.avg_price) : "–"}
-        </td>
-        <td className={`${TD} text-right tabular-nums`}>{fmt.inr(p.invested)}</td>
         <td className={TD}>
           {p.next_payment ? (
             <div title={p.next_payment.estimated ? "Estimated amount" : undefined}>
