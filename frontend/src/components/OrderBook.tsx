@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { api, fmt } from "../api/client";
 import type { DepthSide, KiteOrder, YtmAtPrice } from "../api/types";
+import { liveTime } from "../lib/liveTrades";
 import { fmtIstTime, useQuoteClock, valuationIsCurrent } from "../lib/quoteValuation";
 import { MetadataSeparator } from "./InlineMetadata";
 import OrderTicket from "./OrderTicket";
@@ -219,6 +220,35 @@ function Ladder({
           {side?.source === "kite" && (
             <span className="text-[10px] font-normal px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
               via Kite
+            </span>
+          )}
+          {side?.source === "kite" && (
+            <span
+              className="text-[11px] font-normal text-zinc-400"
+              title={
+                side.day_volume
+                  ? `Today on this exchange: ${fmt.num(side.day_volume, 0)} units traded${
+                      side.day_avg_price != null ? `, avg ${fmt.inrFull(side.day_avg_price)}` : ""
+                    }${
+                      side.ohlc
+                        ? `; open ${fmt.inrFull(side.ohlc.open ?? null)}, high ${fmt.inrFull(side.ohlc.high ?? null)}, low ${fmt.inrFull(side.ohlc.low ?? null)}`
+                        : ""
+                    }`
+                  : "No trade on this exchange today"
+              }
+            >
+              {side.day_volume && side.last_price != null ? (
+                <>
+                  LTP <span className="text-zinc-200">{fmt.inrFull(side.last_price)}</span>
+                  {liveTime(side.last_trade_at ?? null)
+                    ? ` · ${liveTime(side.last_trade_at ?? null)}`
+                    : ""}
+                  {side.last_qty != null ? ` · ${fmt.num(side.last_qty, 0)} units` : ""}
+                  {` · day vol ${fmt.num(side.day_volume, 0)}`}
+                </>
+              ) : (
+                "no trade today"
+              )}
             </span>
           )}
         </span>

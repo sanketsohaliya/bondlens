@@ -9,6 +9,7 @@ import {
 } from "lightweight-charts";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api, fmt } from "../api/client";
+import { liveRowsToShow, liveTime, liveTradesFromBook, todayIst } from "../lib/liveTrades";
 import StatBox from "./StatBox";
 
 const RANGES = [
@@ -39,6 +40,24 @@ export default function TradeChart({
     queryKey: ["trades", isin],
     queryFn: () => api.trades(isin),
   });
+  // Today's trade comes from the Kite quote behind the order book (same
+  // query key as the Order Book tab, so it is one fetch per drawer).
+  const { data: kite } = useQuery({
+    queryKey: ["kite-status"],
+    queryFn: api.kite.status,
+    staleTime: 120_000,
+  });
+  const { data: book } = useQuery({
+    queryKey: ["depth", isin],
+    queryFn: () => api.depth(isin),
+    enabled: kite?.connected ?? false,
+    staleTime: Number.POSITIVE_INFINITY,
+    refetchOnWindowFocus: false,
+  });
+  const liveRows = useMemo(
+    () => liveRowsToShow(liveTradesFromBook(book), data?.trades ?? [], todayIst()),
+    [book, data],
+  );
 
   const filtered = useMemo(() => {
     if (!data) return [];
@@ -335,6 +354,37 @@ export default function TradeChart({
                   </tr>
                 </thead>
                 <tbody>
+                  {liveRows.map((l) => (
+                    <tr
+                      key={`live-${l.exchange}`}
+                      className="border-b border-zinc-800/50 bg-emerald-500/5"
+                      title={
+                        l.ohlc
+                          ? `Today on ${l.exchange}: open ${fmt.inrFull(l.ohlc.open ?? null)}, high ${fmt.inrFull(l.ohlc.high ?? null)}, low ${fmt.inrFull(l.ohlc.low ?? null)}; avg ${fmt.inrFull(l.avgPrice)}. From the live Kite quote; the exchange bhavcopy replaces this after the close.`
+                          : "From the live Kite quote; the exchange bhavcopy replaces this after the close."
+                      }
+                    >
+                      <td className="px-3 py-1.5 text-zinc-200 whitespace-nowrap">
+                        Today
+                        <span className="ml-1.5 text-[10px] px-1 py-px rounded border border-emerald-500/30 text-emerald-400">
+                          live
+                        </span>
+                      </td>
+                      <td className="px-3 py-1.5">
+                        <span className="text-emerald-500">Retail ({l.exchange})</span>
+                      </td>
+                      <td className="px-3 py-1.5 text-zinc-200 whitespace-nowrap">
+                        <div>{fmt.inrFull(l.price)}</div>
+                        <div className="text-[10px] text-zinc-500">
+                          last {liveTime(l.at) ?? "–"}
+                          {l.lastQty != null ? ` × ${fmt.num(l.lastQty, 0)}` : ""}
+                        </div>
+                      </td>
+                      <td className="px-3 py-1.5 text-zinc-500">–</td>
+                      <td className="px-3 py-1.5 text-zinc-400">{fmt.num(l.volume, 0)}</td>
+                      <td className="px-3 py-1.5 text-zinc-400">{fmt.inr(l.turnover)}</td>
+                    </tr>
+                  ))}
                   {recent.map((t) => (
                     <tr
                       key={`${t.trade_date}-${t.exchange}-${t.segment}`}

@@ -273,6 +273,27 @@ def test_last_trade_time_is_not_used_as_quote_freshness():
 
 def test_parse_kite_depth_empty_is_none():
     assert kite_connect.parse_kite_depth(_quote()) is None
+
+
+def test_parse_kite_depth_carries_todays_trade():
+    q = _quote({"buy": [{"price": 5094.4, "quantity": 7, "orders": 1}]},
+               last_price=5094.4, last_trade_time="2026-10-29 12:41:07", last_quantity=2,
+               volume=2, average_price=5094.4,
+               ohlc={"open": 5094.4, "high": 5094.4, "low": 5094.4, "close": 5100.0})
+    side = kite_connect.parse_kite_depth(q)
+    assert side is not None
+    assert side["last_price"] == 5094.4 and side["last_trade_at"] == "2026-10-29 12:41:07"
+    assert side["last_qty"] == 2.0 and side["day_volume"] == 2.0
+    assert side["day_avg_price"] == 5094.4 and side["day_turnover"] == 10188.8
+    assert side["ohlc"]["high"] == 5094.4
+    # Traded today but no resting orders: still a side, so the trade shows.
+    traded_only = kite_connect.parse_kite_depth(_quote(last_price=990.0, volume=5, average_price=990.0,
+                                                       last_trade_time="2026-10-29 10:00:00"))
+    assert traded_only is not None and traded_only["bids"] == [] and traded_only["day_volume"] == 5.0
+    # Untraded today: no stale last_price masquerading as today's trade.
+    quiet = kite_connect.parse_kite_depth(_quote({"sell": [{"price": 1000, "quantity": 10}]},
+                                                 last_price=985.0, volume=0))
+    assert quiet is not None and quiet["last_price"] is None and quiet["day_volume"] is None
     assert kite_connect.parse_kite_depth(_quote(
         {"buy": [{"price": 0, "quantity": 0, "orders": 0}] * 5,
          "sell": [{"price": 0, "quantity": 0, "orders": 0}] * 5})) is None

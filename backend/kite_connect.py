@@ -180,8 +180,12 @@ def parse_kite_depth(quote: dict[str, Any]) -> dict[str, Any] | None:
         return out
 
     bids, asks = levels(book.get("buy")), levels(book.get("sell"))
-    if not bids and not asks:
+    num = lambda v: float(v) if v not in (None, "", 0, 0.0) else None  # noqa: E731
+    volume = num(quote.get("volume"))
+    if not bids and not asks and not volume:
         return None
+    avg = num(quote.get("average_price"))
+    ohlc = quote.get("ohlc") or {}
     return {
         "bids": bids[:5],
         "asks": asks[:5],
@@ -189,6 +193,15 @@ def parse_kite_depth(quote: dict[str, Any]) -> dict[str, Any] | None:
         "total_ask_qty": float(q) if (q := quote.get("sell_quantity")) else None,
         "as_of": quote.get("timestamp"),
         "source": "kite",
+        # Today's trade on this exchange - the piece the bhavcopy only
+        # delivers after the close. Kite reports last_trade_time in IST.
+        "last_price": num(quote.get("last_price")) if volume else None,
+        "last_trade_at": (quote.get("last_trade_time") or None) if volume else None,
+        "last_qty": num(quote.get("last_quantity")) if volume else None,
+        "day_volume": volume,
+        "day_avg_price": avg,
+        "day_turnover": round(volume * avg, 2) if volume and avg else None,
+        "ohlc": {k: float(v) for k, v in ohlc.items() if v not in (None, 0, 0.0)} or None,
     }
 
 

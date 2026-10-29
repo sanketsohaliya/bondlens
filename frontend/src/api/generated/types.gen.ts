@@ -1203,6 +1203,36 @@ export type DepthSide = {
      * Warnings
      */
     warnings?: Array<YieldWarning>;
+    /**
+     * Last Price
+     */
+    last_price?: number | null;
+    /**
+     * Last Trade At
+     */
+    last_trade_at?: string | null;
+    /**
+     * Last Qty
+     */
+    last_qty?: number | null;
+    /**
+     * Day Volume
+     */
+    day_volume?: number | null;
+    /**
+     * Day Avg Price
+     */
+    day_avg_price?: number | null;
+    /**
+     * Day Turnover
+     */
+    day_turnover?: number | null;
+    /**
+     * Ohlc
+     */
+    ohlc?: {
+        [key: string]: number;
+    } | null;
 };
 
 /**

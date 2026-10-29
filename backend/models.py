@@ -685,6 +685,15 @@ class DepthSide(BaseModel):
     fetched_at: str | None = None
     quote_at: str | None = None
     warnings: list[YieldWarning] = Field(default_factory=list)
+    # Today's trading on this exchange, from the same Kite quote (None for
+    # scraper-sourced books): the last trade and the day's totals.
+    last_price: float | None = None
+    last_trade_at: str | None = None    # "YYYY-MM-DD HH:MM:SS" IST as Kite reports it
+    last_qty: float | None = None
+    day_volume: float | None = None
+    day_avg_price: float | None = None
+    day_turnover: float | None = None   # volume x average price
+    ohlc: dict[str, float] | None = None
 
 
 class YtmAtPrice(YieldValuation):
