@@ -104,7 +104,7 @@ describe("holdings table reads like Explore", () => {
       "9.60%",
       "vs 9.10% YTM @ LTP",
       "₹9,900",
-      "10 × ₹990 · ₹150 back",
+      "10 × ₹990 | ₹150 back",
       "₹10,100",
       "50.0% of portfolio",
       "+₹200",
@@ -121,6 +121,12 @@ describe("holdings table reads like Explore", () => {
     expect(idx).toEqual([...idx].sort((a, b) => a - b));
     expect(html).not.toContain("Retail");
     expect(html).not.toContain("₹12,700"); // per unit, as on Explore
+  });
+
+  it("always says what has come back, ₹0 for a fresh position", () => {
+    expect(text(row({ ...position, received: null } as PortfolioPosition))).toContain(
+      "10 × ₹990 | ₹0 back",
+    );
   });
 
   it("falls back to the position's own fields when the explorer row is missing", () => {

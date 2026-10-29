@@ -512,7 +512,7 @@ function PositionRow({
   const investedTitle =
     received > 0 && p.received
       ? `Units × units-weighted price paid. Received so far ${fmt.inr(received)} (interest ${fmt.inr(p.received.interest)} · principal ${fmt.inr(p.received.principal)}) across ${p.received.payments} payment${p.received.payments === 1 ? "" : "s"} per schedule to date — not confirmation of bank receipt; optional exits excluded.`
-      : "Units × units-weighted price paid";
+      : "Units × units-weighted price paid. Nothing received yet per the schedule.";
   // Compare effective annual rates, not nominal YTM against XIRR.
   // Different dates and cashflows mean this is not an entry recommendation.
   const spread = portfolioYieldSpread(p);
@@ -573,7 +573,8 @@ function PositionRow({
           <div className="text-zinc-200">{fmt.inr(p.invested)}</div>
           <div className="text-[10px] text-zinc-500">
             {fmt.num(p.units, 2)} × {p.avg_price != null ? fmt.inrFull(p.avg_price) : "–"}
-            {received > 0 && ` · ${fmt.inr(received)} back`}
+            <MetadataSeparator />
+            {fmt.inr(received)} back
           </div>
         </td>
         <td className={`${TD} text-right tabular-nums`}>
