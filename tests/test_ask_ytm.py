@@ -64,7 +64,7 @@ def test_best_ask_across_exchanges(env):
     [item] = ask_ytm.compute(1, ["INE000TEST01"])
     assert item["ask_price"] == 1005 and item["ask_qty"] == 10
     assert item["ytm"] == 11.44 and item["exchange"] == "BSE"
-    assert item["ytm_method"] == "exact" and item["as_of"] == str(date.today())
+    assert item["ytm_method"] == "exact" and item["as_of"] == str(ask_ytm._today())  # IST day
     assert item["fetched_at"] and item["calculation_version"]
     assert "expires_at" not in item
 

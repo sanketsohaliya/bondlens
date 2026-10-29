@@ -117,7 +117,7 @@ def holding_quotes(user_id: int, isins: list[str]) -> dict[str, dict[str, Any]]:
         batch = _paced_quotes(user_id, instruments[i:i + QUOTE_CHUNK])
         captured = datetime.now(UTC).isoformat()
         quotes.update({k: {**v, "_captured_at": captured} for k, v in batch.items() if isinstance(v, dict)})
-    today = date.today()
+    today = _today()
     out: dict[str, dict[str, Any]] = {}
     for isin in isins:
         bid, ask = _best_bid(quotes, keys_by_isin[isin]), _best_ask(quotes, keys_by_isin[isin])
@@ -172,7 +172,7 @@ class PriceCalculator:
     def values(self, prices: list[float], today: date | None = None) -> list[dict]:
         if not prices:
             return []
-        today = today or date.today()
+        today = today or _today()
         if (self.as_of != today or self.version != valuation.VERSION
                 or time.monotonic() - self.loaded_at >= CACHE_TTL_SECONDS):
             self.terms = queries.bond_terms(self.isin)
@@ -187,6 +187,13 @@ class PriceCalculator:
                                                        otc_yield=self.core.get("otc_yield"),
                                                        otc_trade_date=self.core.get("otc_trade_date"))
         return [self.memo[p] for p in prices]
+
+
+def _today() -> date:
+    """The trading day in IST - the cache's same-day test converts its
+    timestamps to IST, so the comparison must not use the host clock
+    (CI runs in UTC; after 18:30 UTC the two dates differ)."""
+    return datetime.now(quote_time.IST).date()
 
 
 def _paced_quotes(user_id: int, instruments: list[str]) -> dict[str, Any]:
@@ -223,7 +230,7 @@ def compute(user_id: int, isins: list[str]) -> list[dict[str, Any]]:
     """[{isin, ask_price, ask_qty, ytm}] for the bonds with a live ask."""
     isins = list(dict.fromkeys(isins))[:MAX_ISINS]
     now = time.time()
-    today = date.today()
+    today = _today()
     for key, (ts, _) in list(_cache.items()):
         if not 0 <= now - ts < CACHE_TTL_SECONDS:
             _cache.pop(key, None)
@@ -266,7 +273,7 @@ def compute(user_id: int, isins: list[str]) -> list[dict[str, Any]]:
              if (ask := _best_ask(quotes, keys_by_isin[isin]))}
 
     # One bulk load of schedule inputs for everything with an ask.
-    today = date.today()
+    today = _today()
     flows = queries.cashflows_for(list(asked)) if asked else {}
     terms = queries.terms_for(list(asked)) if asked else {}
     notices = queries.exchange_notice_rows(list(asked)) if asked else {}
