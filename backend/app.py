@@ -217,6 +217,9 @@ def portfolio(user_id: int = Depends(auth.require_user)):
                               if sched.usable and not sched.pricing_issues(today)
                               and core_by_isin[p["isin"]].get("frequency") == sched.frequency else None)
         p["yield_on_cost_notes"] = ["Projected XIRR uses scheduled cashflows, not verified bank receipts"]
+        # The explorer row itself, so the holdings table renders the very
+        # same cells (and text) as Explore for this bond.
+        p["bond"] = core_by_isin[p["isin"]] or None
         if any(f.optional for f in sched.flows):
             p["yield_on_cost_notes"].append("Optional full-redemption payouts are excluded from the hold-to-maturity projection")
 

@@ -2288,6 +2288,12 @@ export type PortfolioPosition = {
      */
     lots: Array<PortfolioLot>;
     next_payment: Cashflow | null;
+    /**
+     * Bond
+     */
+    bond?: {
+        [key: string]: unknown;
+    } | null;
 };
 
 /**

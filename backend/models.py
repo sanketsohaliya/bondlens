@@ -456,6 +456,10 @@ class PortfolioPosition(BaseModel):
     gain_pct: float | None
     lots: list[PortfolioLot]
     next_payment: Cashflow | None  # amount is x units (position-level)
+    # The explorer row (same shape as Bond) so the holdings table renders
+    # Explore-identical cells. Typed loosely: a partial analytics row must
+    # never make the whole portfolio fail to load.
+    bond: dict[str, Any] | None = None
 
 
 class PortfolioSummary(BaseModel):

@@ -493,6 +493,322 @@ export default function ExploreTable({
   );
 }
 
+/** Explore column cell, shared with the Portfolio holdings table so the
+ * same bond reads identically on both pages. */
+export function MarkCell({ bond: b }: { bond: Bond }) {
+  return (
+    <td className="pl-3 pr-1 py-2.5 w-14">
+      <span className="flex items-center gap-1.5">
+        <HoldMark isin={b.isin} />
+        <WatchStar isin={b.isin} />
+      </span>
+    </td>
+  );
+}
+
+/** Explore column cell, shared with the Portfolio holdings table so the
+ * same bond reads identically on both pages. */
+export function SymbolCell({ bond: b }: { bond: Bond }) {
+  return (
+    <td className="px-3 py-2.5 w-80 max-w-80">
+      {/* Issuer leads: it is what you scan for. Symbol, ISIN and the
+        hover-revealed actions sit beneath, separated by spacing only. */}
+      <div className="flex items-center gap-1.5 min-w-0">
+        <span
+          className="font-medium text-zinc-200 truncate hover:text-emerald-400 hover:underline underline-offset-2 transition-colors"
+          title={b.issuer_name ?? undefined}
+        >
+          {b.issuer_name ?? b.isin}
+        </span>
+        {b.in_default && (
+          <span
+            title="Issuer has missed payments on this bond"
+            className="shrink-0 text-[10px] px-1.5 py-0.5 rounded bg-red-500/15 text-red-400 border border-red-500/30"
+          >
+            DEFAULT
+          </span>
+        )}
+      </div>
+      <div className="flex items-center text-[11px] min-w-0">
+        <InlineMetadata
+          parts={[
+            <CopyText
+              key="symbol"
+              value={b.nse_symbol ?? b.bse_scrip_id ?? b.isin}
+              label="symbol"
+              className="text-zinc-500 shrink-0"
+            />,
+            <CopyText key="isin" value={b.isin} label="ISIN" className="text-zinc-500" />,
+          ]}
+        />
+        <span className="flex items-center shrink-0 opacity-0 group-hover/row:opacity-100 transition-opacity">
+          <MetadataSeparator />
+          <InlineMetadata
+            parts={[
+              <RowLink key="nsdl" href={nsdlUrl(b.isin)} label="NSDL" tip={LINK_TIPS.nsdl} />,
+              b.kite_url && (
+                <RowLink key="kite" href={b.kite_url} label="Kite" tip={LINK_TIPS.kite} />
+              ),
+              <AiPromptBtn key="ai" isin={b.isin} variant="row" />,
+            ]}
+          />
+        </span>
+      </div>
+    </td>
+  );
+}
+
+/** Explore column cell, shared with the Portfolio holdings table so the
+ * same bond reads identically on both pages. */
+export function LtpYtmCell({
+  bond: b,
+  onSelect,
+}: {
+  bond: Bond;
+  onSelect: (isin: string, tab?: "cashflows" | "ratings" | "chart" | "order book") => void;
+}) {
+  const abs = b.ytm != null ? absReturnText(b.valuation) : null;
+  return (
+    <td className="px-3 py-2.5 whitespace-nowrap">
+      <div>
+        <span
+          className={b.ytm != null ? "text-zinc-200 font-medium" : "text-zinc-500"}
+          title={valuationTooltip(b.valuation)}
+        >
+          {fmt.pct(b.ytm)}
+        </span>
+        {b.ytm != null && hasYieldReview(b.valuation, b.ytm_reliable) && (
+          <span
+            className="ml-1 text-[10px] text-amber-500/80 align-middle"
+            title={valuationTooltip(b.valuation)}
+          >
+            ⚠
+          </span>
+        )}
+        {b.ytm_method === "ytc" && (
+          <span
+            className="ml-1 text-[10px] text-zinc-500"
+            title="Yield to earliest call (perpetual)"
+          >
+            YTC
+          </span>
+        )}
+        {b.coupon_basis?.startsWith("Variable") && (
+          <span className="ml-1 text-[10px] text-zinc-500" title="Floating / market-linked coupon">
+            FLT
+          </span>
+        )}
+      </div>
+      {(b.ltp != null || abs) && (
+        <div className="flex items-center text-[11px] font-normal">
+          {abs && <AbsReturn value={b.valuation} />}
+          {abs && b.ltp != null && <MetadataSeparator />}
+          {b.ltp != null && (
+            <div
+              className={`group/ltp ${
+                b.stale && (b.days_since_traded ?? 0) > 90 ? "text-amber-500/80" : "text-zinc-500"
+              }`}
+              onClick={(e) => {
+                e.stopPropagation();
+                onSelect(b.isin, "chart");
+              }}
+              title={
+                [
+                  b.stale && b.days_since_traded != null
+                    ? `No trades seen for ${b.days_since_traded} days — this price and its YTM may be outdated`
+                    : null,
+                  b.face_value != null && b.ltp < b.face_value ? "Below face value" : null,
+                ]
+                  .filter(Boolean)
+                  .join("\n") || undefined
+              }
+            >
+              <span className="group-hover/ltp:underline decoration-zinc-600 underline-offset-2 cursor-pointer">
+                {fmt.inrFull(b.ltp)}
+              </span>
+              {!b.stale && b.prev_ltp != null && b.ltp !== b.prev_ltp && (
+                <span
+                  className={`ml-1 text-[10px] ${
+                    b.ltp > b.prev_ltp ? "text-emerald-500/80" : "text-red-400/70"
+                  }`}
+                  title={`LTP on previous trading day: ${fmt.inrFull(b.prev_ltp)}`}
+                >
+                  {b.ltp > b.prev_ltp ? "▲" : "▼"}
+                </span>
+              )}
+              {b.days_since_traded != null && (
+                <>
+                  <MetadataSeparator />
+                  <span>{tradedAgo(b.days_since_traded)}</span>
+                </>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </td>
+  );
+}
+
+/** Explore column cell, shared with the Portfolio holdings table so the
+ * same bond reads identically on both pages. */
+export function TurnoverCell({
+  bond: b,
+  onSelect,
+}: {
+  bond: Bond;
+  onSelect: (isin: string, tab?: "cashflows" | "ratings" | "chart" | "order book") => void;
+}) {
+  return (
+    <td
+      className="group/turnover px-3 py-2.5 whitespace-nowrap text-sm leading-snug"
+      onClick={(e) => {
+        e.stopPropagation();
+        onSelect(b.isin, "chart");
+      }}
+    >
+      {b.nse_turnover == null && b.bse_turnover == null ? (
+        <span className="text-zinc-500">–</span>
+      ) : (
+        <>
+          <span className="text-zinc-200 font-medium group-hover/turnover:underline decoration-zinc-600 underline-offset-2">
+            {fmt.inr((b.nse_turnover ?? 0) + (b.bse_turnover ?? 0))}
+          </span>
+          {b.turnover != null && b.prev_turnover != null && b.turnover !== b.prev_turnover && (
+            <span
+              className={`ml-1 text-[10px] ${
+                b.turnover > b.prev_turnover ? "text-emerald-500/80" : "text-red-400/70"
+              }`}
+              title={`Turnover on previous trading day: ${fmt.inr(b.prev_turnover)}`}
+            >
+              {b.turnover > b.prev_turnover ? "▲" : "▼"}
+            </span>
+          )}
+        </>
+      )}
+      {(() => {
+        const otc = otcLine(b);
+        return otc ? (
+          <div className="text-[11px] text-zinc-500" title={otc.title}>
+            {otc.text}
+          </div>
+        ) : null;
+      })()}
+    </td>
+  );
+}
+
+/** Explore column cell, shared with the Portfolio holdings table so the
+ * same bond reads identically on both pages. */
+export function RatingCell({
+  bond: b,
+  onSelect,
+}: {
+  bond: Bond;
+  onSelect: (isin: string, tab?: "cashflows" | "ratings" | "chart" | "order book") => void;
+}) {
+  return (
+    <td
+      className="px-3 py-2.5 whitespace-nowrap hover:underline decoration-zinc-600 underline-offset-2"
+      onClick={(e) => {
+        e.stopPropagation();
+        onSelect(b.isin, "ratings");
+      }}
+    >
+      <RatingBadge
+        rating={b.credit_rating}
+        tone={b.rating_change === "down" ? "down" : b.rating_change === "up" ? "up" : undefined}
+        toneTitle={
+          b.rating_change === "down"
+            ? `Downgraded${b.rating_changed_at ? ` on ${fmt.date(b.rating_changed_at)}` : ""} — was ${b.rating_prev}`
+            : b.rating_change === "up"
+              ? `Upgraded${b.rating_changed_at ? ` on ${fmt.date(b.rating_changed_at)}` : ""} — was ${b.rating_prev}`
+              : undefined
+        }
+        agencySuffix={
+          b.secured != null && (
+            <span
+              className={b.secured ? "text-zinc-600" : "text-amber-500/50"}
+              title={
+                b.secured
+                  ? "Secured — backed by collateral / security"
+                  : "Unsecured — no collateral backing; repayment relies on the issuer alone"
+              }
+            >
+              {" "}
+              ({b.secured ? "S" : "U"})
+            </span>
+          )
+        }
+      />
+    </td>
+  );
+}
+
+/** Explore column cell, shared with the Portfolio holdings table so the
+ * same bond reads identically on both pages. */
+export function PayoutTd({
+  bond: b,
+  today,
+  onSelect,
+}: {
+  bond: Bond;
+  today: string;
+  onSelect: (isin: string, tab?: "cashflows" | "ratings" | "chart" | "order book") => void;
+}) {
+  const payout = payoutDisplay(b, today);
+  return (
+    <td
+      className="group/coupon px-3 py-2.5 whitespace-nowrap cursor-pointer"
+      title={payout.detail}
+      onClick={(e) => {
+        e.stopPropagation();
+        onSelect(b.isin, "cashflows");
+      }}
+    >
+      <PayoutCell
+        bond={b}
+        today={today}
+        payout={payout}
+        onOpen={() => onSelect(b.isin, "cashflows")}
+      />
+    </td>
+  );
+}
+
+/** Explore column cell, shared with the Portfolio holdings table so the
+ * same bond reads identically on both pages. */
+export function MaturityCell({ bond: b }: { bond: Bond }) {
+  return (
+    <td className="px-3 py-2.5 whitespace-nowrap text-right">
+      {b.maturity_date != null ? (
+        <>
+          <div className="text-zinc-200 font-medium">
+            {b.years_to_maturity != null
+              ? yearsMonths(b.years_to_maturity)
+              : monthYear(b.maturity_date)}
+          </div>
+          {b.years_to_maturity != null && (
+            <div className="flex items-center justify-end text-[11px] text-zinc-500">
+              {monthYear(b.maturity_date)}
+              {b.tenor_months != null && (
+                <>
+                  <MetadataSeparator />
+                  <span title="Original tenor per NSDL">{yearsMonths(b.tenor_months / 12)}</span>
+                </>
+              )}
+            </div>
+          )}
+        </>
+      ) : b.perpetual ? (
+        <span className="text-zinc-500">perp</span>
+      ) : (
+        <span className="text-zinc-500">–</span>
+      )}
+    </td>
+  );
+}
+
 export function Row({
   bond: b,
   today,
@@ -505,8 +821,6 @@ export function Row({
   /** undefined = Kite not connected (no column); null = no live ask. */
   ask?: AskYtm | null;
 }) {
-  const payout = payoutDisplay(b, today);
-  const abs = b.ytm != null ? absReturnText(b.valuation) : null;
   return (
     <tr
       onClick={() => {
@@ -515,140 +829,11 @@ export function Row({
       }}
       className="group/row border-b border-zinc-900 hover:bg-zinc-900/60 cursor-pointer transition-colors"
     >
-      <td className="pl-3 pr-1 py-2.5 w-14">
-        <span className="flex items-center gap-1.5">
-          <HoldMark isin={b.isin} />
-          <WatchStar isin={b.isin} />
-        </span>
-      </td>
-      <td className="px-3 py-2.5 w-80 max-w-80">
-        {/* Issuer leads: it is what you scan for. Symbol, ISIN and the
-            hover-revealed actions sit beneath, separated by spacing only. */}
-        <div className="flex items-center gap-1.5 min-w-0">
-          <span
-            className="font-medium text-zinc-200 truncate hover:text-emerald-400 hover:underline underline-offset-2 transition-colors"
-            title={b.issuer_name ?? undefined}
-          >
-            {b.issuer_name ?? b.isin}
-          </span>
-          {b.in_default && (
-            <span
-              title="Issuer has missed payments on this bond"
-              className="shrink-0 text-[10px] px-1.5 py-0.5 rounded bg-red-500/15 text-red-400 border border-red-500/30"
-            >
-              DEFAULT
-            </span>
-          )}
-        </div>
-        <div className="flex items-center text-[11px] min-w-0">
-          <InlineMetadata
-            parts={[
-              <CopyText
-                key="symbol"
-                value={b.nse_symbol ?? b.bse_scrip_id ?? b.isin}
-                label="symbol"
-                className="text-zinc-500 shrink-0"
-              />,
-              <CopyText key="isin" value={b.isin} label="ISIN" className="text-zinc-500" />,
-            ]}
-          />
-          <span className="flex items-center shrink-0 opacity-0 group-hover/row:opacity-100 transition-opacity">
-            <MetadataSeparator />
-            <InlineMetadata
-              parts={[
-                <RowLink key="nsdl" href={nsdlUrl(b.isin)} label="NSDL" tip={LINK_TIPS.nsdl} />,
-                b.kite_url && (
-                  <RowLink key="kite" href={b.kite_url} label="Kite" tip={LINK_TIPS.kite} />
-                ),
-                <AiPromptBtn key="ai" isin={b.isin} variant="row" />,
-              ]}
-            />
-          </span>
-        </div>
-      </td>
+      <MarkCell bond={b} />
+      <SymbolCell bond={b} />
       {/* Merged column: YTM (at the last traded price) on top, the LTP
           it was computed from as the sub-line. */}
-      <td className="px-3 py-2.5 whitespace-nowrap">
-        <div>
-          <span
-            className={b.ytm != null ? "text-zinc-200 font-medium" : "text-zinc-500"}
-            title={valuationTooltip(b.valuation)}
-          >
-            {fmt.pct(b.ytm)}
-          </span>
-          {b.ytm != null && hasYieldReview(b.valuation, b.ytm_reliable) && (
-            <span
-              className="ml-1 text-[10px] text-amber-500/80 align-middle"
-              title={valuationTooltip(b.valuation)}
-            >
-              ⚠
-            </span>
-          )}
-          {b.ytm_method === "ytc" && (
-            <span
-              className="ml-1 text-[10px] text-zinc-500"
-              title="Yield to earliest call (perpetual)"
-            >
-              YTC
-            </span>
-          )}
-          {b.coupon_basis?.startsWith("Variable") && (
-            <span
-              className="ml-1 text-[10px] text-zinc-500"
-              title="Floating / market-linked coupon"
-            >
-              FLT
-            </span>
-          )}
-        </div>
-        {(b.ltp != null || abs) && (
-          <div className="flex items-center text-[11px] font-normal">
-            {abs && <AbsReturn value={b.valuation} />}
-            {abs && b.ltp != null && <MetadataSeparator />}
-            {b.ltp != null && (
-              <div
-                className={`group/ltp ${
-                  b.stale && (b.days_since_traded ?? 0) > 90 ? "text-amber-500/80" : "text-zinc-500"
-                }`}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onSelect(b.isin, "chart");
-                }}
-                title={
-                  [
-                    b.stale && b.days_since_traded != null
-                      ? `No trades seen for ${b.days_since_traded} days — this price and its YTM may be outdated`
-                      : null,
-                    b.face_value != null && b.ltp < b.face_value ? "Below face value" : null,
-                  ]
-                    .filter(Boolean)
-                    .join("\n") || undefined
-                }
-              >
-                <span className="group-hover/ltp:underline decoration-zinc-600 underline-offset-2 cursor-pointer">
-                  {fmt.inrFull(b.ltp)}
-                </span>
-                {!b.stale && b.prev_ltp != null && b.ltp !== b.prev_ltp && (
-                  <span
-                    className={`ml-1 text-[10px] ${
-                      b.ltp > b.prev_ltp ? "text-emerald-500/80" : "text-red-400/70"
-                    }`}
-                    title={`LTP on previous trading day: ${fmt.inrFull(b.prev_ltp)}`}
-                  >
-                    {b.ltp > b.prev_ltp ? "▲" : "▼"}
-                  </span>
-                )}
-                {b.days_since_traded != null && (
-                  <>
-                    <MetadataSeparator />
-                    <span>{tradedAgo(b.days_since_traded)}</span>
-                  </>
-                )}
-              </div>
-            )}
-          </div>
-        )}
-      </td>
+      <LtpYtmCell bond={b} onSelect={onSelect} />
       {/* YTM @ Ask (only when Kite is connected): indicative gross yield
           at a usable best-ask snapshot across NSE/BSE, from the user's session.
           Clicking jumps to the order book to act on it. */}
@@ -664,120 +849,14 @@ export function Row({
           <AskQuoteCell ask={ask} onOpen={() => onSelect(b.isin, "order book")} />
         </td>
       )}
-      <td
-        className="group/turnover px-3 py-2.5 whitespace-nowrap text-sm leading-snug"
-        onClick={(e) => {
-          e.stopPropagation();
-          onSelect(b.isin, "chart");
-        }}
-      >
-        {b.nse_turnover == null && b.bse_turnover == null ? (
-          <span className="text-zinc-500">–</span>
-        ) : (
-          <>
-            <span className="text-zinc-200 font-medium group-hover/turnover:underline decoration-zinc-600 underline-offset-2">
-              {fmt.inr((b.nse_turnover ?? 0) + (b.bse_turnover ?? 0))}
-            </span>
-            {b.turnover != null && b.prev_turnover != null && b.turnover !== b.prev_turnover && (
-              <span
-                className={`ml-1 text-[10px] ${
-                  b.turnover > b.prev_turnover ? "text-emerald-500/80" : "text-red-400/70"
-                }`}
-                title={`Turnover on previous trading day: ${fmt.inr(b.prev_turnover)}`}
-              >
-                {b.turnover > b.prev_turnover ? "▲" : "▼"}
-              </span>
-            )}
-          </>
-        )}
-        {(() => {
-          const otc = otcLine(b);
-          return otc ? (
-            <div className="text-[11px] text-zinc-500" title={otc.title}>
-              {otc.text}
-            </div>
-          ) : null;
-        })()}
-      </td>
-      <td
-        className="px-3 py-2.5 whitespace-nowrap hover:underline decoration-zinc-600 underline-offset-2"
-        onClick={(e) => {
-          e.stopPropagation();
-          onSelect(b.isin, "ratings");
-        }}
-      >
-        <RatingBadge
-          rating={b.credit_rating}
-          tone={b.rating_change === "down" ? "down" : b.rating_change === "up" ? "up" : undefined}
-          toneTitle={
-            b.rating_change === "down"
-              ? `Downgraded${b.rating_changed_at ? ` on ${fmt.date(b.rating_changed_at)}` : ""} — was ${b.rating_prev}`
-              : b.rating_change === "up"
-                ? `Upgraded${b.rating_changed_at ? ` on ${fmt.date(b.rating_changed_at)}` : ""} — was ${b.rating_prev}`
-                : undefined
-          }
-          agencySuffix={
-            b.secured != null && (
-              <span
-                className={b.secured ? "text-zinc-600" : "text-amber-500/50"}
-                title={
-                  b.secured
-                    ? "Secured — backed by collateral / security"
-                    : "Unsecured — no collateral backing; repayment relies on the issuer alone"
-                }
-              >
-                {" "}
-                ({b.secured ? "S" : "U"})
-              </span>
-            )
-          }
-        />
-      </td>
+      <TurnoverCell bond={b} onSelect={onSelect} />
+      <RatingCell bond={b} onSelect={onSelect} />
       {/* Payout: structure primary, rate/frequency and remaining flow
           count muted beneath. Tooltip leads with the rupee total a buyer
           receives, then structure in plain words; click = the actual
           payment schedule. */}
-      <td
-        className="group/coupon px-3 py-2.5 whitespace-nowrap cursor-pointer"
-        title={payout.detail}
-        onClick={(e) => {
-          e.stopPropagation();
-          onSelect(b.isin, "cashflows");
-        }}
-      >
-        <PayoutCell
-          bond={b}
-          today={today}
-          payout={payout}
-          onOpen={() => onSelect(b.isin, "cashflows")}
-        />
-      </td>
-      <td className="px-3 py-2.5 whitespace-nowrap text-right">
-        {b.maturity_date != null ? (
-          <>
-            <div className="text-zinc-200 font-medium">
-              {b.years_to_maturity != null
-                ? yearsMonths(b.years_to_maturity)
-                : monthYear(b.maturity_date)}
-            </div>
-            {b.years_to_maturity != null && (
-              <div className="flex items-center justify-end text-[11px] text-zinc-500">
-                {monthYear(b.maturity_date)}
-                {b.tenor_months != null && (
-                  <>
-                    <MetadataSeparator />
-                    <span title="Original tenor per NSDL">{yearsMonths(b.tenor_months / 12)}</span>
-                  </>
-                )}
-              </div>
-            )}
-          </>
-        ) : b.perpetual ? (
-          <span className="text-zinc-500">perp</span>
-        ) : (
-          <span className="text-zinc-500">–</span>
-        )}
-      </td>
+      <PayoutTd bond={b} today={today} onSelect={onSelect} />
+      <MaturityCell bond={b} />
     </tr>
   );
 }
