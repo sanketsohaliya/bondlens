@@ -409,6 +409,13 @@ function HoldingsTable({
     cols.length,
   );
   const totalValue = positions.reduce((s, p) => s + (p.value ?? 0), 0);
+  const platforms = useMemo(
+    () =>
+      [
+        ...new Set(positions.flatMap((p) => p.lots.map((l) => l.platform)).filter(Boolean)),
+      ].sort() as string[],
+    [positions],
+  );
 
   const sorted = useMemo(() => {
     const get = HOLDINGS_ACCESSORS[sort.key];
@@ -477,6 +484,7 @@ function HoldingsTable({
               today={today}
               quote={kiteConnected ? (quotes?.quotes[p.isin] ?? null) : undefined}
               kiteConnected={kiteConnected}
+              platforms={platforms}
               totalValue={totalValue}
               open={openIsin === p.isin}
               onToggle={() => setOpenIsin(openIsin === p.isin ? null : p.isin)}
@@ -501,6 +509,7 @@ function PositionRow({
   today,
   quote,
   kiteConnected = false,
+  platforms,
   totalValue,
   open,
   onToggle,
@@ -511,6 +520,7 @@ function PositionRow({
   /** undefined = Kite not connected; null = no live book for this bond. */
   quote?: HoldingQuote | null;
   kiteConnected?: boolean;
+  platforms?: string[];
   totalValue: number;
   open: boolean;
   onToggle: () => void;
@@ -675,8 +685,14 @@ function PositionRow({
       </tr>
       {open && (
         <tr className="border-b border-zinc-800/60 bg-zinc-900/40">
-          <td colSpan={HOLDINGS_COLS.length} className="px-3 py-3">
-            <PositionPanel p={p} quote={quote} kiteConnected={kiteConnected} onSelect={onSelect} />
+          <td colSpan={HOLDINGS_COLS.length} className="bg-zinc-950/40 px-3 py-3">
+            <PositionPanel
+              p={p}
+              quote={quote}
+              kiteConnected={kiteConnected}
+              platforms={platforms}
+              onSelect={onSelect}
+            />
           </td>
         </tr>
       )}
