@@ -176,6 +176,34 @@ def next_payment(lots: list[dict[str, Any]], flows: list[Flow],
     return None
 
 
+def remaining_payout(lots: list[dict[str, Any]], flows: list[Flow],
+                     today: date) -> dict[str, Any] | None:
+    """Gross cash the position still has coming: every future, non-optional
+    flow scaled to the units that receive it (holder semantics, as
+    ``next_payment``). Optional exit payouts are excluded, as in
+    ``yield_on_cost``. None when nothing is left to receive or an amount
+    is unknown (no partial figure)."""
+    total, estimated, left, count = 0.0, False, 0, 0
+    for f in flows:
+        if f.optional:
+            continue
+        count += 1
+        if f.effective_date <= today:
+            continue
+        units = receiving_units(lots, f)
+        if not units:
+            continue
+        if f.amount is None or not math.isfinite(f.amount) or f.amount < 0:
+            return None
+        total += f.amount * units
+        estimated = estimated or bool(f.estimated)
+        left += 1
+    if not left:
+        return None
+    return {"amount": round(total, 2), "estimated": estimated,
+            "flows_left": left, "flows_total": count}
+
+
 def monthly_cashflows(lots_by_isin: dict[str, list[dict[str, Any]]],
                       flows_by_isin: dict[str, list[Flow]],
                       today: date,

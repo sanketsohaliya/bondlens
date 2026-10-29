@@ -52,6 +52,7 @@ const position = {
   gain_pct: 2,
   lots: [],
   next_payment: null,
+  remaining: { amount: 12700, estimated: false, flows_left: 3, flows_total: 5 },
   bond,
 } as unknown as PortfolioPosition;
 
@@ -81,8 +82,6 @@ describe("holdings table reads like Explore", () => {
       "Value",
       "P&L",
       "Projected XIRR",
-      "YTM @ LTP",
-      "Retail turnover",
       "Rating",
       "Payout",
       "Maturity",
@@ -101,9 +100,9 @@ describe("holdings table reads like Explore", () => {
       "50.0% of portfolio",
       "+₹200",
       "9.60%",
-      "9.10%",
-      "₹1,010",
+      "vs 9.10% YTM @ LTP",
       "AA/Stable",
+      "₹12,700",
       "9% annual",
       "2y 8mo",
       "₹990",
@@ -115,7 +114,8 @@ describe("holdings table reads like Explore", () => {
       html,
     ).toBe(true);
     expect(idx).toEqual([...idx].sort((a, b) => a - b));
-    expect(html).not.toContain("LTP ₹");
+    expect(html).not.toContain("Retail");
+    expect(html).not.toContain("₹1,270"); // Explore's per-unit payout is not shown
   });
 
   it("falls back to the position's own fields when the explorer row is missing", () => {

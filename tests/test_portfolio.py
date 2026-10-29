@@ -353,6 +353,28 @@ def test_yield_on_cost_none_without_future_flows():
     assert pf.yield_on_cost([yoc_lot()], [], TODAY) is None
 
 
+def test_remaining_payout_scales_future_flows_to_receiving_units():
+    flows = [_flow(date(2025, 8, 1), 50.0, record=date(2025, 7, 10)),       # past
+             _flow(date(2026, 2, 1), 50.0, record=date(2026, 1, 10)),
+             _flow(date(2026, 8, 1), 50.0, record=date(2026, 7, 10), estimated=True),
+             _flow(date(2026, 8, 1), 1000.0, event="redemption", record=date(2026, 7, 10))]
+    lots = [{"units": 2, "purchase_date": date(2025, 6, 1)},
+            {"units": 3, "purchase_date": date(2026, 1, 12)}]   # misses the Feb coupon
+    r = pf.remaining_payout(lots, flows, TODAY)
+    assert r is not None
+    assert r["amount"] == pytest.approx(50 * 2 + 50 * 5 + 1000 * 5)
+    assert r["estimated"] is True
+    assert r["flows_left"] == 3 and r["flows_total"] == 4
+    # Optional exit payouts are not counted; nothing left -> None.
+    opt = schedule.Flow(event="put", due_date=date(2026, 5, 1), record_date=None,
+                        amount=1000.0, optional=True)
+    with_opt = pf.remaining_payout(lots, flows + [opt], TODAY)
+    assert with_opt is not None and with_opt["amount"] == r["amount"]
+    assert pf.remaining_payout(lots, flows[:1], TODAY) is None
+    # An unknown future amount withholds the figure rather than understating it.
+    assert pf.remaining_payout(lots, flows + [_flow(date(2026, 6, 1), None)], TODAY) is None
+
+
 def test_next_payment_holder_semantics():
     flows = [_flow(date(2026, 2, 1), 50.0, record=date(2026, 1, 10)),
              _flow(date(2026, 8, 1), 50.0, record=date(2026, 7, 10))]

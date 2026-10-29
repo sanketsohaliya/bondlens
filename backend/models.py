@@ -427,6 +427,15 @@ class LotUpdate(BaseModel):
     platform: str | None = None
 
 
+class PositionRemaining(BaseModel):
+    """Gross cash still to be received on the held units (holder
+    semantics, optional exit payouts excluded)."""
+    amount: float
+    estimated: bool
+    flows_left: int
+    flows_total: int
+
+
 class PortfolioPosition(BaseModel):
     isin: str
     avg_price: float | None  # units-weighted paid price
@@ -456,6 +465,7 @@ class PortfolioPosition(BaseModel):
     gain_pct: float | None
     lots: list[PortfolioLot]
     next_payment: Cashflow | None  # amount is x units (position-level)
+    remaining: PositionRemaining | None = None
     # The explorer row (same shape as Bond) so the holdings table renders
     # Explore-identical cells. Typed loosely: a partial analytics row must
     # never make the whole portfolio fail to load.

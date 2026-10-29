@@ -2288,6 +2288,7 @@ export type PortfolioPosition = {
      */
     lots: Array<PortfolioLot>;
     next_payment: Cashflow | null;
+    remaining?: PositionRemaining | null;
     /**
      * Bond
      */
@@ -2348,6 +2349,31 @@ export type PortfolioSummary = {
      * Bonds
      */
     bonds: number;
+};
+
+/**
+ * PositionRemaining
+ *
+ * Gross cash still to be received on the held units (holder
+ * semantics, optional exit payouts excluded).
+ */
+export type PositionRemaining = {
+    /**
+     * Amount
+     */
+    amount: number;
+    /**
+     * Estimated
+     */
+    estimated: boolean;
+    /**
+     * Flows Left
+     */
+    flows_left: number;
+    /**
+     * Flows Total
+     */
+    flows_total: number;
 };
 
 /**

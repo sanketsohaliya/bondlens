@@ -1,4 +1,3 @@
-import { useQuery } from "@tanstack/react-query";
 import {
   createChart,
   HistogramSeries,
@@ -6,29 +5,27 @@ import {
   type UTCTimestamp,
 } from "lightweight-charts";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { api, fmt } from "../api/client";
-import type { AskYtm, Bond, PortfolioMonth, PortfolioNews, PortfolioPosition } from "../api/types";
+import { fmt } from "../api/client";
+import type { Bond, PortfolioMonth, PortfolioNews, PortfolioPosition } from "../api/types";
 import AddLotSearch from "../components/AddLotSearch";
 import type { Tab as DrawerTab } from "../components/BondDrawer";
 import CopyBtn from "../components/CopyBtn";
 import Donut from "../components/Donut";
 import ExitTargetEditor from "../components/ExitTargetEditor";
 import {
-  AskQuoteCell,
   BookmarkIcon,
-  LtpYtmCell,
   MaturityCell,
   PayoutTd,
+  payoutStructure,
   RatingCell,
   SymbolCell,
-  TurnoverCell,
+  tradedAgo,
   WatchStar,
 } from "../components/ExploreTable";
 import InlineMetadata, { MetadataSeparator } from "../components/InlineMetadata";
 import LotsPanel from "../components/LotsPanel";
 import StatBox from "../components/StatBox";
-import { useAuth } from "../lib/auth";
-import { askTicketText, usePayoutDay } from "../lib/exploreAmounts";
+import { payoutDisplay, usePayoutDay } from "../lib/exploreAmounts";
 import { fuzzyMatch } from "../lib/fuzzy";
 import {
   allDatesPast,
@@ -39,8 +36,6 @@ import {
   type WeightBy,
   weights,
 } from "../lib/portfolio";
-import { useQuoteClock, valuationIsCurrent } from "../lib/quoteValuation";
-import { useAskCapture } from "../lib/useAskCapture";
 import { useColumnWidths } from "../lib/useColumnWidths";
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -289,11 +284,8 @@ type HoldingsSortKey =
   | "value"
   | "gain"
   | "yield_on_cost"
-  | "ytm"
-  | "ask_ytm"
-  | "turnover"
   | "rating"
-  | "coupon"
+  | "remaining"
   | "maturity"
   | "units"
   | "avg_price"
@@ -327,28 +319,53 @@ export function positionBond(p: PortfolioPosition): Bond {
   } as unknown as Bond;
 }
 
+/** The Payout cell with the holder's figure: what these units still
+ * receive (record dates per lot, optional exit payouts excluded), in the
+ * Explore cell's shape. Falls back to Explore's per-unit figure when the
+ * API has no holder figure. */
+export function holderPayout(p: PortfolioPosition, bond: Bond, today: string) {
+  const base = payoutDisplay(bond, today);
+  const r = p.remaining;
+  if (!r) return base;
+  const horizon = bond.schedule_shape === "perpetual" ? "the first call" : "maturity";
+  const structure = payoutStructure(bond);
+  const lines = [
+    `You'd still receive ${r.estimated ? "about " : ""}${fmt.inrFull(r.amount)} on your ${fmt.num(p.units, 2)} units if held to ${horizon} — ${r.flows_left} of ${r.flows_total} payments left.${
+      r.estimated ? " Some amounts are estimated (floating rate or missing data)." : ""
+    }`,
+    structure ? `${structure} schedule.` : null,
+    "Before tax & fees · gross cash, not profit or a guaranteed return.",
+    "Click to see every payment.",
+  ];
+  return {
+    label: `${r.estimated ? "~" : ""}${fmt.inr(r.amount)}`,
+    detail: lines.filter(Boolean).join("\n"),
+    state: r.estimated ? "estimated" : "known",
+    showCount: false,
+  } as ReturnType<typeof payoutDisplay>;
+}
+
 /** Sort accessors — semantic, not display, values: rating by rank (lower =
- * better), maturity by remaining tenor, next payment by due date. Explore
- * columns sort on the explorer row, exactly as Explore does. */
+ * better), maturity by remaining tenor, next payment by due date. */
 const HOLDINGS_ACCESSORS: Record<
   HoldingsSortKey,
-  (p: PortfolioPosition, ask: AskYtm | null | undefined) => number | string | null | undefined
+  (p: PortfolioPosition) => number | string | null | undefined
 > = {
   issuer: (p) => (p.issuer_name ?? p.isin).toLowerCase(),
   value: (p) => p.value,
   gain: (p) => p.gain,
   yield_on_cost: (p) => p.yield_on_cost,
-  ytm: (p) => positionBond(p).ytm,
-  ask_ytm: (_p, ask) => ask?.ytm ?? null,
-  turnover: (p) => positionBond(p).turnover,
   rating: (p) => p.rating_rank,
-  coupon: (p) => positionBond(p).coupon,
+  remaining: (p) => p.remaining?.amount,
   maturity: (p) => p.years_to_maturity,
   units: (p) => p.units,
   avg_price: (p) => p.avg_price,
   invested: (p) => p.invested,
   next_payment: (p) => p.next_payment?.payment_date ?? p.next_payment?.due_date,
 };
+
+const PAYOUT_TIP =
+  "Gross cash still to come on your units if held to maturity: every scheduled payment your lots are eligible for (record dates per lot), before tax and fees. Optional exit payouts are not assumed.";
 
 const XIRR_TIP =
   "Return locked in on what you actually paid, across your dated purchases (XIRR), assuming scheduled cashflows to maturity. Compare with YTM @ LTP — what a buyer today would get.";
@@ -361,35 +378,24 @@ type HoldingsCol = {
 };
 
 /** Reads left to right: what the position is doing (money), then the
- * bond exactly as Explore shows it (same columns, same order, same
- * cells), then the bookkeeping. */
-const MONEY_COLS: HoldingsCol[] = [
+ * bond as Explore shows it (Rating, Payout, Maturity - the same cells in
+ * the same order), then the bookkeeping. Market-side columns (YTM @ LTP,
+ * YTM @ Ask, turnover) are a buyer's concern; the market YTM survives as
+ * the line under Projected XIRR. */
+export const HOLDINGS_COLS: HoldingsCol[] = [
   { label: "", key: null }, // expand chevron + watch star
   { label: "Symbol", key: "issuer" },
   { label: "Value", key: "value", right: true },
   { label: "P&L", key: "gain", right: true },
   { label: "Projected XIRR", key: "yield_on_cost", right: true, tip: XIRR_TIP },
-];
-const EXPLORE_COLS: HoldingsCol[] = [
-  { label: "YTM @ LTP", key: "ytm" },
-  { label: "Retail turnover", key: "turnover" },
   { label: "Rating", key: "rating" },
-  { label: "Payout", key: "coupon" },
+  { label: "Payout", key: "remaining", tip: PAYOUT_TIP },
   { label: "Maturity", key: "maturity", right: true },
-];
-const EXPLORE_COLS_KITE: HoldingsCol[] = [
-  EXPLORE_COLS[0],
-  { label: "YTM @ Ask", key: "ask_ytm" },
-  ...EXPLORE_COLS.slice(1),
-];
-const BOOK_COLS: HoldingsCol[] = [
   { label: "Units", key: "units", right: true },
   { label: "Cost", key: "avg_price", right: true },
   { label: "Invested", key: "invested", right: true },
   { label: "Next payment", key: "next_payment" },
 ];
-export const HOLDINGS_COLS = [...MONEY_COLS, ...EXPLORE_COLS, ...BOOK_COLS];
-const HOLDINGS_COLS_KITE = [...MONEY_COLS, ...EXPLORE_COLS_KITE, ...BOOK_COLS];
 
 function HoldingsTable({
   positions,
@@ -404,30 +410,9 @@ function HoldingsTable({
     dir: -1, // matches the backend's default biggest-position-first order
   });
   const today = usePayoutDay();
-  const now = useQuoteClock();
-  const { user } = useAuth();
-  // YTM @ Ask under the user's own Kite session - the same capture Explore
-  // runs, so the column reads the same on both pages.
-  const { data: kite } = useQuery({
-    queryKey: ["kite-status"],
-    queryFn: api.kite.status,
-    staleTime: 60_000,
-    refetchOnWindowFocus: false,
-  });
-  const kiteConnected = kite?.connected ?? false;
-  const capture = useAskCapture(kiteConnected, user.id, today);
-  const askMap = useMemo(
-    () =>
-      new Map(
-        [...capture.asks.values()]
-          .filter((item) => valuationIsCurrent(item, now))
-          .map((item) => [item.isin, item]),
-      ),
-    [capture.asks, now],
-  );
-  const cols = kiteConnected ? HOLDINGS_COLS_KITE : HOLDINGS_COLS;
+  const cols = HOLDINGS_COLS;
   const { widths, tableRef, startResize, tableProps } = useColumnWidths(
-    `holdings-col-widths-v2-${cols.length}`,
+    "holdings-col-widths-v3",
     cols.length,
   );
   const totalValue = positions.reduce((s, p) => s + (p.value ?? 0), 0);
@@ -436,14 +421,14 @@ function HoldingsTable({
     const get = HOLDINGS_ACCESSORS[sort.key];
     const rows = [...positions];
     rows.sort((a, b) => {
-      const av = get(a, askMap.get(a.isin));
-      const bv = get(b, askMap.get(b.isin));
+      const av = get(a);
+      const bv = get(b);
       if (av == null) return 1; // nulls last in both directions
       if (bv == null) return -1;
       return (av < bv ? -1 : av > bv ? 1 : 0) * sort.dir;
     });
     return rows;
-  }, [positions, sort, askMap]);
+  }, [positions, sort]);
 
   return (
     <div className="overflow-x-auto">
@@ -497,7 +482,6 @@ function HoldingsTable({
               key={p.isin}
               p={p}
               today={today}
-              ask={kiteConnected ? (askMap.get(p.isin) ?? null) : undefined}
               totalValue={totalValue}
               open={openIsin === p.isin}
               onToggle={() => setOpenIsin(openIsin === p.isin ? null : p.isin)}
@@ -520,7 +504,6 @@ function HoldingsTable({
 function PositionRow({
   p,
   today,
-  ask,
   totalValue,
   open,
   onToggle,
@@ -528,8 +511,6 @@ function PositionRow({
 }: {
   p: PortfolioPosition;
   today?: string;
-  /** undefined = Kite not connected (no column); null = no live ask. */
-  ask?: AskYtm | null;
   totalValue: number;
   open: boolean;
   onToggle: () => void;
@@ -540,6 +521,7 @@ function PositionRow({
   // Shared Explore cells take (isin, tab); this row already knows its ISIN.
   const openTab = (_isin: string, tab?: "cashflows" | "ratings" | "chart" | "order book") =>
     onSelect(tab);
+  const payout = holderPayout(p, bond, payoutDay);
   // Holding age from the oldest lot (context for the yield-on-cost XIRR).
   const oldest = p.lots.reduce<string | null>(
     (min, l) => (min == null || l.purchase_date < min ? l.purchase_date : min),
@@ -608,33 +590,31 @@ function PositionRow({
           title={p.yield_on_cost_notes?.join("; ") || XIRR_TIP}
         >
           <div>{fmt.pct(p.yield_on_cost)}</div>
-          {spread != null && Math.abs(spread) > 0.05 && (
+          {bond.ytm != null ? (
             <div
               className="text-[10px] text-zinc-500"
-              title="Difference between today's YTM @ LTP and your locked-in return (Projected XIRR)."
+              title={[
+                bond.ltp != null ? `LTP ${fmt.inrFull(bond.ltp)}` : null,
+                bond.days_since_traded != null ? tradedAgo(bond.days_since_traded) : null,
+                spread != null && Math.abs(spread) > 0.05
+                  ? `${spread > 0 ? "+" : "−"}${Math.abs(spread).toFixed(2)} pp effective vs your XIRR`
+                  : null,
+              ]
+                .filter(Boolean)
+                .join(" · ")}
             >
-              {spread > 0 ? "+" : "−"}
-              {Math.abs(spread).toFixed(2)}pp vs YTM
+              vs {fmt.pct(bond.ytm)} YTM @ LTP
             </div>
-          )}
+          ) : bond.ltp != null ? (
+            <div className="text-[10px] text-zinc-500">
+              LTP {fmt.inrFull(bond.ltp)}
+              {bond.days_since_traded != null && ` · ${tradedAgo(bond.days_since_traded)}`}
+            </div>
+          ) : null}
         </td>
-        {/* The bond as Explore shows it: same columns, order and cells. */}
-        <LtpYtmCell bond={bond} onSelect={openTab} />
-        {ask !== undefined && (
-          <td
-            className="group/ask px-3 py-2.5 whitespace-nowrap cursor-pointer"
-            title={askTicketText(ask).detail}
-            onClick={(e) => {
-              e.stopPropagation();
-              onSelect("order book");
-            }}
-          >
-            <AskQuoteCell ask={ask} onOpen={() => onSelect("order book")} />
-          </td>
-        )}
-        <TurnoverCell bond={bond} onSelect={openTab} />
+        {/* The bond as Explore shows it: the same cells in the same order. */}
         <RatingCell bond={bond} onSelect={openTab} />
-        <PayoutTd bond={bond} today={payoutDay} onSelect={openTab} />
+        <PayoutTd bond={bond} today={payoutDay} onSelect={openTab} payout={payout} />
         <MaturityCell bond={bond} />
         <td className={`${TD} text-right tabular-nums`}>
           <div>{fmt.num(p.units, 2)}</div>
@@ -662,7 +642,7 @@ function PositionRow({
       </tr>
       {open && (
         <tr className="border-b border-zinc-800/60 bg-zinc-900/40">
-          <td colSpan={ask !== undefined ? 15 : 14} className="px-3 py-2">
+          <td colSpan={HOLDINGS_COLS.length} className="px-3 py-2">
             <div className="mb-2">
               <ExitTargetEditor isin={p.isin} />
             </div>

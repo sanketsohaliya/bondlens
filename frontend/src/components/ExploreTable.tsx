@@ -47,7 +47,7 @@ const isZeroCoupon = (b: Pick<Bond, "coupon_basis" | "schedule_shape">) =>
   (b.coupon_basis ?? "").toLowerCase().includes("zero") || b.schedule_shape === "zero_coupon";
 
 /** Payout structure — the column's primary line. */
-const payoutStructure = (b: Pick<Bond, "schedule_shape" | "frequency">): string | null => {
+export const payoutStructure = (b: Pick<Bond, "schedule_shape" | "frequency">): string | null => {
   switch (b.schedule_shape) {
     case "staggered":
       return "Staggered";
@@ -766,12 +766,14 @@ export function PayoutTd({
   bond: b,
   today,
   onSelect,
+  payout = payoutDisplay(b, today),
 }: {
   bond: Bond;
   today: string;
   onSelect: (isin: string, tab?: "cashflows" | "ratings" | "chart" | "order book") => void;
+  /** Portfolio passes the holder's own figure (still to receive x units). */
+  payout?: ReturnType<typeof payoutDisplay>;
 }) {
-  const payout = payoutDisplay(b, today);
   return (
     <td
       className="group/coupon px-3 py-2.5 whitespace-nowrap cursor-pointer"
