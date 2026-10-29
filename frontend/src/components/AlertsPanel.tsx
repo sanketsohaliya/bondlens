@@ -301,7 +301,7 @@ function SettingsRows({
   );
 }
 
-function Switch({
+export function Switch({
   on,
   onChange,
   title,

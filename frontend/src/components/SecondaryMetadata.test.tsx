@@ -119,6 +119,14 @@ describe("secondary metadata across screens", () => {
     expect(future.match(/\|/g)).toHaveLength(1);
   });
 
+  it("shows TDS and net interest per bond, and nets the header when asked", () => {
+    const gross = text(render(<MonthPopover m={month} year={2026} monthIdx={7} rect={rect} />));
+    expect(gross).toContain("InterestTDSNetPrincipal");
+    const net = text(render(<MonthPopover m={month} year={2026} monthIdx={7} rect={rect} net />));
+    expect(net).toContain(" net");
+    expect(net).toContain("−₹");
+  });
+
   it("separates news dates from press-release links only when both exist", () => {
     const news: PortfolioNews = {
       isin: position.isin,

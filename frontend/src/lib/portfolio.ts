@@ -50,6 +50,15 @@ export function allDatesPast(dates: string[] | null | undefined, now: Date = new
   return dates.every((d) => d < today);
 }
 
+/** Tax deducted at source on listed-debenture interest (Section 193,
+ * PAN on record): 10% of interest, nothing on principal. */
+export const TDS_RATE = 0.1;
+export const tds = (interest: number) => interest * TDS_RATE;
+export const netInterest = (interest: number) => interest - tds(interest);
+/** A month's or bond's cash, gross or net of TDS on its interest part. */
+export const cashAmount = (x: { interest: number; principal: number }, net: boolean) =>
+  (net ? netInterest(x.interest) : x.interest) + x.principal;
+
 export interface YearRow {
   year: number;
   total: number;
@@ -58,7 +67,7 @@ export interface YearRow {
 }
 
 /** Monthly buckets -> year rows with 12 cells each (IndiaBonds-style grid). */
-export function monthGrid(cashflows: PortfolioMonth[]): YearRow[] {
+export function monthGrid(cashflows: PortfolioMonth[], net = false): YearRow[] {
   const years = new Map<number, YearRow>();
   for (const cf of cashflows) {
     const year = Number(cf.month.slice(0, 4));
@@ -69,7 +78,7 @@ export function monthGrid(cashflows: PortfolioMonth[]): YearRow[] {
       years.set(year, row);
     }
     row.months[m] = cf;
-    row.total += cf.interest + cf.principal;
+    row.total += cashAmount(cf, net);
   }
   return [...years.values()]
     .map((r) => ({ ...r, total: Math.round(r.total * 100) / 100 }))

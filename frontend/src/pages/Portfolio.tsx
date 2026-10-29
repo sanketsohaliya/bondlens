@@ -15,6 +15,7 @@ import type {
   PortfolioPosition,
 } from "../api/types";
 import AddLotSearch from "../components/AddLotSearch";
+import { Switch } from "../components/AlertsPanel";
 import type { Tab as DrawerTab } from "../components/BondDrawer";
 import CopyBtn from "../components/CopyBtn";
 import Donut from "../components/Donut";
@@ -35,9 +36,13 @@ import { usePayoutDay } from "../lib/exploreAmounts";
 import { fuzzyMatch } from "../lib/fuzzy";
 import {
   allDatesPast,
+  cashAmount,
   isPastMonth,
   monthGrid,
+  netInterest,
   portfolioYieldSpread,
+  TDS_RATE,
+  tds,
   usePortfolio,
   type WeightBy,
   weights,
@@ -79,6 +84,12 @@ export default function Portfolio({
   const [filter, setFilter] = useState<SliceFilter | null>(null);
   const [nameQuery, setNameQuery] = useState("");
   const [tab, setTab] = useState<PortfolioTab>("holdings");
+  // Cash figures net of 10% TDS on interest (grid, chart, cards). Yields
+  // and XIRR stay pre-tax, as quoted everywhere else.
+  const [netTds, setNetTds] = useState(() => localStorage.getItem("portfolio-net-tds") === "1");
+  useEffect(() => {
+    localStorage.setItem("portfolio-net-tds", netTds ? "1" : "0");
+  }, [netTds]);
 
   const bySlice = useMemo(() => {
     if (!data) return { issuer: [], rating: [], sector: [] };
@@ -143,15 +154,25 @@ export default function Portfolio({
           tip="Value-weighted average of each holding's YTM @ LTP."
         />
         <StatBox
-          label="Received so far"
-          value={fmt.inr(income.received_interest + income.received_principal)}
-          tip={`Interest ${fmt.inr(income.received_interest)} · Principal ${fmt.inr(income.received_principal)}. Per schedule to date; not confirmation of bank receipt. Optional exits excluded.`}
+          label={netTds ? "Received so far (net of TDS)" : "Received so far"}
+          value={fmt.inr(
+            cashAmount(
+              { interest: income.received_interest, principal: income.received_principal },
+              netTds,
+            ),
+          )}
+          tip={`Interest ${fmt.inr(income.received_interest)}${netTds ? ` less ${TDS_RATE * 100}% TDS ${fmt.inr(tds(income.received_interest))}` : ""} · Principal ${fmt.inr(income.received_principal)}. Per schedule to date; not confirmation of bank receipt. Optional exits excluded.`}
         />
         <StatBox
-          label="Still to come"
-          value={fmt.inr(income.projected_interest + income.projected_principal)}
+          label={netTds ? "Still to come (net of TDS)" : "Still to come"}
+          value={fmt.inr(
+            cashAmount(
+              { interest: income.projected_interest, principal: income.projected_principal },
+              netTds,
+            ),
+          )}
           accent
-          tip={`Interest ${fmt.inr(income.projected_interest)} · Principal ${fmt.inr(income.projected_principal)}. Scheduled to maturity; optional exits excluded.`}
+          tip={`Interest ${fmt.inr(income.projected_interest)}${netTds ? ` less ${TDS_RATE * 100}% TDS ${fmt.inr(tds(income.projected_interest))}` : ""} · Principal ${fmt.inr(income.projected_principal)}. Scheduled to maturity; optional exits excluded.`}
         />
         <StatBox
           label="Avg maturity"
@@ -182,6 +203,16 @@ export default function Portfolio({
             </button>
           ))}
           <span className="flex-1" />
+          {tab === "cashflow" && (
+            <span className="flex items-center gap-2 pb-1.5 text-[11px] text-zinc-400">
+              Net of TDS
+              <Switch
+                on={netTds}
+                onChange={setNetTds}
+                title={`Show cash after ${TDS_RATE * 100}% TDS on interest (Section 193, listed debentures, PAN on record). Principal is not taxed at source.`}
+              />
+            </span>
+          )}
           {tab === "holdings" && (
             <span className="flex items-center gap-2 pb-1.5">
               {filter && (
@@ -213,8 +244,8 @@ export default function Portfolio({
           {tab === "cashflow" &&
             (cashflows.length > 0 ? (
               <>
-                <CashflowChart cashflows={cashflows} onSelect={onSelect} />
-                <CashflowGrid cashflows={cashflows} onSelect={onSelect} />
+                <CashflowChart cashflows={cashflows} net={netTds} onSelect={onSelect} />
+                <CashflowGrid cashflows={cashflows} net={netTds} onSelect={onSelect} />
               </>
             ) : (
               <div className="py-12 text-center text-sm text-zinc-600">No cashflows</div>
@@ -711,9 +742,11 @@ const CF_RANGES = [
 
 function CashflowChart({
   cashflows,
+  net = false,
   onSelect,
 }: {
   cashflows: PortfolioMonth[];
+  net?: boolean;
   onSelect: (isin: string) => void;
 }) {
   const container = useRef<HTMLDivElement>(null);
@@ -776,7 +809,7 @@ function CashflowChart({
     totalSeries.setData(
       shown.map((c) => ({
         time: ts(c.month),
-        value: c.interest + c.principal,
+        value: cashAmount(c, net),
         color: isPastMonth(c.month) ? "#1e5c78" : "#38bdf8",
       })),
     );
@@ -837,8 +870,10 @@ function CashflowChart({
             `<td style="font-family:ui-monospace,monospace;color:#71717a;padding-right:2px">${b.isin}</td>` +
             `<td style="color:#71717a;${num}">${dayMonth(b.dates ?? [])}</td>` +
             `<td style="color:${li};${num}">${b.interest > 0 ? money(b.interest) : "–"}</td>` +
+            `<td style="color:#fb718580;${num}">${b.interest > 0 ? `−${money(tds(b.interest))}` : "–"}</td>` +
+            `<td style="color:${li};${num}">${b.interest > 0 ? money(netInterest(b.interest)) : "–"}</td>` +
             `<td style="color:${lp};${num}">${b.principal > 0 ? money(b.principal) : "–"}</td>` +
-            `<td style="color:#a1a1aa;${num}">${money(b.interest + b.principal)}</td></tr>`
+            `<td style="color:#a1a1aa;${num}">${money(cashAmount(b, net))}</td></tr>`
           );
         })
         .join("");
@@ -849,14 +884,18 @@ function CashflowChart({
         `<td style="padding-right:2px">ISIN</td>` +
         `<td style="${num}">Date</td>` +
         `<td style="color:${intCol};${num}">Interest</td>` +
+        `<td style="color:#fb718580;${num}">TDS</td>` +
+        `<td style="color:${intCol};${num}">Net</td>` +
         `<td style="color:${prinCol};${num}">Principal</td>` +
-        `<td style="${num}">Total</td>` +
+        `<td style="${num}">Total${net ? " (net)" : ""}</td>` +
         `</tr></thead><tbody>${bondLines}` +
         `<tr style="border-top:1px solid #3f3f46;font-weight:500">` +
         `<td style="color:#71717a;padding-right:2px">Total</td><td></td><td></td>` +
         `<td style="color:${intCol};${num}">${cf.interest > 0 ? money(cf.interest) : "–"}</td>` +
+        `<td style="color:#fb718580;${num}">${cf.interest > 0 ? `−${money(tds(cf.interest))}` : "–"}</td>` +
+        `<td style="color:${intCol};${num}">${cf.interest > 0 ? money(netInterest(cf.interest)) : "–"}</td>` +
         `<td style="color:${prinCol};${num}">${cf.principal > 0 ? money(cf.principal) : "–"}</td>` +
-        `<td style="color:#e4e4e7;${num}">${money(cf.interest + cf.principal)}</td>` +
+        `<td style="color:#e4e4e7;${num}">${money(cashAmount(cf, net))}</td>` +
         `</tr></tbody></table>`;
       el.style.display = "block";
       // Flip using the rendered width so long bond names never overflow.
@@ -876,7 +915,7 @@ function CashflowChart({
       window.removeEventListener("resize", onResize);
       chart.remove();
     };
-  }, [shown]);
+  }, [shown, net]);
 
   return (
     <div className="border-b border-zinc-800 bg-zinc-900/30 p-3">
@@ -918,6 +957,7 @@ function CashflowChart({
           year={Number(pinned.m.month.slice(0, 4))}
           monthIdx={Number(pinned.m.month.slice(5, 7)) - 1}
           rect={pinned.rect}
+          net={net}
           pinned
           onSelectBond={(isin) => {
             setPinned(null);
@@ -943,10 +983,12 @@ function MonthPopover({
   year,
   monthIdx,
   rect,
+  net = false,
   pinned,
   onSelectBond,
   onClose,
 }: HoverCell & {
+  net?: boolean;
   pinned?: boolean;
   onSelectBond?: (isin: string) => void;
   onClose?: () => void;
@@ -978,7 +1020,8 @@ function MonthPopover({
         <div className="text-zinc-500 mb-1">
           {MONTHS[monthIdx]} {year}
           <MetadataSeparator />
-          {fmt.inr(m.interest + m.principal)}
+          {fmt.inr(cashAmount(m, net))}
+          {net && " net"}
           {isPastMonth(m.month) && (
             <span className="text-zinc-600">
               <MetadataSeparator />
@@ -999,6 +1042,13 @@ function MonthPopover({
                 Date
               </td>
               <td className="pr-3 text-right">Interest</td>
+              <td
+                className="pr-3 text-right"
+                title={`${TDS_RATE * 100}% TDS on interest (Section 193, listed debentures, PAN on record). Principal is not taxed at source.`}
+              >
+                TDS
+              </td>
+              <td className="pr-3 text-right">Net</td>
               <td className="text-right">Principal</td>
             </tr>
           </thead>
@@ -1039,6 +1089,12 @@ function MonthPopover({
                   <td className={`pr-3 text-right ${banked ? "text-sky-400/50" : intCls}`}>
                     {b.interest > 0 ? fmt.inr(b.interest) : "–"}
                   </td>
+                  <td className="pr-3 text-right text-rose-400/60">
+                    {b.interest > 0 ? `−${fmt.inr(tds(b.interest))}` : "–"}
+                  </td>
+                  <td className={`pr-3 text-right ${banked ? "text-sky-400/50" : intCls}`}>
+                    {b.interest > 0 ? fmt.inr(netInterest(b.interest)) : "–"}
+                  </td>
                   <td className={`text-right ${banked ? "text-emerald-400/50" : prinCls}`}>
                     {b.principal > 0 ? fmt.inr(b.principal) : "–"}
                   </td>
@@ -1051,6 +1107,12 @@ function MonthPopover({
               <td />
               <td className={`pr-3 text-right ${intCls}`}>
                 {m.interest > 0 ? fmt.inr(m.interest) : "–"}
+              </td>
+              <td className="pr-3 text-right text-rose-400/60">
+                {m.interest > 0 ? `−${fmt.inr(tds(m.interest))}` : "–"}
+              </td>
+              <td className={`pr-3 text-right ${intCls}`}>
+                {m.interest > 0 ? fmt.inr(netInterest(m.interest)) : "–"}
               </td>
               <td className={`text-right ${prinCls}`}>
                 {m.principal > 0 ? fmt.inr(m.principal) : "–"}
@@ -1065,12 +1127,14 @@ function MonthPopover({
 
 function CashflowGrid({
   cashflows,
+  net = false,
   onSelect,
 }: {
   cashflows: PortfolioMonth[];
+  net?: boolean;
   onSelect: (isin: string) => void;
 }) {
-  const rows = monthGrid(cashflows);
+  const rows = monthGrid(cashflows, net);
   const [hover, setHover] = useState<HoverCell | null>(null);
   const [pinned, setPinned] = useState<HoverCell | null>(null);
   return (
@@ -1127,7 +1191,7 @@ function CashflowGrid({
                   {m ? (
                     <>
                       {m.estimated && <span className="text-zinc-500">≈</span>}
-                      {fmt.inr(m.interest + m.principal)}
+                      {fmt.inr(cashAmount(m, net))}
                     </>
                   ) : (
                     <span className="text-zinc-700">–</span>
@@ -1141,10 +1205,11 @@ function CashflowGrid({
           ))}
         </tbody>
       </table>
-      {hover && !pinned && <MonthPopover {...hover} />}
+      {hover && !pinned && <MonthPopover {...hover} net={net} />}
       {pinned && (
         <MonthPopover
           {...pinned}
+          net={net}
           pinned
           onSelectBond={(isin) => {
             setPinned(null);

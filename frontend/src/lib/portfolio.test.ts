@@ -1,6 +1,15 @@
 import { describe, expect, it } from "vitest";
 import type { PortfolioMonth, PortfolioPosition } from "../api/types";
-import { bondIncome, isPastMonth, monthGrid, portfolioYieldSpread, weights } from "./portfolio";
+import {
+  bondIncome,
+  cashAmount,
+  isPastMonth,
+  monthGrid,
+  netInterest,
+  portfolioYieldSpread,
+  tds,
+  weights,
+} from "./portfolio";
 
 const cf = (month: string, interest: number, principal = 0): PortfolioMonth => ({
   month,
@@ -135,5 +144,14 @@ describe("weights", () => {
   it("skips zero/null values and handles empty", () => {
     expect(weights([pos("A", null), pos("B", 0)], "sector")).toEqual([]);
     expect(weights([], "sector")).toEqual([]);
+  });
+});
+
+describe("TDS on interest", () => {
+  it("is 10% of interest and never touches principal", () => {
+    expect(tds(2252)).toBeCloseTo(225.2);
+    expect(netInterest(2252)).toBeCloseTo(2026.8);
+    expect(cashAmount({ interest: 2252, principal: 10000 }, false)).toBe(12252);
+    expect(cashAmount({ interest: 2252, principal: 10000 }, true)).toBeCloseTo(12026.8);
   });
 });
