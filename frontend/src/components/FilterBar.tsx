@@ -8,13 +8,25 @@ import SaveAlertDialog from "./SaveAlertDialog";
 
 /* What a fresh screen starts with: decent yield, minimal liquidity,
    investment-grade, six months to run, traded within the week. */
+/** The filters on screen by default. Visible <=> applied: a filter that
+ * is not on screen is always "Any", so only these two carry values. */
 export const DEFAULT_FILTERS: ExploreParams = {
+  min_rating: "BBB-",
+  min_years: 0.5,
+};
+
+/** What the default set used to be - saved layouts equal to it migrate
+ * to the new defaults once; anything the user changed is kept. */
+export const LEGACY_DEFAULT_FILTERS: ExploreParams = {
   min_ytm: 5,
   min_turnover: 10_000,
   min_rating: "BBB-",
   min_years: 0.5,
   traded_within: 5,
 };
+
+/** Ids of the boxes shown by default (removable; + Filter brings them back). */
+export const DEFAULT_FIELD_IDS = ["min_rating", "min_years", "payout"] as const;
 
 /** v1's describeFilters(): human-readable summary of active filters. */
 export function describeFilters(p: ExploreParams): string[] {
@@ -115,14 +127,17 @@ const inr = (v: number) =>
     : v >= 100_000
       ? `₹${v / 100_000} L`
       : `₹${v.toLocaleString("en-IN")}`;
-const yrs = (v: number) => (v < 1 ? `${v * 12}mo` : `${v}y`);
+const yrs = (v: number) => (v < 1 ? `${Math.round(v * 12)}mo` : `${v}y`);
 const opts = (values: number[], label: (v: number) => string, sign: "≥" | "≤") =>
   values.map((v) => ({ v, label: `${sign} ${label(v)}` }));
+
+export const minYearsOptions = opts([0.08, 0.17, 0.25, 0.5, 1, 2, 3, 5, 7, 10], yrs, "≥");
 
 const NUM_OPTIONS: Record<NumKey, Array<{ v: number; label: string }>> = {
   min_ytm: opts([4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 18, 20], (v) => `${v}%`, "≥"),
   max_ytm: opts([8, 10, 12, 14, 16, 18, 20, 25], (v) => `${v}%`, "≤"),
-  min_years: opts([0.5, 1, 2, 3, 5, 7, 10], yrs, "≥"),
+  // 1/2/3 months as 2-dp years, matching the backend's round(years, 2).
+  min_years: minYearsOptions,
   max_years: opts([0.5, 1, 2, 3, 5, 7, 10, 15], yrs, "≤"),
   max_ltp: opts([1_000, 10_000, 50_000, 100_000, 200_000, 500_000], inr, "≤"),
   min_turnover: opts(
@@ -256,24 +271,28 @@ function FilterFields({
   const EXTRAS = [
     // Range-completers first (max ends of the default mins), then
     // liquidity, issuer attributes, coupon mechanics, technical.
+    ["min_ytm", "Min LTP YTM %"],
     ["max_ytm", "Max LTP YTM %"],
     ["max_years", "Max maturity"],
+    ["min_turnover", "Retail trd ₹"],
+    ["traded_within", "Last traded"],
     ["max_ltp", "Ticket size"],
     ["min_otc_turnover", "OTC turnover"],
     ["segment", "Segment"],
     ["sector", "Sector"],
     ["security", "Security"],
     ["frequency", "Frequency"],
-    ["payout", "Payout"],
     ["exchange", "Exchange"],
   ] as const;
   type ExtraId = (typeof EXTRAS)[number][0];
 
   const extraActive: Record<ExtraId, boolean> = {
+    min_ytm: params.min_ytm != null,
     max_ytm: params.max_ytm != null,
+    min_turnover: params.min_turnover != null,
+    traded_within: params.traded_within != null,
     sector: !!params.sector,
     frequency: !!params.frequency,
-    payout: !!params.payout,
     exchange: !!params.exchange,
     max_years: params.max_years != null,
     max_ltp: params.max_ltp != null,
@@ -289,11 +308,9 @@ function FilterFields({
   // its value); the + Filter menu brings it back. Layout preference, so
   // it persists — and survives Clear, which resets values, not layout.
   const DEFAULT_FIELDS = [
-    ["min_ytm", "Min LTP YTM %"],
     ["min_rating", "Min rating"],
     ["min_years", "Min mat (y)"],
-    ["min_turnover", "Retail trd ₹"],
-    ["traded_within", "Last traded"],
+    ["payout", "Payout"],
   ] as const;
   type DefaultId = (typeof DEFAULT_FIELDS)[number][0];
   const [hiddenDefaults, setHiddenDefaults] = useState<DefaultId[]>(() => {
@@ -313,10 +330,12 @@ function FilterFields({
   const hiddenDefaultFields = DEFAULT_FIELDS.filter(([id]) => !defaultShown(id));
 
   const clearExtra: Record<ExtraId, Partial<ExploreParams>> = {
+    min_ytm: { min_ytm: undefined },
     max_ytm: { max_ytm: undefined },
+    min_turnover: { min_turnover: undefined },
+    traded_within: { traded_within: undefined },
     sector: { sector: undefined },
     frequency: { frequency: undefined },
-    payout: { payout: undefined },
     exchange: { exchange: undefined },
     max_years: { max_years: undefined },
     max_ltp: { max_ltp: undefined },
@@ -324,6 +343,26 @@ function FilterFields({
     segment: { retail_only: undefined, otc_only: undefined },
     security: { secured_only: undefined, unsecured_only: undefined },
   };
+
+  const payoutControl = (onRemove: () => void) => (
+    <label className="flex-1 min-w-0">
+      <span className={`flex items-center justify-between ${lbl(!!params.payout)}`}>
+        Payout
+        {removeX(onRemove)}
+      </span>
+      <select
+        className={box(!!params.payout)}
+        value={params.payout ?? ""}
+        onChange={(e) => set({ payout: e.target.value || undefined })}
+      >
+        <option value="">Any</option>
+        <option value="bullet">Bullet</option>
+        <option value="staggered">Staggered</option>
+        <option value="maturity">Pays at maturity</option>
+        <option value="perpetual">Perpetual</option>
+      </select>
+    </label>
+  );
 
   // Extras carry their remove × in the label row, same as the defaults.
   const removeX = (onRemove: () => void) => (
@@ -378,26 +417,12 @@ function FilterFields({
         return sel("Sector", "sector", filters?.sectors ?? [], onRemove);
       case "frequency":
         return sel("Frequency", "frequency", filters?.frequencies ?? [], onRemove);
-      case "payout":
-        return (
-          <label className="flex-1 min-w-0">
-            <span className={`flex items-center justify-between ${lbl(!!params.payout)}`}>
-              Payout
-              {removeX(onRemove)}
-            </span>
-            <select
-              className={box(!!params.payout)}
-              value={params.payout ?? ""}
-              onChange={(e) => set({ payout: e.target.value || undefined })}
-            >
-              <option value="">Any</option>
-              <option value="bullet">Bullet</option>
-              <option value="staggered">Staggered</option>
-              <option value="maturity">Pays at maturity</option>
-              <option value="perpetual">Perpetual</option>
-            </select>
-          </label>
-        );
+      case "min_ytm":
+        return num("Min LTP YTM %", "min_ytm", onRemove);
+      case "min_turnover":
+        return num("Retail trd ₹", "min_turnover", onRemove);
+      case "traded_within":
+        return num("Last traded", "traded_within", onRemove);
       case "exchange":
         return sel("Exchange", "exchange", ["NSE", "BSE"], onRemove);
       case "max_years":
@@ -442,17 +467,18 @@ function FilterFields({
         }`}
         title={dimReason}
       >
-        {DEFAULT_FIELDS.filter(([id]) => defaultShown(id)).map(([id, label]) =>
-          id === "min_rating" ? (
-            <span key={id} className="flex items-end gap-1">
-              {sel(label, id, filters?.ratings ?? [], () => hideDefault(id))}
-            </span>
-          ) : (
-            <span key={id} className="flex items-end gap-1">
-              {num(label, id, () => hideDefault(id))}
-            </span>
-          ),
-        )}
+        {DEFAULT_FIELDS.filter(([id]) => defaultShown(id)).map(([id, label]) => (
+          <span key={id} className="flex items-end gap-1">
+            {id === "min_rating"
+              ? sel(label, id, filters?.ratings ?? [], () => hideDefault(id))
+              : id === "payout"
+                ? payoutControl(() => {
+                    set({ payout: undefined });
+                    hideDefault(id);
+                  })
+                : num(label, id, () => hideDefault(id))}
+          </span>
+        ))}
 
         {visible.map(([id]) => (
           <span key={id} className="flex items-end gap-1">

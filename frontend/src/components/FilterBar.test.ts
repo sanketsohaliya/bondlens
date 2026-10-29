@@ -1,27 +1,27 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_FILTERS, describeFilters } from "./FilterBar";
+import { DEFAULT_FIELD_IDS, DEFAULT_FILTERS, describeFilters, minYearsOptions } from "./FilterBar";
 
 describe("default filters", () => {
-  it("starts with the five essentials", () => {
-    expect(DEFAULT_FILTERS).toEqual({
-      min_ytm: 5,
-      min_turnover: 10000,
-      min_rating: "BBB-",
-      min_years: 0.5,
-      traded_within: 5,
-    });
+  it("starts with rating and tenor only", () => {
+    expect(DEFAULT_FILTERS).toEqual({ min_rating: "BBB-", min_years: 0.5 });
+  });
+
+  it("only visible filters apply: every default value belongs to a default box", () => {
+    for (const key of Object.keys(DEFAULT_FILTERS)) {
+      expect(DEFAULT_FIELD_IDS as readonly string[]).toContain(key);
+    }
+  });
+
+  it("offers 1, 2 and 3 months of minimum maturity", () => {
+    const labels = minYearsOptions.map((o) => o.label);
+    expect(labels.slice(0, 4)).toEqual(["≥ 1mo", "≥ 2mo", "≥ 3mo", "≥ 6mo"]);
+    expect(minYearsOptions.slice(0, 3).map((o) => o.v)).toEqual([0.08, 0.17, 0.25]);
   });
 });
 
 describe("describeFilters", () => {
   it("summarizes the default filter set", () => {
-    expect(describeFilters(DEFAULT_FILTERS)).toEqual([
-      "rating ≥ BBB-",
-      "LTP YTM ≥ 5%",
-      "maturity ≥ 0.5y",
-      "retail traded ≥ ₹10,000",
-      "traded within 5 sessions",
-    ]);
+    expect(describeFilters(DEFAULT_FILTERS)).toEqual(["rating ≥ BBB-", "maturity ≥ 0.5y"]);
   });
 
   it("covers ranges, ticket size and boolean flags", () => {

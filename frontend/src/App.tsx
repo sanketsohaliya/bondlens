@@ -6,7 +6,11 @@ import { GOTO_PORTFOLIO_EVENT } from "./components/AddLotPopover";
 import BondDrawer, { type Tab } from "./components/BondDrawer";
 import Disclaimer from "./components/Disclaimer";
 import ExploreTable, { type SortState } from "./components/ExploreTable";
-import FilterBar, { DEFAULT_FILTERS, type ListModes } from "./components/FilterBar";
+import FilterBar, {
+  DEFAULT_FILTERS,
+  LEGACY_DEFAULT_FILTERS,
+  type ListModes,
+} from "./components/FilterBar";
 import Logo from "./components/Logo";
 import NotificationsBell from "./components/NotificationsBell";
 import type { TicketState } from "./components/OrderBook";
@@ -28,6 +32,11 @@ const DEFAULT_SORT: SortState = { key: "ask_ytm", dir: -1 };
  * filter cleared to "Any" is `undefined`, which JSON drops - merging the
  * saved object over the defaults would quietly refill it (Last traded
  * <= 5 sessions came back after every reload and hid never-traded paper). */
+const sortedEntries = (o: object) =>
+  Object.entries(o)
+    .filter(([, v]) => v !== undefined && v !== null)
+    .sort(([a], [b]) => a.localeCompare(b));
+
 function loadSaved<T extends object>(key: string, fallback: T): T {
   try {
     const raw = localStorage.getItem(key);
@@ -48,7 +57,14 @@ export default function App() {
     return link;
   });
   const [params, setParams] = useState<ExploreParams>(() => {
-    const saved = loadSaved<ExploreParams>(SAVED_FILTERS_KEY, DEFAULT_FILTERS);
+    const stored = loadSaved<ExploreParams>(SAVED_FILTERS_KEY, DEFAULT_FILTERS);
+    // A layout still equal to the old default set follows the defaults;
+    // anything the user changed is theirs.
+    const saved =
+      JSON.stringify(sortedEntries(stored)) ===
+      JSON.stringify(sortedEntries(LEGACY_DEFAULT_FILTERS))
+        ? DEFAULT_FILTERS
+        : stored;
     return deepLink && alertClickTarget(deepLink.tab) === "row"
       ? { ...saved, q: deepLink.isin }
       : saved;
