@@ -60,6 +60,7 @@ const position = {
   next_payment: null,
   remaining: { amount: 12700, estimated: false, flows_left: 3, flows_total: 5 },
   received: { interest: 150, principal: 0, payments: 2 },
+  upcoming: [],
   bond,
 } as unknown as PortfolioPosition;
 
@@ -106,7 +107,7 @@ describe("holdings table reads like Explore", () => {
       "₹9,900",
       "10 × ₹990 | ₹150 back",
       "₹10,100",
-      "50.0% of portfolio",
+      "LTP ₹1,010",
       "+₹200",
       "AA/Stable",
       "9% annual",
@@ -127,6 +128,40 @@ describe("holdings table reads like Explore", () => {
     expect(text(row({ ...position, received: null } as PortfolioPosition))).toContain(
       "10 × ₹990 | ₹0 back",
     );
+  });
+
+  it("shows the live bid under Value when Kite is connected", () => {
+    const html = text(
+      renderToStaticMarkup(
+        <QueryClientProvider client={client}>
+          <table>
+            <tbody>
+              <PositionRow
+                p={position}
+                today="2026-10-29"
+                quote={{
+                  exchange: "BSE",
+                  bid_price: 1005,
+                  bid_qty: 4,
+                  bid_ytm: 9.3,
+                  ask_price: null,
+                  ask_qty: null,
+                  ask_ytm: null,
+                  quote_at: null,
+                }}
+                kiteConnected
+                totalValue={20200}
+                open={false}
+                onToggle={() => {}}
+                onSelect={() => {}}
+              />
+            </tbody>
+          </table>
+        </QueryClientProvider>,
+      ),
+    );
+    expect(html).toContain("LTP ₹1,010 | bid ₹1,005 × 4");
+    expect(text(row(position))).not.toContain("bid");
   });
 
   it("falls back to the position's own fields when the explorer row is missing", () => {

@@ -410,6 +410,11 @@ class PortfolioLot(BaseModel):
     price: float
     purchase_date: date
     platform: str | None
+    # Per-lot performance against the market price (None without one).
+    value: float | None = None
+    gain: float | None = None
+    gain_pct: float | None = None
+    xirr: float | None = None
 
 
 class LotCreate(BaseModel):
@@ -434,6 +439,36 @@ class PositionRemaining(BaseModel):
     estimated: bool
     flows_left: int
     flows_total: int
+
+
+class PositionPayment(BaseModel):
+    """An upcoming flow scaled to the units that receive it."""
+    event: Literal["interest", "redemption"]
+    due_date: date
+    record_date: date | None
+    payment_date: date | None
+    amount: float
+    units: float
+    estimated: bool
+    locked: bool   # record date passed for these units: nothing changes it now
+
+
+class HoldingQuote(BaseModel):
+    exchange: str | None
+    bid_price: float | None
+    bid_qty: float | None
+    bid_ytm: float | None
+    bid_exchange: str | None = None
+    ask_price: float | None
+    ask_qty: float | None
+    ask_ytm: float | None
+    ask_exchange: str | None = None
+    quote_at: str | None
+
+
+class PortfolioQuotes(BaseModel):
+    fetched_at: str
+    quotes: dict[str, HoldingQuote]
 
 
 class PositionReceived(BaseModel):
@@ -475,6 +510,7 @@ class PortfolioPosition(BaseModel):
     next_payment: Cashflow | None  # amount is x units (position-level)
     remaining: PositionRemaining | None = None
     received: PositionReceived | None = None
+    upcoming: list[PositionPayment] = Field(default_factory=list)
     # The explorer row (same shape as Bond) so the holdings table renders
     # Explore-identical cells. Typed loosely: a partial analytics row must
     # never make the whole portfolio fail to load.

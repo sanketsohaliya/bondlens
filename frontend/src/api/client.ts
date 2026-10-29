@@ -23,6 +23,7 @@ import type {
   NotificationsResponse,
   OrderBook,
   PortfolioLot,
+  PortfolioQuotes,
   PortfolioResponse,
   Status,
   TradesResponse,
@@ -89,6 +90,7 @@ export const api = {
   },
   portfolio: {
     get: () => get<PortfolioResponse>("/api/portfolio"),
+    quotes: () => get<PortfolioQuotes>("/api/portfolio/quotes"),
     addLot: (isin: string, lot: LotInput) =>
       request<PortfolioLot>("POST", "/api/portfolio/lots", { isin, ...lot }),
     updateLot: (id: number, lot: LotInput) =>

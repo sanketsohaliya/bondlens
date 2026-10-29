@@ -1,3 +1,4 @@
+import { useQuery } from "@tanstack/react-query";
 import {
   createChart,
   HistogramSeries,
@@ -5,13 +6,18 @@ import {
   type UTCTimestamp,
 } from "lightweight-charts";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { fmt } from "../api/client";
-import type { Bond, PortfolioMonth, PortfolioNews, PortfolioPosition } from "../api/types";
+import { api, fmt } from "../api/client";
+import type {
+  Bond,
+  HoldingQuote,
+  PortfolioMonth,
+  PortfolioNews,
+  PortfolioPosition,
+} from "../api/types";
 import AddLotSearch from "../components/AddLotSearch";
 import type { Tab as DrawerTab } from "../components/BondDrawer";
 import CopyBtn from "../components/CopyBtn";
 import Donut from "../components/Donut";
-import ExitTargetEditor from "../components/ExitTargetEditor";
 import {
   BookmarkIcon,
   MaturityCell,
@@ -22,7 +28,8 @@ import {
   WatchStar,
 } from "../components/ExploreTable";
 import InlineMetadata, { MetadataSeparator } from "../components/InlineMetadata";
-import LotsPanel from "../components/LotsPanel";
+import type { TicketState } from "../components/OrderBook";
+import PositionPanel from "../components/PositionPanel";
 import StatBox from "../components/StatBox";
 import { usePayoutDay } from "../lib/exploreAmounts";
 import { fuzzyMatch } from "../lib/fuzzy";
@@ -66,7 +73,7 @@ const PORTFOLIO_TABS: Array<[PortfolioTab, string]> = [
 export default function Portfolio({
   onSelect,
 }: {
-  onSelect: (isin: string, tab?: DrawerTab) => void;
+  onSelect: (isin: string, tab?: DrawerTab, ticket?: TicketState) => void;
 }) {
   const { data, isLoading, error } = usePortfolio();
   const [filter, setFilter] = useState<SliceFilter | null>(null);
@@ -372,7 +379,7 @@ function HoldingsTable({
   onSelect,
 }: {
   positions: PortfolioPosition[];
-  onSelect: (isin: string, tab?: DrawerTab) => void;
+  onSelect: (isin: string, tab?: DrawerTab, ticket?: TicketState) => void;
 }) {
   const [openIsin, setOpenIsin] = useState<string | null>(null);
   const [sort, setSort] = useState<{ key: HoldingsSortKey; dir: 1 | -1 }>({
@@ -381,6 +388,22 @@ function HoldingsTable({
   });
   const today = usePayoutDay();
   const cols = HOLDINGS_COLS;
+  // Live best bid / ask for every held bond: one batched Kite quote under
+  // the user's own session, refreshed each minute while the page is open.
+  const { data: kite } = useQuery({
+    queryKey: ["kite-status"],
+    queryFn: api.kite.status,
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
+  });
+  const kiteConnected = kite?.connected ?? false;
+  const { data: quotes } = useQuery({
+    queryKey: ["portfolio-quotes"],
+    queryFn: api.portfolio.quotes,
+    enabled: kiteConnected,
+    staleTime: 30_000,
+    refetchInterval: 60_000,
+  });
   const { widths, tableRef, startResize, tableProps } = useColumnWidths(
     "holdings-col-widths-v5",
     cols.length,
@@ -452,10 +475,12 @@ function HoldingsTable({
               key={p.isin}
               p={p}
               today={today}
+              quote={kiteConnected ? (quotes?.quotes[p.isin] ?? null) : undefined}
+              kiteConnected={kiteConnected}
               totalValue={totalValue}
               open={openIsin === p.isin}
               onToggle={() => setOpenIsin(openIsin === p.isin ? null : p.isin)}
-              onSelect={(tab?: DrawerTab) => onSelect(p.isin, tab)}
+              onSelect={(tab?: DrawerTab, ticket?: TicketState) => onSelect(p.isin, tab, ticket)}
             />
           ))}
           {sorted.length === 0 && (
@@ -474,6 +499,8 @@ function HoldingsTable({
 function PositionRow({
   p,
   today,
+  quote,
+  kiteConnected = false,
   totalValue,
   open,
   onToggle,
@@ -481,10 +508,13 @@ function PositionRow({
 }: {
   p: PortfolioPosition;
   today?: string;
+  /** undefined = Kite not connected; null = no live book for this bond. */
+  quote?: HoldingQuote | null;
+  kiteConnected?: boolean;
   totalValue: number;
   open: boolean;
   onToggle: () => void;
-  onSelect: (tab?: DrawerTab) => void;
+  onSelect: (tab?: DrawerTab, ticket?: TicketState) => void;
 }) {
   const bond = positionBond(p);
   const payoutDay = today ?? new Date().toISOString().slice(0, 10);
@@ -577,11 +607,32 @@ function PositionRow({
             {fmt.inr(received)} back
           </div>
         </td>
-        <td className={`${TD} text-right tabular-nums`}>
+        {/* Value at LTP; beneath it the LTP and, with Kite, the live best
+            bid - what you could sell into right now. */}
+        <td
+          className={`${TD} text-right tabular-nums`}
+          title={[
+            weightPct != null ? `${weightPct.toFixed(1)}% of portfolio` : null,
+            bond.days_since_traded != null ? `LTP ${tradedAgo(bond.days_since_traded)}` : null,
+            quote?.bid_price
+              ? `Best bid ${fmt.inrFull(quote.bid_price)} × ${fmt.num(quote.bid_qty, 0)} on ${quote.bid_exchange ?? quote.exchange}${quote.bid_ytm != null ? `, yield ${fmt.pct(quote.bid_ytm)}` : ""}`
+              : null,
+          ]
+            .filter(Boolean)
+            .join(" · ")}
+        >
           <div className="font-medium text-zinc-200">{fmt.inr(p.value)}</div>
-          {weightPct != null && (
-            <div className="text-[10px] text-zinc-500">{weightPct.toFixed(1)}% of portfolio</div>
-          )}
+          <div className="text-[10px] text-zinc-500">
+            {p.ltp != null ? `LTP ${fmt.inrFull(p.ltp)}` : "no LTP"}
+            {quote !== undefined && (
+              <>
+                <MetadataSeparator />
+                {quote?.bid_price
+                  ? `bid ${fmt.inrFull(quote.bid_price)} × ${fmt.num(quote.bid_qty, 0)}`
+                  : "no bid"}
+              </>
+            )}
+          </div>
         </td>
         {/* P&L with the holding age beneath: a gain only means something
             against how long it took. */}
@@ -624,11 +675,8 @@ function PositionRow({
       </tr>
       {open && (
         <tr className="border-b border-zinc-800/60 bg-zinc-900/40">
-          <td colSpan={HOLDINGS_COLS.length} className="px-3 py-2">
-            <div className="mb-2">
-              <ExitTargetEditor isin={p.isin} />
-            </div>
-            <LotsPanel p={p} onViewBond={onSelect} />
+          <td colSpan={HOLDINGS_COLS.length} className="px-3 py-3">
+            <PositionPanel p={p} quote={quote} kiteConnected={kiteConnected} onSelect={onSelect} />
           </td>
         </tr>
       )}

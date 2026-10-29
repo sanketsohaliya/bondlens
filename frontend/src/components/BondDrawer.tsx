@@ -13,7 +13,7 @@ import CopyBtn from "./CopyBtn";
 import { HoldMark, WatchStar } from "./ExploreTable";
 import HoldingPanel from "./HoldingPanel";
 import InlineMetadata from "./InlineMetadata";
-import OrderBook from "./OrderBook";
+import OrderBook, { type TicketState } from "./OrderBook";
 import RatingTimeline from "./RatingTimeline";
 import StatBox, { type StatDetail } from "./StatBox";
 import TradeChart from "./TradeChart";
@@ -43,11 +43,13 @@ function techDelayTip(records: Array<{ [key: string]: unknown }>): string {
 export default function BondDrawer({
   isin,
   initialTab,
+  initialTicket,
   onSelect,
   onClose,
 }: {
   isin: string;
   initialTab?: Tab;
+  initialTicket?: TicketState | null;
   onSelect?: (isin: string) => void;
   onClose: () => void;
 }) {
@@ -236,6 +238,7 @@ export default function BondDrawer({
                   isin={bond.isin}
                   nseSymbol={bond.nse_symbol}
                   nseSeries={bond.nse_series}
+                  initialTicket={initialTicket}
                 />
               )}
               {tab === "ratings" && <RatingTimeline timeline={bond.rating_timeline} />}

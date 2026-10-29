@@ -5,7 +5,14 @@ import { api, fmt } from "../api/client";
 /** Exit target for a holding: the watcher pushes when the best BID
  * reaches the price, or implies a yield at or below the threshold. Lives
  * in the holding's expanded row on Portfolio. */
-export default function ExitTargetEditor({ isin }: { isin: string }) {
+export default function ExitTargetEditor({
+  isin,
+  compact = false,
+}: {
+  isin: string;
+  /** Inside the Exit panel the heading is already "Target": no label. */
+  compact?: boolean;
+}) {
   const qc = useQueryClient();
   const overview = useQuery({ queryKey: ["alerts"], queryFn: () => api.alerts.overview() });
   const current = overview.data?.targets.find((t) => t.isin === isin) ?? null;
@@ -42,9 +49,11 @@ export default function ExitTargetEditor({ isin }: { isin: string }) {
       className="flex flex-wrap items-center gap-2 text-xs text-zinc-400"
       onClick={(e) => e.stopPropagation()}
     >
-      <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
-        Exit target
-      </span>
+      {!compact && (
+        <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
+          Exit target
+        </span>
+      )}
       {!editing && current && (
         <>
           <span className="text-zinc-200">
@@ -72,7 +81,9 @@ export default function ExitTargetEditor({ isin }: { isin: string }) {
       )}
       {!editing && !current && (
         <button type="button" onClick={begin} className="underline hover:text-zinc-200">
-          set a bid price or yield to be told when you can sell
+          {compact
+            ? "none - set a bid price or yield"
+            : "set a bid price or yield to be told when you can sell"}
         </button>
       )}
       {editing && (

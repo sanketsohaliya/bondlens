@@ -211,6 +211,9 @@ def portfolio(user_id: int = Depends(auth.require_user)):
                                             flows_by_isin[p["isin"]], today)
         p["remaining"] = pf.remaining_payout(p["lots"], flows_by_isin[p["isin"]], today)
         p["received"] = pf.received_so_far(p["lots"], flows_by_isin[p["isin"]], today)
+        p["upcoming"] = pf.upcoming_payments(p["lots"], flows_by_isin[p["isin"]], today)
+        p["lots"] = [{**lot, **pf.lot_analytics(lot, p["ltp"], flows_by_isin[p["isin"]], today)}
+                     for lot in p["lots"]]
         sched = schedules_by_isin[p["isin"]]
         p["yield_on_cost"] = (pf.yield_on_cost(p["lots"], sched.flows, today)
                               if sched.usable and not sched.perpetual
@@ -668,6 +671,17 @@ def _annotate_ytm(book: dict, isin: str) -> None:
                                             side.get("quote_at") or side.get("as_of")))
     prices = ask_ytm.ask_prices(sides)
     book["ytm_at_ask"] = ask_ytm.PriceCalculator(isin).values(prices, date.today()) if prices else []
+
+
+@router.get("/api/portfolio/quotes", response_model=models.PortfolioQuotes)
+def portfolio_quotes(user_id: int = Depends(auth.require_user)):
+    """Live best bid and ask for every held bond in ONE Kite quote call
+    under the user's own session (30s cache), with the indicative gross
+    yield at each price. Empty when Kite isn't connected - the holdings
+    table simply shows no live column then."""
+    isins = sorted({lot["isin"] for lot in db.get_portfolio_lots(user_id)})
+    return {"fetched_at": datetime.now(UTC).isoformat(),
+            "quotes": ask_ytm.holding_quotes(user_id, isins) if kite_connect.token_for(user_id) else {}}
 
 
 @router.get("/api/bonds/{isin}/depth", response_model=models.OrderBook)

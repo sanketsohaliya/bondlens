@@ -387,6 +387,24 @@ def test_received_so_far_counts_past_flows_for_dated_lots_on_the_register():
     assert pf.received_so_far(_lots(2, date(2026, 1, 1)), flows, TODAY) is None
 
 
+def test_lot_analytics_and_upcoming_payments():
+    flows = [_flow(date(2026, 2, 1), 50.0, record=date(2026, 1, 10)),       # record passed
+             _flow(date(2026, 8, 1), 50.0, record=date(2026, 7, 10)),
+             _flow(date(2026, 8, 1), 1000.0, event="redemption", record=date(2026, 7, 10)),
+             _flow(date(2027, 2, 1), 50.0)]
+    lot = {"units": 2, "price": 950.0, "purchase_date": date(2025, 6, 1)}
+    a = pf.lot_analytics(lot, 1000.0, flows, TODAY)
+    assert a["value"] == 2000.0 and a["gain"] == 100.0 and a["gain_pct"] == pytest.approx(5.26, abs=0.01)
+    assert a["xirr"] is not None and a["xirr"] > 0
+    assert pf.lot_analytics(lot, None, flows, TODAY)["value"] is None
+    up = pf.upcoming_payments([lot, {"units": 3, "purchase_date": date(2026, 1, 12)}], flows, TODAY)
+    assert [(u["due_date"], u["amount"], u["locked"]) for u in up] == [
+        (date(2026, 2, 1), 100.0, True),        # only the dated-before-record lot, locked in
+        (date(2026, 8, 1), 250.0, False),
+        (date(2026, 8, 1), 5000.0, False)]
+    assert len(pf.upcoming_payments([lot], flows, TODAY, n=2)) == 2
+
+
 def test_next_payment_holder_semantics():
     flows = [_flow(date(2026, 2, 1), 50.0, record=date(2026, 1, 10)),
              _flow(date(2026, 8, 1), 50.0, record=date(2026, 7, 10))]

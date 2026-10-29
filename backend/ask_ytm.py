@@ -64,6 +64,81 @@ def _best_ask(quotes: dict[str, Any], keys: list[str]) -> dict | None:
     return best
 
 
+def _best_bid(quotes: dict[str, Any], keys: list[str]) -> dict | None:
+    """Highest positive-size bid across a bond's listings (what a holder
+    could sell into right now)."""
+    best = None
+    for key in keys:
+        quote = quotes.get(key) or {}
+        timing = quote_time.metadata(quote.get("_captured_at") or datetime.now(UTC), quote.get("timestamp"))
+        if any(w["code"] == "future_quote_time" for w in timing["warnings"]):
+            continue
+        for top in (quote.get("depth") or {}).get("buy") or []:
+            try:
+                price, qty = float(top.get("price") or 0), float(top.get("quantity") or 0)
+            except (ValueError, TypeError):
+                continue
+            if not (math.isfinite(price) and math.isfinite(qty) and price > 0 and qty > 0):
+                continue
+            if best is None or price > best["bid_price"]:
+                best = {"bid_price": price, "bid_qty": qty, "exchange": key.split(":", 1)[0],
+                        "quote_at": timing.get("quote_at")}
+    return best
+
+
+_holding_cache: dict[tuple[int, tuple[str, ...]], tuple[float, dict[str, Any]]] = {}
+
+
+def holding_quotes(user_id: int, isins: list[str]) -> dict[str, dict[str, Any]]:
+    """{isin: {exchange, bid_price, bid_qty, bid_ytm, ask_price, ask_qty,
+    ask_ytm, quote_at}} for the held bonds with a live book - one Kite
+    quote call for all of them, cached 30s per user."""
+    isins = list(dict.fromkeys(isins))[:MAX_ISINS]
+    if not isins:
+        return {}
+    key = (user_id, tuple(isins))
+    now = time.time()
+    hit = _holding_cache.get(key)
+    if hit and 0 <= now - hit[0] < CACHE_TTL_SECONDS:
+        return hit[1]
+    symbols = queries.bonds_symbols(isins)
+    keys_by_isin: dict[str, list[str]] = {}
+    for isin in isins:
+        row = symbols.get(isin) or {}
+        keys = []
+        if nse := kite.resolve_nse(row.get("nse_symbol"), row.get("nse_series")):
+            keys.append(f"NSE:{nse[0]}")
+        if bse := kite.resolve_bse(row.get("bse_scrip_id")):
+            keys.append(f"BSE:{bse[0]}")
+        keys_by_isin[isin] = keys
+    instruments = [k for keys in keys_by_isin.values() for k in keys]
+    quotes: dict[str, Any] = {}
+    for i in range(0, len(instruments), QUOTE_CHUNK):
+        batch = _paced_quotes(user_id, instruments[i:i + QUOTE_CHUNK])
+        captured = datetime.now(UTC).isoformat()
+        quotes.update({k: {**v, "_captured_at": captured} for k, v in batch.items() if isinstance(v, dict)})
+    today = date.today()
+    out: dict[str, dict[str, Any]] = {}
+    for isin in isins:
+        bid, ask = _best_bid(quotes, keys_by_isin[isin]), _best_ask(quotes, keys_by_isin[isin])
+        if not bid and not ask:
+            continue
+        prices = [p for p in ((bid or {}).get("bid_price"), (ask or {}).get("ask_price")) if p]
+        priced = {v["price"]: v for v in PriceCalculator(isin).values(prices, today)}
+        out[isin] = {
+            "exchange": (bid or ask or {}).get("exchange"),
+            "bid_price": (bid or {}).get("bid_price"), "bid_qty": (bid or {}).get("bid_qty"),
+            "bid_ytm": priced.get((bid or {}).get("bid_price"), {}).get("ytm") if bid else None,
+            "bid_exchange": (bid or {}).get("exchange"),
+            "ask_price": (ask or {}).get("ask_price"), "ask_qty": (ask or {}).get("ask_qty"),
+            "ask_ytm": priced.get((ask or {}).get("ask_price"), {}).get("ytm") if ask else None,
+            "ask_exchange": (ask or {}).get("exchange"),
+            "quote_at": (bid or ask or {}).get("quote_at"),
+        }
+    _holding_cache[key] = (now, out)
+    return out
+
+
 def ask_prices(sides) -> list[float]:
     """Dirty prices worth valuing for a book: every positive-size ask, plus
     today's last traded price when the Kite quote carries one (the live

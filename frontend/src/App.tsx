@@ -9,6 +9,7 @@ import ExploreTable, { type SortState } from "./components/ExploreTable";
 import FilterBar, { DEFAULT_FILTERS, type ListModes } from "./components/FilterBar";
 import Logo from "./components/Logo";
 import NotificationsBell from "./components/NotificationsBell";
+import type { TicketState } from "./components/OrderBook";
 import { alertClickTarget, parseDeepLink } from "./lib/alertRules";
 import { useAuth } from "./lib/auth";
 import { unionIsins, useWatchlists } from "./lib/lists";
@@ -56,7 +57,11 @@ export default function App() {
     watchlist: false,
     watchlistId: null,
   });
-  const [selected, setSelected] = useState<{ isin: string; tab?: Tab } | null>(() =>
+  const [selected, setSelected] = useState<{
+    isin: string;
+    tab?: Tab;
+    ticket?: TicketState | null;
+  } | null>(() =>
     deepLink && alertClickTarget(deepLink.tab) === "drawer"
       ? { isin: deepLink.isin, tab: deepLink.tab as Tab | undefined }
       : null,
@@ -198,7 +203,7 @@ export default function App() {
           {page === "orders" ? (
             <Orders onSelect={(isin) => setSelected({ isin })} />
           ) : page === "portfolio" ? (
-            <Portfolio onSelect={(isin, tab) => setSelected({ isin, tab })} />
+            <Portfolio onSelect={(isin, tab, ticket) => setSelected({ isin, tab, ticket })} />
           ) : (
             <>
               <FilterBar
@@ -237,6 +242,7 @@ export default function App() {
           key={selected.isin}
           isin={selected.isin}
           initialTab={selected.tab}
+          initialTicket={selected.ticket}
           onSelect={(isin) => setSelected({ isin })}
           onClose={() => setSelected(null)}
         />

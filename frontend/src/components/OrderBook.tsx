@@ -14,7 +14,7 @@ function nseQuoteUrl(symbol: string, series: string | null | undefined): string 
   return `https://www.nseindia.com/get-quotes/bonds?${qs}`;
 }
 
-interface TicketState {
+export interface TicketState {
   exchange: "NSE" | "BSE";
   side: "BUY" | "SELL";
   price?: number | null;
@@ -32,10 +32,13 @@ export default function OrderBook({
   isin,
   nseSymbol,
   nseSeries,
+  initialTicket,
 }: {
   isin: string;
   nseSymbol?: string | null;
   nseSeries?: string | null;
+  /** Open with a ticket already filled in (e.g. "Sell at bid" from Portfolio). */
+  initialTicket?: TicketState | null;
 }) {
   const { data: kite } = useQuery({
     queryKey: ["kite-status"],
@@ -53,7 +56,7 @@ export default function OrderBook({
   });
   const now = useQuoteClock();
 
-  const [ticket, setTicket] = useState<TicketState | null>(null);
+  const [ticket, setTicket] = useState<TicketState | null>(initialTicket ?? null);
 
   if (isLoading && !data) {
     return <div className="text-zinc-500 animate-pulse py-8 text-center">Fetching depth…</div>;

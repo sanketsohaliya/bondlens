@@ -228,6 +228,47 @@ def received_so_far(lots: list[dict[str, Any]], flows: list[Flow],
             "payments": payments}
 
 
+def lot_analytics(lot: dict[str, Any], ltp: float | None, flows: list[Flow],
+                  today: date) -> dict[str, Any]:
+    """Per-lot value / P&L against the market price and the lot's own
+    projected XIRR (same rules as the position: dated purchase, scheduled
+    eligible cashflows, optional exits excluded)."""
+    units, price = float(lot["units"]), _f(lot.get("price"))
+    invested = units * price if price is not None else None
+    value = units * ltp if ltp is not None else None
+    gain = gain_pct = None
+    if invested and value is not None:
+        gain = round(value - invested, 2)
+        gain_pct = round(gain / invested * 100, 2)
+    return {"value": round(value, 2) if value is not None else None,
+            "gain": gain, "gain_pct": gain_pct,
+            "xirr": yield_on_cost([lot], flows, today)}
+
+
+def upcoming_payments(lots: list[dict[str, Any]], flows: list[Flow],
+                      today: date, n: int = 3) -> list[dict[str, Any]]:
+    """The next ``n`` future flows at least one lot receives, scaled to the
+    receiving units. ``locked`` says the record date (or, without one, the
+    pay date) has passed for those units: nothing the holder does now
+    changes it. Otherwise the holder must stay on the register through
+    the record date."""
+    out: list[dict[str, Any]] = []
+    for f in flows:
+        if not f.amount or f.effective_date <= today:
+            continue
+        units = receiving_units(lots, f)
+        if not units:
+            continue
+        cutoff = f.record_date or f.effective_date
+        out.append({"event": f.event, "due_date": f.due_date,
+                    "record_date": f.record_date, "payment_date": f.payment_date,
+                    "amount": round(f.amount * units, 2), "units": units,
+                    "estimated": f.estimated, "locked": cutoff <= today})
+        if len(out) >= n:
+            break
+    return out
+
+
 def monthly_cashflows(lots_by_isin: dict[str, list[dict[str, Any]]],
                       flows_by_isin: dict[str, list[Flow]],
                       today: date,

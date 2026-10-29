@@ -1584,6 +1584,52 @@ export type Health = {
 };
 
 /**
+ * HoldingQuote
+ */
+export type HoldingQuote = {
+    /**
+     * Exchange
+     */
+    exchange: string | null;
+    /**
+     * Bid Price
+     */
+    bid_price: number | null;
+    /**
+     * Bid Qty
+     */
+    bid_qty: number | null;
+    /**
+     * Bid Ytm
+     */
+    bid_ytm: number | null;
+    /**
+     * Bid Exchange
+     */
+    bid_exchange?: string | null;
+    /**
+     * Ask Price
+     */
+    ask_price: number | null;
+    /**
+     * Ask Qty
+     */
+    ask_qty: number | null;
+    /**
+     * Ask Ytm
+     */
+    ask_ytm: number | null;
+    /**
+     * Ask Exchange
+     */
+    ask_exchange?: string | null;
+    /**
+     * Quote At
+     */
+    quote_at: string | null;
+};
+
+/**
  * IssuerBond
  */
 export type IssuerBond = {
@@ -2083,6 +2129,22 @@ export type PortfolioLot = {
      * Platform
      */
     platform: string | null;
+    /**
+     * Value
+     */
+    value?: number | null;
+    /**
+     * Gain
+     */
+    gain?: number | null;
+    /**
+     * Gain Pct
+     */
+    gain_pct?: number | null;
+    /**
+     * Xirr
+     */
+    xirr?: number | null;
 };
 
 /**
@@ -2291,11 +2353,31 @@ export type PortfolioPosition = {
     remaining?: PositionRemaining | null;
     received?: PositionReceived | null;
     /**
+     * Upcoming
+     */
+    upcoming?: Array<PositionPayment>;
+    /**
      * Bond
      */
     bond?: {
         [key: string]: unknown;
     } | null;
+};
+
+/**
+ * PortfolioQuotes
+ */
+export type PortfolioQuotes = {
+    /**
+     * Fetched At
+     */
+    fetched_at: string;
+    /**
+     * Quotes
+     */
+    quotes: {
+        [key: string]: HoldingQuote;
+    };
 };
 
 /**
@@ -2350,6 +2432,46 @@ export type PortfolioSummary = {
      * Bonds
      */
     bonds: number;
+};
+
+/**
+ * PositionPayment
+ *
+ * An upcoming flow scaled to the units that receive it.
+ */
+export type PositionPayment = {
+    /**
+     * Event
+     */
+    event: 'interest' | 'redemption';
+    /**
+     * Due Date
+     */
+    due_date: string;
+    /**
+     * Record Date
+     */
+    record_date: string | null;
+    /**
+     * Payment Date
+     */
+    payment_date: string | null;
+    /**
+     * Amount
+     */
+    amount: number;
+    /**
+     * Units
+     */
+    units: number;
+    /**
+     * Estimated
+     */
+    estimated: boolean;
+    /**
+     * Locked
+     */
+    locked: boolean;
 };
 
 /**
@@ -4012,6 +4134,31 @@ export type BondValuationApiBondsIsinValuationGetResponses = {
 };
 
 export type BondValuationApiBondsIsinValuationGetResponse = BondValuationApiBondsIsinValuationGetResponses[keyof BondValuationApiBondsIsinValuationGetResponses];
+
+export type PortfolioQuotesApiPortfolioQuotesGetData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/portfolio/quotes';
+};
+
+export type PortfolioQuotesApiPortfolioQuotesGetErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type PortfolioQuotesApiPortfolioQuotesGetError = PortfolioQuotesApiPortfolioQuotesGetErrors[keyof PortfolioQuotesApiPortfolioQuotesGetErrors];
+
+export type PortfolioQuotesApiPortfolioQuotesGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: PortfolioQuotes;
+};
+
+export type PortfolioQuotesApiPortfolioQuotesGetResponse = PortfolioQuotesApiPortfolioQuotesGetResponses[keyof PortfolioQuotesApiPortfolioQuotesGetResponses];
 
 export type BondDepthApiBondsIsinDepthGetData = {
     body?: never;

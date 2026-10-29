@@ -3,37 +3,29 @@ import { fmt } from "../api/client";
 import type { LotInput, PortfolioLot, PortfolioPosition } from "../api/types";
 import { useLotMutations } from "../lib/portfolio";
 
-/** Expanded lots of one position: list + inline edit/delete + add. */
-export default function LotsPanel({
-  p,
-  onViewBond,
-}: {
-  p: PortfolioPosition;
-  onViewBond?: () => void;
-}) {
+const COLS = "grid-cols-[minmax(9rem,1.2fr)_3.5rem_6.5rem_6rem_7rem_4rem_auto]";
+const H = "text-[10px] text-zinc-500";
+
+/** One position's lots with each lot's own performance (value, P&L and
+ * projected XIRR against the market), plus inline edit / delete / add. */
+export default function LotsPanel({ p }: { p: PortfolioPosition }) {
   const { add, update, remove } = useLotMutations();
   const [editingId, setEditingId] = useState<number | null>(null);
   const [adding, setAdding] = useState(false);
   const [confirmId, setConfirmId] = useState<number | null>(null);
 
   return (
-    <div className="text-xs space-y-1">
-      <div className="grid grid-cols-[1fr_1fr_1fr_1fr_auto] gap-2 items-center text-[10px] text-zinc-500 px-1">
-        <span>Units</span>
-        <span>Price / unit</span>
-        <span>Purchase date</span>
-        <span>Platform</span>
-        {onViewBond ? (
-          <button
-            type="button"
-            onClick={onViewBond}
-            className="text-[11px] px-2 py-0.5 rounded-md border border-zinc-700 text-zinc-300 hover:border-zinc-500 hover:text-zinc-100 transition-colors"
-          >
-            View bond →
-          </button>
-        ) : (
-          <span />
-        )}
+    <div className="text-xs space-y-0.5">
+      <div className={`grid ${COLS} gap-2 items-center px-1 ${H}`}>
+        <span>Bought</span>
+        <span className="text-right">Units</span>
+        <span className="text-right">Paid</span>
+        <span className="text-right">Value</span>
+        <span className="text-right">P&L</span>
+        <span className="text-right" title="Projected XIRR on this lot alone">
+          XIRR
+        </span>
+        <span />
       </div>
       {p.lots.map((lot) =>
         editingId === lot.id ? (
@@ -49,15 +41,30 @@ export default function LotsPanel({
         ) : (
           <div
             key={lot.id}
-            className="grid grid-cols-[1fr_1fr_1fr_1fr_auto] gap-2 items-center px-1 py-0.5 rounded hover:bg-zinc-800/60 group"
+            className={`grid ${COLS} gap-2 items-center px-1 py-0.5 rounded hover:bg-zinc-800/60`}
           >
-            <span className="tabular-nums text-zinc-200">{fmt.num(lot.units, 2)}</span>
-            <span className="tabular-nums">{fmt.inrFull(lot.price)}</span>
-            <span>
-              {lot.purchase_date ? new Date(lot.purchase_date).toLocaleDateString("en-IN") : "–"}
+            <span className="truncate text-zinc-300" title={lot.platform ?? undefined}>
+              {fmt.date(lot.purchase_date)}
+              {lot.platform && <span className="text-zinc-500"> · {lot.platform}</span>}
             </span>
-            <span className="truncate">{lot.platform ?? "–"}</span>
-            <span className="flex gap-1 opacity-0 group-hover:opacity-100">
+            <span className="text-right tabular-nums text-zinc-200">{fmt.num(lot.units, 2)}</span>
+            <span className="text-right tabular-nums">{fmt.inrFull(lot.price)}</span>
+            <span className="text-right tabular-nums">{fmt.inr(lot.value)}</span>
+            <span className="text-right tabular-nums">
+              {lot.gain == null ? (
+                <span className="text-zinc-600">–</span>
+              ) : (
+                <span className={lot.gain >= 0 ? "text-emerald-400" : "text-red-400"}>
+                  {lot.gain >= 0 ? "+" : "−"}
+                  {fmt.inr(Math.abs(lot.gain))}
+                  {lot.gain_pct != null && (
+                    <span className="text-[10px] opacity-80"> ({lot.gain_pct.toFixed(1)}%)</span>
+                  )}
+                </span>
+              )}
+            </span>
+            <span className="text-right tabular-nums">{fmt.pct(lot.xirr)}</span>
+            <span className="flex gap-1 justify-end">
               <button
                 type="button"
                 title="Edit lot"
@@ -65,7 +72,7 @@ export default function LotsPanel({
                   setConfirmId(null);
                   setEditingId(lot.id);
                 }}
-                className="px-1 text-zinc-500 hover:text-zinc-200"
+                className="px-1 text-zinc-600 hover:text-zinc-200"
               >
                 ✎
               </button>
@@ -83,7 +90,7 @@ export default function LotsPanel({
                 className={
                   confirmId === lot.id
                     ? "px-1 text-red-400"
-                    : "px-1 text-zinc-500 hover:text-red-400"
+                    : "px-1 text-zinc-600 hover:text-red-400"
                 }
               >
                 {confirmId === lot.id ? "sure?" : "✕"}

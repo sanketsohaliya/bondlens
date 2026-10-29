@@ -234,3 +234,12 @@ def test_ask_prices_include_todays_last_trade():
              {"asks": [], "last_price": 985.0, "day_volume": 0},     # no trade today: ignored
              None]
     assert ask_ytm.ask_prices(sides) == [997.5, 1010.0]
+
+
+def test_best_bid_is_highest_positive_size_across_listings():
+    quotes = {"NSE:X-N1": {"depth": {"buy": [{"price": 990, "quantity": 5}]}},
+              "BSE:X": {"depth": {"buy": [{"price": 995, "quantity": 0}, {"price": 992, "quantity": 2}]}}}
+    best = ask_ytm._best_bid(quotes, ["NSE:X-N1", "BSE:X"])
+    assert best is not None
+    assert (best["bid_price"], best["bid_qty"], best["exchange"]) == (992.0, 2.0, "BSE")
+    assert ask_ytm._best_bid(quotes, ["BSE:Y"]) is None
