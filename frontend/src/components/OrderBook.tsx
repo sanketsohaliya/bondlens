@@ -244,6 +244,10 @@ function Ladder({
                     ? ` · ${liveTime(side.last_trade_at ?? null)}`
                     : ""}
                   {side.last_qty != null ? ` · ${fmt.num(side.last_qty, 0)} units` : ""}
+                  {(() => {
+                    const y = ytmAtAsk.find((v) => v.price === side.last_price)?.ytm;
+                    return y != null ? ` · ${fmt.pct(y)}` : "";
+                  })()}
                   {` · day vol ${fmt.num(side.day_volume, 0)}`}
                 </>
               ) : (

@@ -227,3 +227,10 @@ def test_endpoint_empty_when_not_connected(monkeypatch):
         assert r.status_code == 200 and r.json()["items"] == []
     finally:
         app.dependency_overrides.clear()
+
+
+def test_ask_prices_include_todays_last_trade():
+    sides = [{"asks": [{"price": 1010.0, "qty": 5}], "last_price": 997.5, "day_volume": 2},
+             {"asks": [], "last_price": 985.0, "day_volume": 0},     # no trade today: ignored
+             None]
+    assert ask_ytm.ask_prices(sides) == [997.5, 1010.0]

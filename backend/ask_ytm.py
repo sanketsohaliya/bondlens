@@ -65,6 +65,9 @@ def _best_ask(quotes: dict[str, Any], keys: list[str]) -> dict | None:
 
 
 def ask_prices(sides) -> list[float]:
+    """Dirty prices worth valuing for a book: every positive-size ask, plus
+    today's last traded price when the Kite quote carries one (the live
+    Recent Trades row and the Order Book header show its yield)."""
     prices = set()
     for side in sides:
         for level in (side or {}).get("asks", []):
@@ -74,6 +77,9 @@ def ask_prices(sides) -> list[float]:
                 continue
             if math.isfinite(price) and math.isfinite(qty) and price > 0 and qty > 0:
                 prices.add(price)
+        last = (side or {}).get("last_price")
+        if last and (side or {}).get("day_volume") and math.isfinite(float(last)) and float(last) > 0:
+            prices.add(float(last))
     return sorted(prices)
 
 

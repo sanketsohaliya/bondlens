@@ -380,7 +380,9 @@ export default function TradeChart({
                           {l.lastQty != null ? ` × ${fmt.num(l.lastQty, 0)}` : ""}
                         </div>
                       </td>
-                      <td className="px-3 py-1.5 text-zinc-500">–</td>
+                      <td className="px-3 py-1.5 text-zinc-400">
+                        {fmt.pct(book?.ytm_at_ask.find((v) => v.price === l.price)?.ytm ?? null)}
+                      </td>
                       <td className="px-3 py-1.5 text-zinc-400">{fmt.num(l.volume, 0)}</td>
                       <td className="px-3 py-1.5 text-zinc-400">{fmt.inr(l.turnover)}</td>
                     </tr>
