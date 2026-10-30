@@ -22,6 +22,7 @@ class FakeStore:
         self.next_id = 1
         self.pushed: list[tuple] = []
         self.cap = None
+        self.blacklisted: dict[tuple[int, str], str | None] = {}
 
     def list_rules(self, user_id):
         return [r for r in self.rules.values() if r["user_id"] == user_id]
@@ -115,6 +116,21 @@ class FakeStore:
     def read_heartbeat(self):
         return None
 
+    # --- never-auto-buy list ---
+    def list_blacklist(self, user_id):
+        return [{"isin": i, "note": n, "created_at": NOW, "issuer_name": None}
+                for (u, i), n in self.blacklisted.items() if u == user_id]
+
+    def put_blacklist(self, user_id, isin, note):
+        isin = isin.strip().upper()
+        if not rules.ISIN_RE.match(isin):
+            raise rules.RuleError(400, "not an ISIN")
+        self.blacklisted[(user_id, isin)] = (note or "").strip()[:60] or None
+        return {"isin": isin, "note": self.blacklisted[(user_id, isin)], "created_at": NOW, "issuer_name": None}
+
+    def delete_blacklist(self, user_id, isin):
+        self.blacklisted.pop((user_id, isin.strip().upper()), None)
+
 
 @pytest.fixture
 def client(monkeypatch):
@@ -122,7 +138,8 @@ def client(monkeypatch):
     for name in ("list_rules", "create_rule", "update_rule", "delete_rule", "list_targets",
                  "put_target", "delete_target", "get_topic", "set_topic", "recent_hits",
                  "hits_today", "read_heartbeat", "recent_auto_orders", "auto_spend_today",
-                 "get_auto_buy_cap", "set_auto_buy_cap", "arm_auto_buy", "disarm_all"):
+                 "get_auto_buy_cap", "set_auto_buy_cap", "arm_auto_buy", "disarm_all",
+                 "list_blacklist", "put_blacklist", "delete_blacklist"):
         monkeypatch.setattr(rules, name, getattr(store, name))
     monkeypatch.setattr(queries, "bond_row", lambda isin: {"isin": isin} if isin.startswith("INE") else None)
     monkeypatch.setattr(ntfy, "push", lambda topic, title, body, **kw: store.pushed.append((topic, title)) or 12)
@@ -329,3 +346,16 @@ def test_validate_rule_auto_buy_fields():
         rules.validate_rule({"min_ask_ytm": 12, "buy_budget": 60000, "buy_daily_cap": 50000})
     v = rules.validate_rule({"min_ask_ytm": 12, "buy_budget": "10000", "buy_daily_cap": 50000})
     assert v["buy_budget"] == 10000.0 and v["buy_daily_cap"] == 50000.0
+
+
+def test_blacklist_crud_is_per_user(client):
+    c, store, current = client
+    r = c.put("/api/alerts/blacklist/ine000a00001", json={"note": "thin book"})
+    assert r.status_code == 200 and r.json()["isin"] == "INE000A00001" and r.json()["note"] == "thin book"
+    assert c.put("/api/alerts/blacklist/nope", json={}).status_code == 400
+    assert [e["isin"] for e in c.get("/api/alerts").json()["blacklist"]] == ["INE000A00001"]
+    current["id"] = 2
+    assert c.get("/api/alerts").json()["blacklist"] == []
+    current["id"] = 1
+    assert c.delete("/api/alerts/blacklist/INE000A00001").status_code == 200
+    assert c.get("/api/alerts").json()["blacklist"] == []

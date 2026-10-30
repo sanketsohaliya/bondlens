@@ -28,6 +28,7 @@ import AddLotPopover from "./AddLotPopover";
 import AiPromptBtn from "./AiPromptBtn";
 import CopyText from "./CopyText";
 import InlineMetadata, { MetadataSeparator } from "./InlineMetadata";
+import NoAutoBuyMark from "./NoAutoBuyMark";
 import RatingBadge from "./RatingBadge";
 import YieldQuote from "./YieldQuote";
 
@@ -502,6 +503,7 @@ export function MarkCell({ bond: b }: { bond: Bond }) {
       <span className="flex items-center gap-1.5">
         <HoldMark isin={b.isin} />
         <WatchStar isin={b.isin} />
+        <NoAutoBuyMark isin={b.isin} />
       </span>
     </td>
   );

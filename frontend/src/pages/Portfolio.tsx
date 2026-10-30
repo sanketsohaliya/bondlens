@@ -29,6 +29,7 @@ import {
   WatchStar,
 } from "../components/ExploreTable";
 import InlineMetadata, { MetadataSeparator } from "../components/InlineMetadata";
+import NoAutoBuyMark from "../components/NoAutoBuyMark";
 import type { TicketState } from "../components/OrderBook";
 import PositionPanel from "../components/PositionPanel";
 import StatBox from "../components/StatBox";
@@ -595,7 +596,7 @@ function PositionRow({
         title={open ? "Click row to hide lots" : "Click row to show lots"}
         className="group/row border-b border-zinc-800/60 hover:bg-zinc-900/60 cursor-pointer"
       >
-        <td className="w-14 pl-3 pr-1">
+        <td className="w-20 pl-3 pr-1">
           <span className="flex items-center gap-1.5">
             <span
               className={`inline-block text-zinc-500 transition-transform duration-150 ${
@@ -606,6 +607,7 @@ function PositionRow({
               ›
             </span>
             <WatchStar isin={p.isin} />
+            <NoAutoBuyMark isin={p.isin} />
           </span>
         </td>
         <SymbolCell bond={bond} onOpen={() => onSelect()} />

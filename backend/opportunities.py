@@ -428,9 +428,13 @@ def size_order(budget: float | None, ask_price: float, ask_qty: float) -> int:
 
 def auto_buy_gate(rule: AskRule, hit: Hit, *, now: datetime, spent_rule: float, spent_all: float,
                   global_cap: float | None, cash: float | None, already_ordered: bool,
-                  qty: int) -> str | None:
+                  qty: int, blacklisted: str | None | bool = False) -> str | None:
     """The reason NOT to place an order, or None when every fence passes.
-    Checked in this order so the recorded reason is the first real blocker."""
+    Checked in this order so the recorded reason is the first real blocker.
+    `blacklisted` is False when the bond is not on the user's never-auto-buy
+    list, else its note (or None for no note): that fence comes first."""
+    if blacklisted is not False:
+        return f"blacklisted: {blacklisted}" if blacklisted else "blacklisted"
     if not rule.armed(now):
         return "not armed"
     if rule.buy_budget is None or rule.buy_daily_cap is None:

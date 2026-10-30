@@ -653,6 +653,18 @@ class ExitTarget(ExitTargetIn):
     updated_at: datetime
 
 
+class BlacklistIn(BaseModel):
+    note: str | None = Field(default=None, max_length=60)
+
+
+class BlacklistEntry(BaseModel):
+    """A bond this user never auto-buys (alerts still fire)."""
+    isin: str
+    issuer_name: str | None = None
+    note: str | None = None
+    created_at: datetime
+
+
 class AlertSettings(BaseModel):
     ntfy_topic: str | None = None
     auto_buy_daily_cap: float | None = None
@@ -687,6 +699,7 @@ class AlertsOverview(BaseModel):
     hits_today: dict[str, int] = Field(default_factory=dict)   # source -> count
     auto_orders: list[AutoOrder] = Field(default_factory=list)  # today's
     spent_today: dict[str, float] = Field(default_factory=dict) # "rule:<id>" -> ₹, "total" -> ₹
+    blacklist: list[BlacklistEntry] = Field(default_factory=list)
     watcher: dict[str, Any] | None = None
 
 

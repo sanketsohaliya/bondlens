@@ -9,6 +9,8 @@ export type {
   AskYtm,
   AskYtmResponse,
   AutoOrder,
+  BlacklistEntry,
+  BlacklistIn,
   Bond,
   BondDetail,
   BondsResponse,

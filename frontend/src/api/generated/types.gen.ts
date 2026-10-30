@@ -180,6 +180,10 @@ export type AlertsOverview = {
         [key: string]: number;
     };
     /**
+     * Blacklist
+     */
+    blacklist?: Array<BlacklistEntry>;
+    /**
      * Watcher
      */
     watcher?: {
@@ -415,6 +419,40 @@ export type AutoOrder = {
      * Issuer Name
      */
     issuer_name?: string | null;
+};
+
+/**
+ * BlacklistEntry
+ *
+ * A bond this user never auto-buys (alerts still fire).
+ */
+export type BlacklistEntry = {
+    /**
+     * Isin
+     */
+    isin: string;
+    /**
+     * Issuer Name
+     */
+    issuer_name?: string | null;
+    /**
+     * Note
+     */
+    note?: string | null;
+    /**
+     * Created At
+     */
+    created_at: string;
+};
+
+/**
+ * BlacklistIn
+ */
+export type BlacklistIn = {
+    /**
+     * Note
+     */
+    note?: string | null;
 };
 
 /**
@@ -3695,6 +3733,66 @@ export type AlertsPutTargetApiAlertsTargetsIsinPutResponses = {
 };
 
 export type AlertsPutTargetApiAlertsTargetsIsinPutResponse = AlertsPutTargetApiAlertsTargetsIsinPutResponses[keyof AlertsPutTargetApiAlertsTargetsIsinPutResponses];
+
+export type AlertsDeleteBlacklistApiAlertsBlacklistIsinDeleteData = {
+    body?: never;
+    path: {
+        /**
+         * Isin
+         */
+        isin: string;
+    };
+    query?: never;
+    url: '/api/alerts/blacklist/{isin}';
+};
+
+export type AlertsDeleteBlacklistApiAlertsBlacklistIsinDeleteErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type AlertsDeleteBlacklistApiAlertsBlacklistIsinDeleteError = AlertsDeleteBlacklistApiAlertsBlacklistIsinDeleteErrors[keyof AlertsDeleteBlacklistApiAlertsBlacklistIsinDeleteErrors];
+
+export type AlertsDeleteBlacklistApiAlertsBlacklistIsinDeleteResponses = {
+    /**
+     * Successful Response
+     */
+    200: Ok;
+};
+
+export type AlertsDeleteBlacklistApiAlertsBlacklistIsinDeleteResponse = AlertsDeleteBlacklistApiAlertsBlacklistIsinDeleteResponses[keyof AlertsDeleteBlacklistApiAlertsBlacklistIsinDeleteResponses];
+
+export type AlertsPutBlacklistApiAlertsBlacklistIsinPutData = {
+    body: BlacklistIn;
+    path: {
+        /**
+         * Isin
+         */
+        isin: string;
+    };
+    query?: never;
+    url: '/api/alerts/blacklist/{isin}';
+};
+
+export type AlertsPutBlacklistApiAlertsBlacklistIsinPutErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type AlertsPutBlacklistApiAlertsBlacklistIsinPutError = AlertsPutBlacklistApiAlertsBlacklistIsinPutErrors[keyof AlertsPutBlacklistApiAlertsBlacklistIsinPutErrors];
+
+export type AlertsPutBlacklistApiAlertsBlacklistIsinPutResponses = {
+    /**
+     * Successful Response
+     */
+    200: BlacklistEntry;
+};
+
+export type AlertsPutBlacklistApiAlertsBlacklistIsinPutResponse = AlertsPutBlacklistApiAlertsBlacklistIsinPutResponses[keyof AlertsPutBlacklistApiAlertsBlacklistIsinPutResponses];
 
 export type AlertsPutSettingsApiAlertsSettingsPutData = {
     body: AlertSettings;

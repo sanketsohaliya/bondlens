@@ -233,6 +233,50 @@ def set_topic(user_id: int, topic: str | None) -> str | None:
     return topic
 
 
+# --- Auto-buy blacklist -----------------------------------------------------
+
+ISIN_RE = re.compile(r"^[A-Z]{2}[A-Z0-9]{9}[0-9]$")
+
+
+def blacklist(user_id: int) -> dict[str, str | None]:
+    """{isin: note} of bonds this user never auto-buys."""
+    with db._conn() as conn:
+        rows = conn.execute("SELECT isin, note FROM auto_buy_blacklist WHERE user_id = %s",
+                            (user_id,)).fetchall()
+    return {r["isin"]: r["note"] for r in rows}
+
+
+def list_blacklist(user_id: int) -> list[dict]:
+    with db._conn() as conn:
+        rows = conn.execute(
+            "SELECT l.isin, l.note, l.created_at, b.issuer_name "
+            "FROM auto_buy_blacklist l LEFT JOIN bond_analytics b ON b.isin = l.isin "
+            "WHERE l.user_id = %s ORDER BY l.created_at DESC", (user_id,)).fetchall()
+    return [dict(r) for r in rows]
+
+
+def put_blacklist(user_id: int, isin: str, note: str | None) -> dict:
+    isin = (isin or "").strip().upper()
+    if not ISIN_RE.match(isin):
+        raise RuleError(400, "not an ISIN")
+    note = (note or "").strip()[:60] or None
+    with db._conn() as conn:
+        conn.execute(
+            "INSERT INTO auto_buy_blacklist (user_id, isin, note) VALUES (%s, %s, %s) "
+            "ON CONFLICT (user_id, isin) DO UPDATE SET note = EXCLUDED.note",
+            (user_id, isin, note))
+    touch(user_id)
+    return next((e for e in list_blacklist(user_id) if e["isin"] == isin),
+                {"isin": isin, "note": note, "created_at": datetime.now(UTC), "issuer_name": None})
+
+
+def delete_blacklist(user_id: int, isin: str) -> None:
+    with db._conn() as conn:
+        conn.execute("DELETE FROM auto_buy_blacklist WHERE user_id = %s AND isin = %s",
+                     (user_id, isin.strip().upper()))
+    touch(user_id)
+
+
 def market_close_today() -> datetime:
     """15:45 IST today - when an armed rule disarms itself."""
     ist = datetime.now(IST)

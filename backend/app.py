@@ -290,6 +290,7 @@ def alerts_overview(hits: Literal["today", "all"] = Query("today"),
             "hits_today": opportunity_rules.hits_today(user_id, _ist_today()),
             "auto_orders": opportunity_rules.recent_auto_orders(user_id, _ist_today()),
             "spent_today": _spent_today(user_id),
+            "blacklist": opportunity_rules.list_blacklist(user_id),
             "watcher": opportunity_rules.read_heartbeat()}
 
 
@@ -347,6 +348,19 @@ def alerts_put_target(isin: str, body: models.ExitTargetIn,
 @router.delete("/api/alerts/targets/{isin}", response_model=models.Ok)
 def alerts_delete_target(isin: str, user_id: int = Depends(auth.require_user)):
     _rules_call(opportunity_rules.delete_target, user_id, isin.strip().upper())
+    return {"ok": True}
+
+
+@router.put("/api/alerts/blacklist/{isin}", response_model=models.BlacklistEntry)
+def alerts_put_blacklist(isin: str, body: models.BlacklistIn,
+                         user_id: int = Depends(auth.require_user)):
+    """Never auto-buy this bond (alerts still fire). Idempotent; updates the note."""
+    return _rules_call(opportunity_rules.put_blacklist, user_id, isin, body.note)
+
+
+@router.delete("/api/alerts/blacklist/{isin}", response_model=models.Ok)
+def alerts_delete_blacklist(isin: str, user_id: int = Depends(auth.require_user)):
+    _rules_call(opportunity_rules.delete_blacklist, user_id, isin)
     return {"ok": True}
 
 

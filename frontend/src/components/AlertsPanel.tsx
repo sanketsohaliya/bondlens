@@ -3,6 +3,7 @@ import { useState } from "react";
 import { api, fmt } from "../api/client";
 import type { AlertRule, AutoOrder, ExploreParams } from "../api/types";
 import { groupHitsByRule, type HitGroup, watcherStatus } from "../lib/alertRules";
+import { useBlacklist } from "../lib/blacklist";
 import { fmtIstTime } from "../lib/quoteValuation";
 import SaveAlertDialog from "./SaveAlertDialog";
 
@@ -206,6 +207,81 @@ export default function AlertsPanel({
   );
 }
 
+/** The never-auto-buy list: alerts still fire for these bonds, orders
+ * never go out. Marked from any row's ⊘, or added here by ISIN. */
+function BlacklistRows() {
+  const { entries, put, remove, error } = useBlacklist();
+  const [isin, setIsin] = useState("");
+  const [note, setNote] = useState("");
+  const valid = /^[A-Z]{2}[A-Z0-9]{9}[0-9]$/.test(isin.trim().toUpperCase());
+  const add = () => {
+    if (!valid) return;
+    put(note, isin.trim().toUpperCase());
+    setIsin("");
+    setNote("");
+  };
+  return (
+    <div className="mt-3 border-t border-zinc-800 pt-2">
+      <div className="mb-1 flex items-baseline justify-between">
+        <span className="text-[11px] text-zinc-500">Never auto-buy</span>
+        <span className="text-[10px] text-zinc-600">alerts still fire; no order is placed</span>
+      </div>
+      {entries.length === 0 && (
+        <p className="text-[11px] text-zinc-600">
+          None. Use the ⊘ on any Explore or Portfolio row, or add an ISIN below.
+        </p>
+      )}
+      {entries.map((e) => (
+        <div key={e.isin} className="flex items-center gap-2 py-0.5 text-xs">
+          <span
+            className="min-w-0 flex-1 truncate text-zinc-200"
+            title={e.issuer_name ?? undefined}
+          >
+            {e.issuer_name ?? e.isin}
+          </span>
+          <span className="font-mono text-[11px] text-zinc-500">{e.isin}</span>
+          {e.note && <span className="truncate text-[11px] text-zinc-500">· {e.note}</span>}
+          <button
+            type="button"
+            onClick={() => remove(e.isin)}
+            title="Allow auto-buy again"
+            className="px-1 text-zinc-600 hover:text-zinc-200"
+          >
+            ×
+          </button>
+        </div>
+      ))}
+      <div className="mt-1.5 flex items-center gap-2">
+        <input
+          className="w-36 rounded-md border border-zinc-700 bg-zinc-950 px-2 py-1 font-mono text-xs text-zinc-100 focus:border-emerald-500 focus:outline-none"
+          placeholder="ISIN"
+          value={isin}
+          maxLength={12}
+          onChange={(e) => setIsin(e.target.value.toUpperCase())}
+          onKeyDown={(e) => e.key === "Enter" && add()}
+        />
+        <input
+          className="flex-1 rounded-md border border-zinc-700 bg-zinc-950 px-2 py-1 text-xs text-zinc-100 focus:border-emerald-500 focus:outline-none"
+          placeholder="note (optional)"
+          value={note}
+          maxLength={60}
+          onChange={(e) => setNote(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && add()}
+        />
+        <button
+          type="button"
+          disabled={!valid}
+          onClick={add}
+          className="px-2 py-1 rounded-md border border-zinc-700 text-zinc-300 hover:border-zinc-500 disabled:opacity-40"
+        >
+          Add
+        </button>
+      </div>
+      {error && <p className="mt-1 text-red-400">{error.message}</p>}
+    </div>
+  );
+}
+
 function SettingsRows({
   topic,
   cap,
@@ -297,6 +373,7 @@ function SettingsRows({
           {((save.error || test.error || saveCap.error) as Error).message}
         </p>
       )}
+      <BlacklistRows />
     </div>
   );
 }

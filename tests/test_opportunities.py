@@ -232,6 +232,12 @@ def gate(rule: opp.AskRule, h: opp.Hit, *, spent_rule: float = 0.0, spent_all: f
 def test_auto_buy_gate_reports_the_first_blocker():
     h = hit(price=997.0, qty=10, ytm=12.4, ytm_bound=12.0)
     assert gate(armed_rule(), h) is None
+    # The never-auto-buy list wins over everything, even "not armed".
+    assert opp.auto_buy_gate(armed_rule(auto_buy_until=None), h, now=NOW, spent_rule=0, spent_all=0,
+                             global_cap=None, cash=None, already_ordered=False, qty=10,
+                             blacklisted="thin book") == "blacklisted: thin book"
+    assert opp.auto_buy_gate(armed_rule(), h, now=NOW, spent_rule=0, spent_all=0, global_cap=None,
+                             cash=None, already_ordered=False, qty=10, blacklisted=None) == "blacklisted"
     assert gate(armed_rule(auto_buy_until=None), h) == "not armed"
     assert gate(armed_rule(auto_buy_until=NOW - timedelta(minutes=1)), h) == "not armed"
     assert gate(armed_rule(buy_daily_cap=None), h) == "no budget or daily cap set"

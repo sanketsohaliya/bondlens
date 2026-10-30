@@ -5,6 +5,8 @@ import type {
   AlertSettings,
   AlertsOverview,
   AskYtmResponse,
+  BlacklistEntry,
+  BlacklistIn,
   BondDetail,
   BondsResponse,
   CashflowEvidenceResponse,
@@ -127,6 +129,10 @@ export const api = {
     armAutoBuy: (id: number, on: boolean) =>
       request<AlertRule>("POST", `/api/alerts/rules/${id}/auto-buy`, { on }),
     disarmAll: () => request<{ ok: boolean }>("POST", "/api/alerts/disarm"),
+    putBlacklist: (isin: string, body: BlacklistIn) =>
+      request<BlacklistEntry>("PUT", `/api/alerts/blacklist/${isin}`, body),
+    deleteBlacklist: (isin: string) =>
+      request<{ ok: boolean }>("DELETE", `/api/alerts/blacklist/${isin}`),
     test: () => request<{ ok: boolean }>("POST", "/api/alerts/test"),
   },
   notifications: {

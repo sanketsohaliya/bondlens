@@ -14,7 +14,7 @@ from urllib.request import urlopen
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 
-LATEST_MIGRATION = "0027_alert_rule_min_ticket.sql"
+LATEST_MIGRATION = "0028_auto_buy_blacklist.sql"
 
 
 class VerificationError(Exception):

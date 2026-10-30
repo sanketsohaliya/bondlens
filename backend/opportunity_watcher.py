@@ -110,6 +110,7 @@ class UserSession:
     def __init__(self, user_id: int, topic: str | None, pusher: ntfy.Pusher, latency: Latency):
         self.user_id = user_id
         self.topic = topic
+        self.blacklist: dict[str, str | None] = {}   # isin -> note: never auto-buy
         self.pusher = pusher
         self.latency = latency
         self.today: date = now_ist().date()
@@ -145,6 +146,7 @@ class UserSession:
                 "bonds": queries.bonds_brief(isins), "missing": len(missing), "solved": solved,
                 "dedupe": rules_db.todays_hits(self.user_id, self.today),
                 "topic": rules_db.get_topic(self.user_id),
+                "blacklist": rules_db.blacklist(self.user_id),
                 "token": db.get_kite_token(self.user_id)}
 
     def apply(self, prepared: dict[str, Any]) -> None:
@@ -153,6 +155,7 @@ class UserSession:
         self.bonds = prepared["bonds"]
         self.pending_pairs = prepared["missing"]
         self.topic = prepared["topic"]
+        self.blacklist = prepared.get("blacklist") or {}
         self.access_token = prepared["token"]
         for (source, isin), row in prepared["dedupe"].items():
             self.dedupe.setdefault((source, isin), opp.Hit(
@@ -373,7 +376,8 @@ class UserSession:
             reason = opp.auto_buy_gate(
                 rule, hit, now=now, spent_rule=spend["by_rule"].get(rule.rule_id, 0.0),
                 spent_all=spend["total"], global_cap=global_cap, cash=cash,
-                already_ordered=(rule.rule_id, hit.isin) in spend["ordered"], qty=qty)
+                already_ordered=(rule.rule_id, hit.isin) in spend["ordered"], qty=qty,
+                blacklisted=self.blacklist.get(hit.isin, False))
             status, order_id, symbol = "skipped", None, None
             if reason is None:
                 symbol = self._tradingsymbol(hit.isin, exchange)

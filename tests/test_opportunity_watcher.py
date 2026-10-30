@@ -283,6 +283,22 @@ def test_armed_rule_places_a_limit_buy_at_the_ask_and_tells_you(monkeypatch):
     asyncio.run(run())
 
 
+def test_blacklisted_bond_alerts_but_is_never_bought(monkeypatch):
+    async def run():
+        s, pusher, recorded = make_session(monkeypatch)
+        arm(s)
+        s.blacklist = {"INE000A": "thin book"}
+        placed, orders = wire_kite(monkeypatch)
+        s.on_tick(tick(101, asks=[(940.0, 30)]))
+        await settle()
+        assert placed == []
+        assert orders[0]["status"] == "skipped" and orders[0]["reason"] == "blacklisted: thin book"
+        assert pusher.calls[0]["title"] == "ALPHA LTD — ask ₹940"          # the alert still goes out
+        assert pusher.calls[1]["title"] == "Auto-buy skipped — ALPHA LTD"
+        assert "blacklisted: thin book" in pusher.calls[1]["body"]
+    asyncio.run(run())
+
+
 def test_disarmed_or_capped_rules_do_not_order(monkeypatch):
     async def run():
         s, pusher, recorded = make_session(monkeypatch)
