@@ -133,7 +133,7 @@ def update_rule(user_id: int, rule_id: int, payload: dict) -> dict:
         r = conn.execute(
             "UPDATE alert_rules SET filters = %s, min_ask_ytm = %s, min_ticket = %s, "
             " enabled = %s, buy_budget = %s, buy_daily_cap = %s, "
-            " auto_buy_until = CASE WHEN %s IS NULL THEN NULL ELSE auto_buy_until END, "
+            " auto_buy_until = CASE WHEN %s::numeric IS NULL THEN NULL ELSE auto_buy_until END, "
             " updated_at = now() "
             "WHERE id = %s AND user_id = %s RETURNING *",
             (Jsonb(v["filters"]), v["min_ask_ytm"], v["min_ticket"],
