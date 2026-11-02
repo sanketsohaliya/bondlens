@@ -13,7 +13,6 @@ Timeline (IST, Mon-Fri):
   08:30  build/refresh thresholds for the day (also a cron slot)
   09:00  connect; Kite sends a snapshot tick per instrument, so pre-open
          resting orders are judged at once
-  09:15  users with rules but no live token get one nudge
   every 10 min  refresh candidates/thresholds, apply subscription deltas
   15:45  disconnect; heartbeat keeps beating with note 'idle'
 """
@@ -50,7 +49,6 @@ log = logging.getLogger("watcher")
 IST = ZoneInfo("Asia/Kolkata")
 
 OPEN = dtime(9, 0)
-NUDGE_AT = dtime(9, 15)
 CLOSE = dtime(15, 45)
 PREP = dtime(8, 30)
 REFRESH_SECONDS = 600
@@ -431,23 +429,6 @@ class UserSession:
                if exchange == "NSE" else kite.resolve_bse(row.get("bse_scrip_id")))
         return hit[0] if hit else None
 
-    # -- nudge ------------------------------------------------------------------
-
-    def nudge_if_disconnected(self) -> None:
-        if self.access_token is not None or not self.topic or not self.thresholds.isins:
-            return
-        key = ("nudge", "")
-        if key in self.dedupe:
-            return
-        self.dedupe[key] = opp.Hit(source="nudge", isin="", side="ask", price=0, qty=0, exchange=None)
-        try:
-            self.pusher.push(self.topic, "Connect Kite to arm today's alerts",
-                             "Your alert rules are waiting on a Kite login for today.",
-                             priority=ntfy.PRIORITY_URGENT, tags="key,bondlens",
-                             click=f"https://{DOMAIN}/")
-        except Exception as exc:  # noqa: BLE001
-            log.warning("user %s: nudge failed: %s", self.user_id, exc)
-
 
 def quote_ts(value: str | None) -> datetime | None:
     if not value:
@@ -556,9 +537,6 @@ class Watcher:
                 await asyncio.sleep(wait)
                 continue
             await self.refresh()
-            if phase == "open" and t.timetz().replace(tzinfo=None) >= NUDGE_AT:
-                for session in self.sessions.values():
-                    session.nudge_if_disconnected()
             # Between full refreshes, poll the change marker every few seconds.
             boundary = seconds_until(t, OPEN if phase == "prep" else CLOSE)
             deadline = time.monotonic() + min(boundary, REFRESH_SECONDS)

@@ -173,18 +173,6 @@ def test_apply_seeds_dedupe_from_todays_ledger(monkeypatch):
     asyncio.run(run())
 
 
-def test_nudge_once_when_rules_exist_but_kite_is_disconnected(monkeypatch):
-    s, pusher, _ = make_session(monkeypatch)
-    s.access_token = None
-    s.nudge_if_disconnected()
-    s.nudge_if_disconnected()
-    assert len(pusher.calls) == 1 and "Connect Kite" in pusher.calls[0]["title"]
-    s2, pusher2, _ = make_session(monkeypatch)
-    s2.access_token = "live"
-    s2.nudge_if_disconnected()
-    assert pusher2.calls == []
-
-
 def test_a_hit_whose_exact_yield_misses_the_rule_is_recorded_not_belled(monkeypatch):
     async def run():
         s, pusher, recorded = make_session(monkeypatch)
