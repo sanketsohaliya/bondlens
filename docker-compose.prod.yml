@@ -25,6 +25,13 @@ services:
     volumes:
       - ~/backups:/desktop
 
+  # The watcher's daily threshold build is the box's biggest memory spike.
+  # Cap it so a runaway build gets this one container restarted instead of
+  # swapping the whole host into a hang (2 GB slice, Nov 2026).
+  watcher:
+    mem_limit: 1200m
+    memswap_limit: 1200m
+
   caddy:
     image: caddy:2
     restart: unless-stopped
