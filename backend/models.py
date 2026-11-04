@@ -115,6 +115,7 @@ class Bond(BaseModel):
     rating_changed_at: date | None
     in_default: bool
     tech_delay: bool
+    is_mld: bool = False
     computed_at: datetime
 
 
@@ -334,6 +335,7 @@ class BondDetail(BaseModel):
     rating_rank: int | None
     in_default: bool
     tech_delay: bool
+    is_mld: bool = False
     rating_timeline: dict[str, list[RatingEvent]]
     # Cashflows
     cashflows: list[Cashflow]

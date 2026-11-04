@@ -50,7 +50,7 @@ def env(monkeypatch):
     monkeypatch.setattr(ask_ytm.queries, "terms_for", lambda isins: {})
     monkeypatch.setattr(ask_ytm.queries, "exchange_notice_rows", lambda isins=None, **k: {})
 
-    def fake_schedule(isin, flows, terms, today):
+    def fake_schedule(isin, flows, terms, today, **_):
         end = today + timedelta(days=365)
         return Schedule(isin, "plain", [Flow("interest", end, amount=120), Flow("redemption", end, amount=1000)],
                         face_value=1000, redemption_matches_face=True, periods_per_year=1, day_count="act/365")
@@ -99,7 +99,7 @@ def test_isin_cap_and_dedupe(env, monkeypatch):
 
 def test_unusable_schedule_gives_null_ytm(env, monkeypatch):
     monkeypatch.setattr(ask_ytm.schedule, "build",
-                        lambda isin, flows, terms, today: Schedule(isin, "empty"))
+                        lambda isin, flows, terms, today, **_: Schedule(isin, "empty"))
     [item] = ask_ytm.compute(1, ["INE000TEST03"])
     assert item["ask_price"] == 990.0 and item["ytm"] is None
 

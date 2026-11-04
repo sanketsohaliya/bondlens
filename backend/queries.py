@@ -519,7 +519,7 @@ def bonds_brief(isins: list[str]) -> dict[str, dict]:
     with db._conn() as conn:
         rows = conn.execute(
             "SELECT isin, issuer_name, nse_symbol, nse_series, bse_scrip_id, credit_rating, "
-            "maturity_date FROM bond_analytics WHERE isin = ANY(%s)", (isins,)).fetchall()
+            "maturity_date, is_mld FROM bond_analytics WHERE isin = ANY(%s)", (isins,)).fetchall()
     return {r["isin"]: dict(r) for r in rows}
 
 

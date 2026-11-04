@@ -47,6 +47,19 @@ const yearsMonths = (years: number) => {
 const isZeroCoupon = (b: Pick<Bond, "coupon_basis" | "schedule_shape">) =>
   (b.coupon_basis ?? "").toLowerCase().includes("zero") || b.schedule_shape === "zero_coupon";
 
+/** Market-linked debenture marker: the coupon is an index formula, so
+ * the shown yield assumes no coupon and auto-buy refuses the bond. */
+export function MldChip() {
+  return (
+    <span
+      title="Market-linked debenture: the coupon is set by an index at maturity, so the yield shown assumes no coupon (indicative). Alerts fire; auto-buy never does."
+      className="shrink-0 text-[10px] px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/30"
+    >
+      MLD
+    </span>
+  );
+}
+
 /** Payout structure — the column's primary line. */
 export const payoutStructure = (b: Pick<Bond, "schedule_shape" | "frequency">): string | null => {
   switch (b.schedule_shape) {
@@ -69,6 +82,7 @@ export const payoutStructure = (b: Pick<Bond, "schedule_shape" | "frequency">): 
 type PayoutBond = Pick<
   Bond,
   | "schedule_shape"
+  | "is_mld"
   | "coupon_basis"
   | "frequency"
   | "coupon"
@@ -137,6 +151,7 @@ export function PayoutCell({
           same cell serves Explore and the Portfolio holdings table. */}
       <div className="flex min-w-0 items-baseline gap-2 overflow-hidden text-zinc-200 group-hover/coupon:underline decoration-zinc-600 underline-offset-2">
         <span className="truncate">{payoutStructure(b) ?? "–"}</span>
+        {b.is_mld && <MldChip />}
         {isZeroCoupon(b) ? (
           <span className="shrink-0 text-[11px] text-zinc-400">Zero coupon</span>
         ) : b.coupon != null ? (
@@ -544,6 +559,7 @@ export function SymbolCell({ bond: b, onOpen }: { bond: Bond; onOpen?: () => voi
             DEFAULT
           </span>
         )}
+        {b.is_mld && <MldChip />}
       </div>
       <div className="flex items-center text-[11px] min-w-0">
         <InlineMetadata

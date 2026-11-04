@@ -26,7 +26,7 @@ import math
 from dataclasses import dataclass, field
 from datetime import date
 
-from . import daycount
+from . import daycount, mld
 
 # A redemption total within this tolerance of face value counts as per-unit.
 _FACE_TOL = 0.02
@@ -272,7 +272,7 @@ def maturity_mismatch(sched: Schedule, terms: dict | None) -> tuple[date, date] 
 
 
 def build(isin: str, cashflows: list[dict], terms: dict | None,
-          today: date | None = None) -> Schedule:
+          today: date | None = None, *, market_linked: bool | None = None) -> Schedule:
     """Build the canonical Schedule for one bond.
 
     ``cashflows``: bond_cashflows rows (event, due_date, record_date,
@@ -344,6 +344,18 @@ def build(isin: str, cashflows: list[dict], terms: dict | None,
     terminal_ambiguous = _split_terminal_payment(sched, flows, terms)
     interest = [f for f in flows if f.event == "interest" and not f.optional]
     redemptions = [f for f in flows if f.event == "redemption" and not f.optional]
+
+    # Market-linked debenture: the coupon is set by an index at maturity, so
+    # NSDL's zero is "unknown", not "nothing". The amount stays 0 for pricing
+    # (the yield is shown as indicative) but the row says what it is.
+    if market_linked is None:
+        market_linked = mld.is_mld(terms.get("coupon_basis"), None)
+    if market_linked:
+        for f in interest:
+            if f.amount == 0:
+                f.adjust(0.0, "index_linked",
+                         "Coupon is linked to an index and set at maturity; NSDL publishes no amount",
+                         estimated=False)
 
     # --- repair missing redemption information -----------------------------
     # a) single redemption row with no amount -> the face value.

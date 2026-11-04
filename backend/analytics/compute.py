@@ -16,7 +16,7 @@ from typing import LiteralString
 from psycopg.types.json import Jsonb
 
 from .. import db, kite, queries, schedules
-from . import ratings, schedule, valuation, yields
+from . import mld, ratings, schedule, valuation, yields
 
 STALE_AFTER_DAYS = 7  # retail price older than this is flagged stale
 
@@ -34,7 +34,7 @@ _COLS: list[LiteralString] = [
     "otc_trade_date", "otc_turnover", "ytm", "ytm_method", "ytm_reliable", "valuation",
     "current_yield", "duration",
     "credit_rating", "rating_rank", "rating_change", "rating_prev",
-    "rating_changed_at", "in_default", "tech_delay", "computed_at",
+    "rating_changed_at", "in_default", "tech_delay", "is_mld", "computed_at",
 ]
 
 
@@ -135,10 +135,12 @@ def build_rows(today: date | None = None) -> list[dict]:
     notices = queries.exchange_notice_rows(None)
     rows = []
     for isin, r in core.items():
-        sched = schedules.build(isin, cashflows.get(isin, []), terms_map.get(isin), today,
-                                notices.get(isin))
-        payout = payout_summary(isin, payout_cashflows.get(isin, []), terms_map.get(isin), today)
         cur = current.get(isin, [])
+        rating_now = ratings.composite(ratings.latest(cur))
+        market_linked = mld.is_mld((terms_map.get(isin) or {}).get("coupon_basis"), rating_now)
+        sched = schedules.build(isin, cashflows.get(isin, []), terms_map.get(isin), today,
+                                notices.get(isin), market_linked=market_linked)
+        payout = payout_summary(isin, payout_cashflows.get(isin, []), terms_map.get(isin), today)
         retail = r.get("retail_trade")
         otc = r.get("otc_trade")
 
@@ -159,7 +161,8 @@ def build_rows(today: date | None = None) -> list[dict]:
                                      otc_yield=_f(otc and (otc.get("wap_yield") or otc.get("last_yield"))),
                                      otc_trade_date=otc["trade_date"] if otc else None,
                                      otc_price_pct=_f(otc and (otc.get("wap") or otc.get("last_price"))),
-                                     price_date=retail["trade_date"] if retail else None)
+                                     price_date=retail["trade_date"] if retail else None,
+                                     market_linked=market_linked)
         ytm, ytm_method = priced["ytm"], priced["ytm_method"]
 
         change = ratings.latest_change(history.get(isin, []))
@@ -214,13 +217,14 @@ def build_rows(today: date | None = None) -> list[dict]:
                         if ytm_method in ("exact", "estimated") else None,
             # Explorer shows (and filters on) the most recent agency action
             # only; the full multi-agency picture lives in the drawer timeline.
-            "credit_rating": ratings.composite(ratings.latest(cur)),
+            "credit_rating": rating_now,
             "rating_rank": ratings.best_rank(ratings.latest(cur)),
             "rating_change": change["direction"] if change else None,
             "rating_prev": change["prev_rating"] if change else None,
             "rating_changed_at": change["rating_date"] if change else None,
             "in_default": isin in defaulted or ratings.in_default(cur),
             "tech_delay": isin in tech_delays,
+            "is_mld": market_linked,
             "computed_at": computed_at,
         })
     return rows

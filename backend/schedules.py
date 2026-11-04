@@ -15,8 +15,9 @@ from .analytics import schedule
 
 
 def build(isin: str, cashflows: list[dict], terms: dict | None, today: date,
-          notice_rows: list[dict] | None = None) -> schedule.Schedule:
-    sched = schedule.build(isin, cashflows, terms, today=today)
+          notice_rows: list[dict] | None = None, *,
+          market_linked: bool | None = None) -> schedule.Schedule:
+    sched = schedule.build(isin, cashflows, terms, today=today, market_linked=market_linked)
     if notice_rows:
         overrides = exchange_evidence.record_date_overrides(isin, sched.flows, notice_rows)
         if overrides:

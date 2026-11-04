@@ -375,7 +375,8 @@ class UserSession:
                 rule, hit, now=now, spent_rule=spend["by_rule"].get(rule.rule_id, 0.0),
                 spent_all=spend["total"], global_cap=global_cap, cash=cash,
                 already_ordered=(rule.rule_id, hit.isin) in spend["ordered"], qty=qty,
-                blacklisted=self.blacklist.get(hit.isin, False))
+                blacklisted=self.blacklist.get(hit.isin, False),
+                market_linked=bool((self.bonds.get(hit.isin) or {}).get("is_mld")))
             status, order_id, symbol = "skipped", None, None
             if reason is None:
                 symbol = self._tradingsymbol(hit.isin, exchange)

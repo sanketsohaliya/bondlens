@@ -239,6 +239,9 @@ def test_auto_buy_gate_reports_the_first_blocker():
     assert opp.auto_buy_gate(armed_rule(), h, now=NOW, spent_rule=0, spent_all=0, global_cap=None,
                              cash=None, already_ordered=False, qty=10, blacklisted=None) == "blacklisted"
     assert gate(armed_rule(auto_buy_until=None), h) == "not armed"
+    assert opp.auto_buy_gate(armed_rule(), h, now=NOW, spent_rule=0, spent_all=0, global_cap=None,
+                             cash=None, already_ordered=False, qty=10,
+                             market_linked=True) == "index-linked (MLD): auto-buy refused"
     assert gate(armed_rule(auto_buy_until=NOW - timedelta(minutes=1)), h) == "not armed"
     assert gate(armed_rule(buy_daily_cap=None), h) == "no budget or daily cap set"
     assert gate(armed_rule(), hit(price=997.0, qty=10, ytm=11.6, ytm_bound=12.0)) \

@@ -181,8 +181,19 @@ export function CashflowSchedule({
           <td
             className={`px-3 py-2 text-right whitespace-nowrap ${mutedText} ${struck ? "line-through decoration-zinc-600" : ""}`}
           >
-            {fmt.inr(flow.amount)}
-            <AmountProvenance flow={flow} />
+            {(flow.adjustments ?? []).some((a) => a.kind === "index_linked") ? (
+              <span
+                className="text-zinc-400"
+                title="Market-linked debenture: the coupon is set by an index at maturity. NSDL publishes no amount; the yield shown elsewhere assumes none."
+              >
+                index-linked, set at maturity
+              </span>
+            ) : (
+              <>
+                {fmt.inr(flow.amount)}
+                <AmountProvenance flow={flow} />
+              </>
+            )}
           </td>
         </tr>
         {open && (

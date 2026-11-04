@@ -697,6 +697,10 @@ export type Bond = {
      */
     tech_delay: boolean;
     /**
+     * Is Mld
+     */
+    is_mld?: boolean;
+    /**
      * Computed At
      */
     computed_at: string;
@@ -953,6 +957,10 @@ export type BondDetail = {
      * Tech Delay
      */
     tech_delay: boolean;
+    /**
+     * Is Mld
+     */
+    is_mld?: boolean;
     /**
      * Rating Timeline
      */

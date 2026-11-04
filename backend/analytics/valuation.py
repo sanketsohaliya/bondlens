@@ -5,10 +5,10 @@ import re
 from dataclasses import asdict
 from datetime import UTC, date, datetime
 
-from . import yields
+from . import mld, yields
 from .schedule import Flow, Schedule, maturity_mismatch
 
-VERSION = "2026-10-28.2"
+VERSION = "2026-11-04.1"
 RELIABLE = (-1.0, 50.0)
 RELIABLE_NEAR = (0.0, 20.0)
 NEAR_DAYS = 90
@@ -23,14 +23,17 @@ def warning(code: str, message: str, severity: str = "caution", **fields) -> dic
 def cautions(value: float | None, horizon: date | None, today: date,
              coupon_basis: str | None = None, otc_yield: float | None = None,
              otc_trade_date: date | None = None, coupon_type: str | None = None,
-             otc_price: float | None = None, price: float | None = None) -> list[dict]:
+             otc_price: float | None = None, price: float | None = None,
+             market_linked: bool = False) -> list[dict]:
     result = []
     if otc_trade_date and otc_trade_date > today:
         result.append(warning("future_otc_date", "OTC print is future-dated and cannot be used as a current comparison"))
     if value is None:
         return result
-    if re.search(r"variable|float|market.?linked|index.?linked|\b(reset|mibor|repo)\b",
-                 f"{coupon_basis or ''} {coupon_type or ''}", re.I):
+    if market_linked or mld.is_mld(coupon_basis, None):
+        result.append(warning("market_linked", "Market-linked debenture: the coupon is set by an index at maturity and is not in NSDL's schedule; this yield assumes no coupon and is indicative only"))
+    elif re.search(r"variable|float|market.?linked|index.?linked|\b(reset|mibor|repo)\b",
+                   f"{coupon_basis or ''} {coupon_type or ''}", re.I):
         result.append(warning("variable_coupon", "Variable or linked coupon: published future payments may assume today's rate; this is conditional, not a fixed return"))
     if not RELIABLE[0] <= value <= RELIABLE[1]:
         result.append(warning("yield_range", f"Yield {value:.2f}% is outside the sanity range {RELIABLE[0]:g}% to {RELIABLE[1]:g}%; this is a review flag, not proof of an error"))
@@ -84,7 +87,7 @@ def flow_data(flow: Flow, today: date) -> dict:
 def calculate(price: float | None, sched: Schedule, terms: dict | None, today: date, *,
               allow_approx: bool = False, otc_yield: float | None = None,
               otc_trade_date: date | None = None, price_date: date | None = None,
-              otc_price_pct: float | None = None) -> dict:
+              otc_price_pct: float | None = None, market_linked: bool = False) -> dict:
     terms = terms or {}
     perpetual = sched.perpetual or sched.shape == "perpetual"
     calls = yields.parse_call_dates(terms)
@@ -108,7 +111,7 @@ def calculate(price: float | None, sched: Schedule, terms: dict | None, today: d
                  if otc_price_pct else None)
     warnings = cautions(value, horizon, today, terms.get("coupon_basis"), otc_yield,
                         otc_trade_date, terms.get("coupon_type"),
-                        otc_price=otc_price, price=price)
+                        otc_price=otc_price, price=price, market_linked=market_linked)
     warnings.extend(warning("schedule_invalid", issue, "error") for issue in issues)
     mismatch = maturity_mismatch(sched, terms)
     if mismatch:

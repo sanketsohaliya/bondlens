@@ -287,6 +287,20 @@ def test_blacklisted_bond_alerts_but_is_never_bought(monkeypatch):
     asyncio.run(run())
 
 
+def test_market_linked_bond_alerts_but_is_never_bought(monkeypatch):
+    async def run():
+        s, pusher, recorded = make_session(monkeypatch)
+        arm(s)
+        s.bonds["INE000A"]["is_mld"] = True
+        placed, orders = wire_kite(monkeypatch)
+        s.on_tick(tick(101, asks=[(940.0, 30)]))
+        await settle()
+        assert placed == []
+        assert orders[0]["status"] == "skipped" and orders[0]["reason"].startswith("index-linked (MLD)")
+        assert pusher.calls[0]["title"] == "ALPHA LTD — ask ₹940"
+    asyncio.run(run())
+
+
 def test_disarmed_or_capped_rules_do_not_order(monkeypatch):
     async def run():
         s, pusher, recorded = make_session(monkeypatch)

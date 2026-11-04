@@ -46,8 +46,8 @@ from . import (
     safe_errors,
     schedules,
 )
+from .analytics import mld, ratings, schedule, valuation, yields
 from .analytics import portfolio as pf
-from .analytics import ratings, schedule, valuation, yields
 from .analytics.compute import STALE_AFTER_DAYS
 
 # redirect_slashes builds its 307 from the proxied (http) scheme, which
@@ -489,10 +489,12 @@ def bond_detail(isin: str, price: float | None = Query(None, gt=0, allow_inf_nan
     today = date.today()
     terms = queries.bond_terms(isin)
     raw_flows = queries.bond_cashflows(isin)
-    sched = schedules.build(isin, raw_flows, terms, today,
-                            queries.exchange_notice_rows([isin]).get(isin, []))
     hist = queries.rating_history(isin).get(isin, [])
     cur = [h for h in hist if h.get("is_current")]
+    market_linked = mld.is_mld((terms or {}).get("coupon_basis"), ratings.composite(cur))
+    sched = schedules.build(isin, raw_flows, terms, today,
+                            queries.exchange_notice_rows([isin]).get(isin, []),
+                            market_linked=market_linked)
     extras = queries.bond_extras(isin)
 
     core = queries.analytics_row(isin, STALE_AFTER_DAYS) or {}
@@ -510,7 +512,8 @@ def bond_detail(isin: str, price: float | None = Query(None, gt=0, allow_inf_nan
     priced = valuation.calculate(ltp, sched, terms, today, allow_approx=True,
                                  otc_yield=core.get("otc_yield"), otc_trade_date=core.get("otc_trade_date"),
                                  otc_price_pct=core.get("otc_price_pct"),
-                                 price_date=None if custom_price else core.get("trade_date"))
+                                 price_date=None if custom_price else core.get("trade_date"),
+                                 market_linked=market_linked)
     if perpetual:
         # A maturity-based YTM against a perpetual (9999 sentinel) is
         # spurious — yield-to-call is the meaningful figure.

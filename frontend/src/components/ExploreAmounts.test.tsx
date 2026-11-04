@@ -185,4 +185,16 @@ describe("explore amount cells", () => {
     expect(unknown).toContain("₹1,005 (size unavailable)");
     expect(unknown).not.toContain("₹0");
   });
+
+  it("tags market-linked debentures in the payout cell", () => {
+    const html = renderToStaticMarkup(
+      <PayoutCell
+        bond={{ ...bond, is_mld: true, coupon: null, coupon_basis: "Variable - Index Linked" }}
+        today="2026-09-11"
+        onOpen={() => {}}
+      />,
+    );
+    expect(html).toContain(">MLD<");
+    expect(html).toContain("assumes no coupon");
+  });
 });

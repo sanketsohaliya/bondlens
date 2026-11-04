@@ -64,6 +64,8 @@ export const CAVEATS: Record<string, string | null> = {
   callable_maturity: "Callable before maturity — the yield to maturity may not be realised.",
   unresolved_calls: "Some call terms are unresolved — yield-to-worst unavailable.",
   variable_coupon: "Floating coupon — yield assumes today's rate.",
+  market_linked:
+    "Market-linked debenture — the coupon is set by an index at maturity and is not in NSDL's schedule; this yield assumes no coupon and is indicative only.",
   estimated_payments: "Some payments are estimated from the coupon rate.",
   future_price_date: "Price is future-dated — verify the source.",
   // info: context, never a badge
