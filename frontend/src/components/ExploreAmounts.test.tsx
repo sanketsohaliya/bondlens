@@ -196,5 +196,7 @@ describe("explore amount cells", () => {
     );
     expect(html).toContain(">MLD<");
     expect(html).toContain("assumes no coupon");
+    expect(html).toContain("Market-linked");
+    expect(html).not.toContain("Pays at maturity");
   });
 });

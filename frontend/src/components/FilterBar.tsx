@@ -48,7 +48,9 @@ export function describeFilters(p: ExploreParams): string[] {
           ? "bullet repayment"
           : p.payout === "staggered"
             ? "staggered redemption"
-            : p.payout,
+            : p.payout === "mld"
+              ? "market-linked (MLD)"
+              : p.payout,
     );
   if (p.sector) parts.push(`sector: ${p.sector}`);
   if (p.exchange) parts.push(`on ${p.exchange}`);
@@ -359,6 +361,7 @@ function FilterFields({
         <option value="bullet">Bullet</option>
         <option value="staggered">Staggered</option>
         <option value="maturity">Pays at maturity</option>
+        <option value="mld">Market-linked (MLD)</option>
         <option value="perpetual">Perpetual</option>
       </select>
     </label>

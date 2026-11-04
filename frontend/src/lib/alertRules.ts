@@ -68,6 +68,9 @@ const tenor = (y: number): string =>
 /** Client-side mirror of the backend's rule_label(), used only to preview
  * the label in the Save dialog before the rule exists. The server's label
  * is the one shown everywhere afterwards. Keep the two in step. */
+// Payout filter values as they read in a label (kept in step with the server).
+const PAYOUT_WORDS: Record<string, string> = { maturity: "pays at maturity", mld: "market-linked" };
+
 export function previewLabel(rule: {
   filters: Record<string, unknown>;
   min_ask_ytm?: number | null;
@@ -90,7 +93,10 @@ export function previewLabel(rule: {
     ["frequency", "Frequency"],
     ["exchange", "Exchange"],
   ] as const)
-    if (f[key]) parts.push(`${label}: ${String(f[key])}`);
+    if (f[key])
+      parts.push(
+        `${label}: ${key === "payout" ? (PAYOUT_WORDS[String(f[key])] ?? String(f[key])) : String(f[key])}`,
+      );
   if (f.issuer) parts.push(`Issuer ~ ${String(f.issuer)}`);
   if (f.secured_only) parts.push("Secured");
   if (f.unsecured_only) parts.push("Unsecured");

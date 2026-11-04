@@ -270,3 +270,8 @@ def test_render_order_texts():
     assert body.split("\n") == ["rule daily cap reached", "Rule: Ask YTM ≥ 12%", "13:34:13 IST"]
     _, body = opp.render_order("skipped", 10, h, bond, reason="available cash ₹500 < order ₹9,970", at=at)
     assert "Would have been 10 × ₹997 = ₹9,970 on BSE" in body.split("\n")
+
+
+def test_rule_label_reads_payout_values_as_words():
+    assert opp.rule_label({"min_ask_ytm": 10, "filters": {"payout": "mld"}}) == "Ask YTM ≥ 10%, Payout: market-linked"
+    assert opp.rule_label({"min_ask_ytm": 10, "filters": {"payout": "maturity"}}) == "Ask YTM ≥ 10%, Payout: pays at maturity"

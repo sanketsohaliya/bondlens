@@ -165,4 +165,10 @@ describe("watcher status line", () => {
     expect(watcherStatus(null, 0, true, now).tone).toBe("idle");
     expect(watcherStatus(null, 1, true, now).tone).toBe("warn");
   });
+
+  it("reads payout values as words", () => {
+    expect(previewLabel({ filters: { payout: "mld" }, min_ask_ytm: 10 })).toBe(
+      "Ask YTM ≥ 10%, Payout: market-linked",
+    );
+  });
 });

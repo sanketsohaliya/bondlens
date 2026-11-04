@@ -241,6 +241,7 @@ export default function App() {
                 loading={bonds.isLoading && (!listMode || listIsins.length > 0)}
                 error={bonds.error?.message ?? null}
                 onSelect={(isin, tab) => setSelected({ isin, tab })}
+                onMldFilter={() => setParams((p) => ({ ...p, q: undefined, payout: "mld" }))}
                 initialSort={sort}
                 onSortChange={setSort}
               />

@@ -49,19 +49,38 @@ const isZeroCoupon = (b: Pick<Bond, "coupon_basis" | "schedule_shape">) =>
 
 /** Market-linked debenture marker: the coupon is an index formula, so
  * the shown yield assumes no coupon and auto-buy refuses the bond. */
-export function MldChip() {
+export function MldChip({ onFilter }: { onFilter?: () => void }) {
+  const cls =
+    "shrink-0 text-[10px] px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/30";
+  const tip =
+    "Market-linked debenture: the coupon is set by an index at maturity, so the yield shown assumes no coupon (indicative). Alerts fire; auto-buy never does.";
+  if (!onFilter) {
+    return (
+      <span title={tip} className={cls}>
+        MLD
+      </span>
+    );
+  }
   return (
-    <span
-      title="Market-linked debenture: the coupon is set by an index at maturity, so the yield shown assumes no coupon (indicative). Alerts fire; auto-buy never does."
-      className="shrink-0 text-[10px] px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/30"
+    <button
+      type="button"
+      title={`${tip} Click to show only market-linked debentures.`}
+      onClick={(e) => {
+        e.stopPropagation();
+        onFilter();
+      }}
+      className={`${cls} hover:bg-amber-500/20`}
     >
       MLD
-    </span>
+    </button>
   );
 }
 
 /** Payout structure — the column's primary line. */
-export const payoutStructure = (b: Pick<Bond, "schedule_shape" | "frequency">): string | null => {
+export const payoutStructure = (
+  b: Pick<Bond, "schedule_shape" | "frequency"> & { is_mld?: boolean },
+): string | null => {
+  if (b.is_mld) return "Market-linked";
   switch (b.schedule_shape) {
     case "staggered":
       return "Staggered";
@@ -129,11 +148,14 @@ export function PayoutCell({
   today,
   onOpen,
   payout = payoutDisplay(b, today),
+  onMldFilter,
 }: {
   bond: PayoutBond;
   today: string;
   onOpen: () => void;
   payout?: ReturnType<typeof payoutDisplay>;
+  /** Explore passes this so the MLD chip applies the Payout filter. */
+  onMldFilter?: () => void;
 }) {
   return (
     <button
@@ -151,7 +173,7 @@ export function PayoutCell({
           same cell serves Explore and the Portfolio holdings table. */}
       <div className="flex min-w-0 items-baseline gap-2 overflow-hidden text-zinc-200 group-hover/coupon:underline decoration-zinc-600 underline-offset-2">
         <span className="truncate">{payoutStructure(b) ?? "–"}</span>
-        {b.is_mld && <MldChip />}
+        {b.is_mld && <MldChip onFilter={onMldFilter} />}
         {isZeroCoupon(b) ? (
           <span className="shrink-0 text-[11px] text-zinc-400">Zero coupon</span>
         ) : b.coupon != null ? (
@@ -291,6 +313,7 @@ export default function ExploreTable({
   initialSort,
   onSelect,
   onSortChange,
+  onMldFilter,
 }: {
   bonds: Bond[];
   loading: boolean;
@@ -298,6 +321,8 @@ export default function ExploreTable({
   onSelect: (isin: string, tab?: "cashflows" | "ratings" | "chart" | "order book") => void;
   initialSort?: SortState;
   onSortChange?: (s: SortState) => void;
+  /** Clicking an MLD chip narrows Explore to market-linked debentures. */
+  onMldFilter?: () => void;
 }) {
   const today = usePayoutDay();
   const now = useQuoteClock();
@@ -480,6 +505,7 @@ export default function ExploreTable({
               bond={b}
               today={today}
               onSelect={onSelect}
+              onMldFilter={onMldFilter}
               ask={kiteConnected ? (askMap.get(b.isin) ?? null) : undefined}
             />
           ))}
@@ -526,7 +552,15 @@ export function MarkCell({ bond: b }: { bond: Bond }) {
 
 /** Explore column cell, shared with the Portfolio holdings table so the
  * same bond reads identically on both pages. */
-export function SymbolCell({ bond: b, onOpen }: { bond: Bond; onOpen?: () => void }) {
+export function SymbolCell({
+  bond: b,
+  onOpen,
+  onMldFilter,
+}: {
+  bond: Bond;
+  onOpen?: () => void;
+  onMldFilter?: () => void;
+}) {
   const issuerClass =
     "font-medium text-zinc-200 truncate hover:text-emerald-400 hover:underline underline-offset-2 transition-colors";
   return (
@@ -559,7 +593,7 @@ export function SymbolCell({ bond: b, onOpen }: { bond: Bond; onOpen?: () => voi
             DEFAULT
           </span>
         )}
-        {b.is_mld && <MldChip />}
+        {b.is_mld && <MldChip onFilter={onMldFilter} />}
       </div>
       <div className="flex items-center text-[11px] min-w-0">
         <InlineMetadata
@@ -785,10 +819,12 @@ export function PayoutTd({
   bond: b,
   today,
   onSelect,
+  onMldFilter,
 }: {
   bond: Bond;
   today: string;
   onSelect: (isin: string, tab?: "cashflows" | "ratings" | "chart" | "order book") => void;
+  onMldFilter?: () => void;
 }) {
   const payout = payoutDisplay(b, today);
   return (
@@ -805,6 +841,7 @@ export function PayoutTd({
         today={today}
         payout={payout}
         onOpen={() => onSelect(b.isin, "cashflows")}
+        onMldFilter={onMldFilter}
       />
     </td>
   );
@@ -848,12 +885,14 @@ export function Row({
   today,
   onSelect,
   ask,
+  onMldFilter,
 }: {
   bond: Bond;
   today: string;
   onSelect: (isin: string, tab?: "cashflows" | "ratings" | "chart" | "order book") => void;
   /** undefined = Kite not connected (no column); null = no live ask. */
   ask?: AskYtm | null;
+  onMldFilter?: () => void;
 }) {
   return (
     <tr
@@ -864,7 +903,7 @@ export function Row({
       className="group/row border-b border-zinc-900 hover:bg-zinc-900/60 cursor-pointer transition-colors"
     >
       <MarkCell bond={b} />
-      <SymbolCell bond={b} />
+      <SymbolCell bond={b} onMldFilter={onMldFilter} />
       {/* Merged column: YTM (at the last traded price) on top, the LTP
           it was computed from as the sub-line. */}
       <LtpYtmCell bond={b} onSelect={onSelect} />
@@ -889,7 +928,7 @@ export function Row({
           count muted beneath. Tooltip leads with the rupee total a buyer
           receives, then structure in plain words; click = the actual
           payment schedule. */}
-      <PayoutTd bond={b} today={today} onSelect={onSelect} />
+      <PayoutTd bond={b} today={today} onSelect={onSelect} onMldFilter={onMldFilter} />
       <MaturityCell bond={b} />
     </tr>
   );

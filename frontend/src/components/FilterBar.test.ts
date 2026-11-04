@@ -68,4 +68,8 @@ describe("describeFilters", () => {
     expect(describeFilters({ q: "hdfc" })).toEqual([]);
     expect(describeFilters({})).toEqual([]);
   });
+
+  it("names the market-linked payout filter", () => {
+    expect(describeFilters({ payout: "mld" })).toEqual(["market-linked (MLD)"]);
+  });
 });

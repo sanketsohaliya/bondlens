@@ -270,14 +270,18 @@ def explorer(f: dict, stale_days: int) -> tuple[list[dict], int, float | None]:
     if f.get("frequency"):
         add("a.frequency = %(freq)s", freq=f["frequency"].lower())
     # Payout structure — same vocabulary as the explorer's Payout column.
-    if f.get("payout") == "bullet":
-        add("a.schedule_shape = 'plain'")
+    # Market-linked debentures are their own payout type: the other
+    # values exclude them, so a zero-coupon screen never hides an MLD.
+    if f.get("payout") == "mld":
+        add("a.is_mld")
+    elif f.get("payout") == "bullet":
+        add("a.schedule_shape = 'plain' AND NOT a.is_mld")
     elif f.get("payout") == "staggered":
-        add("a.schedule_shape = 'staggered'")
+        add("a.schedule_shape = 'staggered' AND NOT a.is_mld")
     elif f.get("payout") == "perpetual":
-        add("a.schedule_shape = 'perpetual'")
+        add("a.schedule_shape = 'perpetual' AND NOT a.is_mld")
     elif f.get("payout") == "maturity":
-        add("a.schedule_shape IN ('zero_coupon', 'cumulative')")
+        add("a.schedule_shape IN ('zero_coupon', 'cumulative') AND NOT a.is_mld")
     if f.get("min_years") is not None:
         add("a.maturity_date > CURRENT_DATE AND "
             "round((a.maturity_date - CURRENT_DATE) / 365.0, 2) >= %(min_years)s",
@@ -326,7 +330,8 @@ def explorer(f: dict, stale_days: int) -> tuple[list[dict], int, float | None]:
         add("(a.isin ILIKE %(q)s OR "
             "coalesce(a.nse_symbol, '') || ' ' || "
             "coalesce(a.bse_scrip_id, '') || ' ' || "
-            "coalesce(a.issuer_name, '') ILIKE %(q)s)",
+            "coalesce(a.issuer_name, '') || ' ' || "
+            "coalesce(a.credit_rating, '') ILIKE %(q)s)",
             q=f"%{f['q'].strip()}%")
 
     # The UI sorts a paged result, so the page must be cut in that same

@@ -148,6 +148,11 @@ def _tenor(years: float) -> str:
     return f"{text}y"
 
 
+# Payout filter values as they read in a label (kept in step with the
+# frontend's previewLabel).
+PAYOUT_WORDS = {"maturity": "pays at maturity", "mld": "market-linked"}
+
+
 def rule_label(rule: dict[str, Any]) -> str:
     """The single human label for a rule, used verbatim everywhere: ask
     conditions first, then the filters in the bar's order, every part a
@@ -172,7 +177,7 @@ def rule_label(rule: dict[str, Any]) -> str:
     for key, label in (("sector", "Sector"), ("industry", "Industry"), ("payout", "Payout"),
                        ("frequency", "Frequency"), ("exchange", "Exchange")):
         if f.get(key):
-            parts.append(f"{label}: {f[key]}")
+            parts.append(f"{label}: {PAYOUT_WORDS.get(str(f[key]), f[key]) if key == 'payout' else f[key]}")
     if f.get("issuer"):
         parts.append(f"Issuer ~ {f['issuer']}")
     if f.get("secured_only"):
