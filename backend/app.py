@@ -405,7 +405,7 @@ def bonds(
     exchange: str | None = Query(None, description="NSE or BSE"),
     frequency: str | None = Query(None, description="monthly|quarterly|semiannual|annual"),
     payout: str | None = Query(
-        None, pattern="^(bullet|staggered|maturity|perpetual)$",
+        None, pattern="^(bullet|staggered|maturity|perpetual|mld)$",
         description="Payout structure: bullet, staggered, "
                     "maturity (zero-coupon/cumulative) or perpetual"),
     min_years: float | None = Query(None),
