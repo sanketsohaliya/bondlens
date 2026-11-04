@@ -108,6 +108,10 @@ class Schedule:
     maturity_date: date | None = None
     call_price_unsupported: bool = False
     input_issues: list[tuple[date | None, str]] = field(default_factory=list)
+    # Market-linked debenture: the per-unit amount NSDL has filed beyond
+    # face (the scenario payout); None when nothing beyond face is filed.
+    mld_premium: float | None = None
+    market_linked: bool = False
 
     @property
     def usable(self) -> bool:
@@ -351,6 +355,7 @@ def build(isin: str, cashflows: list[dict], terms: dict | None,
     if market_linked is None:
         market_linked = mld.is_mld(terms.get("coupon_basis"), None)
     if market_linked:
+        sched.market_linked = True
         for f in interest:
             if f.amount == 0:
                 f.adjust(0.0, "index_linked",
@@ -630,7 +635,25 @@ def build(isin: str, cashflows: list[dict], terms: dict | None,
         sched.warnings.append("unclassifiable flow pattern")
 
     sched.flows = sorted(flows, key=lambda f: (f.due_date, f.event))
+    if sched.market_linked:
+        _tag_mld_premium(sched)
     return sched
+
+
+def _tag_mld_premium(sched: Schedule) -> None:
+    """On a market-linked debenture every positive interest amount NSDL has
+    filed - directly, or as redemption above face that the splits above
+    separated out - is the scenario payout, not a coupon. Say so on the
+    row and total it for the yield caveat."""
+    total = 0.0
+    for f in sched.flows:
+        if f.event != "interest" or f.optional or not f.amount or f.amount <= 0:
+            continue
+        f.adjust(f.amount, "index_linked_premium",
+                 "Premium NSDL has filed for the scenario where the index condition is met; "
+                 "the actual payout is set at maturity", estimated=False)
+        total += f.amount
+    sched.mld_premium = round(total, 2) if total > 0 else None
 
 
 def _mark_optional_exits(sched: Schedule, flows: list[Flow], terms: dict) -> None:

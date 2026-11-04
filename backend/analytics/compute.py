@@ -34,7 +34,7 @@ _COLS: list[LiteralString] = [
     "otc_trade_date", "otc_turnover", "ytm", "ytm_method", "ytm_reliable", "valuation",
     "current_yield", "duration",
     "credit_rating", "rating_rank", "rating_change", "rating_prev",
-    "rating_changed_at", "in_default", "tech_delay", "is_mld", "computed_at",
+    "rating_changed_at", "in_default", "tech_delay", "is_mld", "mld_premium", "computed_at",
 ]
 
 
@@ -225,6 +225,7 @@ def build_rows(today: date | None = None) -> list[dict]:
             "in_default": isin in defaulted or ratings.in_default(cur),
             "tech_delay": isin in tech_delays,
             "is_mld": market_linked,
+            "mld_premium": sched.mld_premium,
             "computed_at": computed_at,
         })
     return rows

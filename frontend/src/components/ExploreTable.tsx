@@ -102,6 +102,7 @@ type PayoutBond = Pick<
   Bond,
   | "schedule_shape"
   | "is_mld"
+  | "mld_premium"
   | "coupon_basis"
   | "frequency"
   | "coupon"

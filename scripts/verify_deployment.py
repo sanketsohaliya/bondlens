@@ -14,7 +14,7 @@ from urllib.request import urlopen
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 
-LATEST_MIGRATION = "0029_is_mld.sql"
+LATEST_MIGRATION = "0030_mld_premium.sql"
 
 
 class VerificationError(Exception):

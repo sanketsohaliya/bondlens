@@ -116,6 +116,7 @@ class Bond(BaseModel):
     in_default: bool
     tech_delay: bool
     is_mld: bool = False
+    mld_premium: float | None = None
     computed_at: datetime
 
 
@@ -336,6 +337,7 @@ class BondDetail(BaseModel):
     in_default: bool
     tech_delay: bool
     is_mld: bool = False
+    mld_premium: float | None = None
     rating_timeline: dict[str, list[RatingEvent]]
     # Cashflows
     cashflows: list[Cashflow]

@@ -494,17 +494,20 @@ function AmountProvenance({ flow }: { flow: Cashflow }) {
   if (adjustments.length === 0 && !flow.estimated) return null;
   const amount = (value: number | null) =>
     value == null ? "not supplied" : `₹${fmt.num(value, 2)}`;
+  const premium = adjustments.some((a) => a.kind === "index_linked_premium");
   const label = flow.optional
     ? "optional"
-    : flow.estimated
-      ? flow.amount == null
-        ? "estimate unavailable"
-        : "estimated"
-      : adjustments.some((a) => a.kind === "coupon_inferred")
-        ? "added by BondLens"
-        : "normalized";
+    : premium
+      ? "index-linked"
+      : flow.estimated
+        ? flow.amount == null
+          ? "estimate unavailable"
+          : "estimated"
+        : adjustments.some((a) => a.kind === "coupon_inferred")
+          ? "added by BondLens"
+          : "normalized";
   const lines = adjustments.map((a) =>
-    a.kind === "coupon_inferred"
+    a.kind === "coupon_inferred" || a.kind === "index_linked_premium"
       ? a.reason
       : `${a.reason}\nBefore ${amount(a.previous_amount)} → After ${amount(a.amount)}`,
   );
@@ -512,7 +515,10 @@ function AmountProvenance({ flow }: { flow: Cashflow }) {
     ? lines.join("\n\n")
     : "Estimated amount; detailed provenance unavailable";
   return (
-    <span className={`ml-1.5 ${flow.estimated ? CHIP_ATTENTION : CHIP_NEUTRAL}`} title={tip}>
+    <span
+      className={`ml-1.5 ${flow.estimated || premium ? CHIP_ATTENTION : CHIP_NEUTRAL}`}
+      title={tip}
+    >
       {label}
     </span>
   );

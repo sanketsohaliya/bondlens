@@ -8,7 +8,7 @@ from datetime import UTC, date, datetime
 from . import mld, yields
 from .schedule import Flow, Schedule, maturity_mismatch
 
-VERSION = "2026-11-04.1"
+VERSION = "2026-11-04.2"
 RELIABLE = (-1.0, 50.0)
 RELIABLE_NEAR = (0.0, 20.0)
 NEAR_DAYS = 90
@@ -24,14 +24,17 @@ def cautions(value: float | None, horizon: date | None, today: date,
              coupon_basis: str | None = None, otc_yield: float | None = None,
              otc_trade_date: date | None = None, coupon_type: str | None = None,
              otc_price: float | None = None, price: float | None = None,
-             market_linked: bool = False) -> list[dict]:
+             market_linked: bool = False, mld_premium: float | None = None) -> list[dict]:
     result = []
     if otc_trade_date and otc_trade_date > today:
         result.append(warning("future_otc_date", "OTC print is future-dated and cannot be used as a current comparison"))
     if value is None:
         return result
     if market_linked or mld.is_mld(coupon_basis, None):
-        result.append(warning("market_linked", "Market-linked debenture: the coupon is set by an index at maturity and is not in NSDL's schedule; this yield assumes no coupon and is indicative only"))
+        if mld_premium:
+            result.append(warning("market_linked", f"Market-linked debenture: this yield assumes the premium NSDL has filed (₹{mld_premium:,.2f} per unit) is paid - the best case, settled by the index at maturity; indicative only", premium=mld_premium))
+        else:
+            result.append(warning("market_linked", "Market-linked debenture: the coupon is set by an index at maturity and NSDL has filed no amount; this yield assumes no coupon and is indicative only"))
     elif re.search(r"variable|float|market.?linked|index.?linked|\b(reset|mibor|repo)\b",
                    f"{coupon_basis or ''} {coupon_type or ''}", re.I):
         result.append(warning("variable_coupon", "Variable or linked coupon: published future payments may assume today's rate; this is conditional, not a fixed return"))
@@ -111,7 +114,9 @@ def calculate(price: float | None, sched: Schedule, terms: dict | None, today: d
                  if otc_price_pct else None)
     warnings = cautions(value, horizon, today, terms.get("coupon_basis"), otc_yield,
                         otc_trade_date, terms.get("coupon_type"),
-                        otc_price=otc_price, price=price, market_linked=market_linked)
+                        otc_price=otc_price, price=price,
+                        market_linked=market_linked or sched.market_linked,
+                        mld_premium=sched.mld_premium)
     warnings.extend(warning("schedule_invalid", issue, "error") for issue in issues)
     mismatch = maturity_mismatch(sched, terms)
     if mismatch:

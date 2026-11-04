@@ -701,6 +701,10 @@ export type Bond = {
      */
     is_mld?: boolean;
     /**
+     * Mld Premium
+     */
+    mld_premium?: number | null;
+    /**
      * Computed At
      */
     computed_at: string;
@@ -961,6 +965,10 @@ export type BondDetail = {
      * Is Mld
      */
     is_mld?: boolean;
+    /**
+     * Mld Premium
+     */
+    mld_premium?: number | null;
     /**
      * Rating Timeline
      */

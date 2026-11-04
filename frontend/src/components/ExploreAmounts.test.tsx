@@ -198,5 +198,21 @@ describe("explore amount cells", () => {
     expect(html).toContain("assumes no coupon");
     expect(html).toContain("Market-linked");
     expect(html).not.toContain("Pays at maturity");
+    expect(html).toContain("set at maturity");
+    const premium = renderToStaticMarkup(
+      <PayoutCell
+        bond={{
+          ...bond,
+          is_mld: true,
+          mld_premium: 208000,
+          payout_total_state: "known",
+          payout_total_per_unit: 308000,
+        }}
+        today="2026-09-11"
+        onOpen={() => {}}
+      />,
+    );
+    expect(premium).toContain("₹3.08 L if condition met");
+    expect(premium).toContain("best case");
   });
 });

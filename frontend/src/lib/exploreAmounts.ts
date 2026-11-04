@@ -5,7 +5,12 @@ import { calendarAsOf, calendarDate } from "./cashflowEvidence";
 
 type PayoutData = Pick<
   Bond,
-  "payout_total_per_unit" | "payout_total_state" | "payout_as_of" | "payout_valid_until"
+  | "payout_total_per_unit"
+  | "payout_total_state"
+  | "payout_as_of"
+  | "payout_valid_until"
+  | "is_mld"
+  | "mld_premium"
 > &
   Partial<
     Pick<
@@ -65,7 +70,10 @@ export function payoutDisplay(bond: PayoutData, today: string) {
     state = "incomplete";
   const usable = state === "known" || state === "estimated";
   const showCount = state !== "stale";
-  const label = usable ? `${state === "estimated" ? "~" : ""}${fmt.inr(amount)}` : null;
+  let label = usable ? `${state === "estimated" ? "~" : ""}${fmt.inr(amount)}` : null;
+  // Market-linked: the amount, if any, is the scenario payout NSDL filed.
+  if (bond.is_mld)
+    label = usable && bond.mld_premium ? `${fmt.inr(amount)} if condition met` : "set at maturity";
   const horizon = bond.schedule_shape === "perpetual" ? "the first call" : "maturity";
   const left =
     showCount && bond.future_flows != null && bond.total_flows != null && bond.total_flows > 0
@@ -81,7 +89,12 @@ export function payoutDisplay(bond: PayoutData, today: string) {
     stale:
       "Total is being recalculated — a payment or record date has passed. Updates after the 07:00 IST refresh.",
   }[state];
-  const lines = [headline, payoutStructureNote(bond)];
+  const mldHeadline = bond.is_mld
+    ? bond.mld_premium
+      ? `Market-linked: NSDL has filed ${fmt.inrFull(amount)} per unit payable if the index condition is met - the best case; otherwise principal only. Settled at maturity.`
+      : "Market-linked: the payout is set by the index at maturity; NSDL has filed no amount beyond principal."
+    : null;
+  const lines = [mldHeadline ?? headline, payoutStructureNote(bond)];
   if (usable) lines.push("Before tax & fees · gross cash, not profit or a guaranteed return.");
   lines.push(
     bond.payout_as_of

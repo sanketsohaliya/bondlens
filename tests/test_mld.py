@@ -42,3 +42,27 @@ def test_valuation_marks_mld_yield_indicative_not_reliable():
     assert priced["ytm"] is not None and priced["ytm_reliable"] is False
     codes = [w["code"] for w in priced["warnings"]]
     assert "market_linked" in codes and "variable_coupon" not in codes
+
+
+def test_mld_filed_premium_is_tagged_and_totalled():
+    today = date(2026, 11, 4)
+    # NSDL files one terminal payment above face: 3.08 L on 1 L.
+    rows = [{"event": "Full Redemption", "due_date": date(2029, 6, 14), "record_date": date(2029, 5, 30), "amount_redeem": 308000}]
+    terms = {"coupon_basis": "Variable - Index Linked", "face_value": 100000,
+             "interest_payment_frequency": "On Maturity", "redemption_date": date(2029, 6, 14),
+             "redemption_type": "Full"}
+    sched = schedule.build("INE0K0Y07013", rows, terms, today, market_linked=True)
+    interest = [f for f in sched.flows if f.event == "interest"]
+    assert len(interest) == 1 and interest[0].amount == 208000
+    assert [a["kind"] for a in interest[0].adjustments][-1] == "index_linked_premium"
+    assert sched.mld_premium == 208000
+    priced = valuation.calculate(190000.0, sched, terms, today, market_linked=True)
+    ml = next(w for w in priced["warnings"] if w["code"] == "market_linked")
+    assert "best case" in ml["message"] and ml["premium"] == 208000
+    # Nothing beyond face: no premium, the "no coupon" wording.
+    rows0 = [{"event": "Interest", "due_date": date(2029, 1, 22), "record_date": None, "amount_payable": 0},
+             {"event": "Full Redemption", "due_date": date(2029, 1, 22), "record_date": None, "amount_payable": 100000}]
+    s0 = schedule.build("INE918K07PX1", rows0, {**terms, "redemption_date": date(2029, 1, 22)}, today, market_linked=True)
+    assert s0.mld_premium is None
+    p0 = valuation.calculate(80000.0, s0, terms, today, market_linked=True)
+    assert "no coupon" in next(w for w in p0["warnings"] if w["code"] == "market_linked")["message"]
